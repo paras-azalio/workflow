@@ -1,0 +1,132 @@
+{
+  "schemaVersion" : "2",
+  "meta" : {
+    "nodeType" : "PGW",
+    "activity" : "1051_SUBSCRIBER_PROFILE_CONFIGURATION"
+  },
+  "nodeGroups" : [ {
+    "nodeGroup" : "NORTH1",
+    "crGroup" : "CR1",
+    "email" : "abc@yahoo.com",
+    "mmtelRefreshEmail" : "mediationil1@airtel.com",
+    "nodes" : [ {
+      "node" : "NORTH1",
+      "PGW" : {
+        "niamID-1" : "NDS_PGW1_10.62.60.28_CLI",
+        "niamID-2" : "BH-NOKIA-CFX-Q-BHPPNCFQD2-172.27.11.148-CLI",
+        "niamID-3" : "BH-NOKIA-CFX-Q-BHPPNCFQD3-172.27.11.149-CLI"
+      },
+      "RDS" : {
+        "niamID-1" : "NDS_R-DS1_B-DS1_10.62.60.31_CLI",
+        "niamID-2" : "BH-NOKIA-CFX-R-BHPPNCFRD2-172.27.12.226-CLI",
+        "niamID-3" : "BH-NOKIA-CFX-R-BHPPNCFRD3-172.27.12.227-CLI"
+      }
+    } ],
+    "configSequences" : [ {
+      "configSeq" : "Step1",
+      "subscribers" : [ {
+        "testIMSI" : "404530000000132",
+        "testMSISDN" : "9891000632",
+        "rsi" : {
+          "value" : "UNCHANGED"
+        },
+        "callBarring" : {
+          "action" : "UNCHANGED",
+          "callType" : null,
+          "serviceGroup" : null
+        },
+        "isdBarring" : {
+          "action" : "DISABLED",
+          "type" : "Advanced"
+        },
+        "callForwarding" : {
+          "action" : "ENABLED",
+          "type" : "CFU",
+          "ftNumber" : "919898989898"
+        }
+      }, {
+        "testIMSI" : null,
+        "testMSISDN" : "5999915555",
+        "rsi" : {
+          "value" : "UNCHANGED"
+        },
+        "callBarring" : {
+          "action" : "DISABLED",
+          "callType" : "BAIC",
+          "serviceGroup" : "Speech"
+        },
+        "isdBarring" : {
+          "action" : "DISABLED",
+          "type" : "Normal"
+        },
+        "callForwarding" : {
+          "action" : "ENABLED",
+          "type" : "CFNRc",
+          "ftNumber" : "919898989898"
+        }
+      }, {
+        "testIMSI" : null,
+        "testMSISDN" : "9891000631",
+        "rsi" : {
+          "value" : "UNCHANGED"
+        },
+        "callBarring" : {
+          "action" : "UNCHANGED",
+          "callType" : null,
+          "serviceGroup" : null
+        },
+        "isdBarring" : {
+          "action" : "UNCHANGED",
+          "type" : null
+        },
+        "callForwarding" : {
+          "action" : "DISABLED",
+          "type" : "CFNRy",
+          "ftNumber" : null
+        }
+      } ]
+    } ]
+  }, {
+    "nodeGroup" : "SOUTH1",
+    "crGroup" : "CR2",
+    "email" : "abc@yahoo.com",
+    "mmtelRefreshEmail" : "mediationil1@airtel.com",
+    "nodes" : [ {
+      "node" : "SOUTH1",
+      "PGW" : {
+        "niamID-1" : "NDS_PGW1_10.62.70.28_CLI",
+        "niamID-2" : "BH-NOKIA-CFX-Q-SOUTHPGW2-172.27.21.148-CLI",
+        "niamID-3" : "BH-NOKIA-CFX-Q-SOUTHPGW3-172.27.21.149-CLI"
+      },
+      "RDS" : {
+        "niamID-1" : "NDS_R-DS1_B-DS1_10.62.70.31_CLI",
+        "niamID-2" : "BH-NOKIA-CFX-R-SOUTHRDS2-172.27.22.226-CLI",
+        "niamID-3" : "BH-NOKIA-CFX-R-SOUTHRDS3-172.27.22.227-CLI"
+      }
+    } ],
+    "configSequences" : [ {
+      "configSeq" : "Step1",
+      "subscribers" : [ {
+        "testIMSI" : null,
+        "testMSISDN" : "9891000641",
+        "rsi" : {
+          "value" : "UNCHANGED"
+        },
+        "callBarring" : {
+          "action" : "UNCHANGED",
+          "callType" : null,
+          "serviceGroup" : null
+        },
+        "isdBarring" : {
+          "action" : "DISABLED",
+          "type" : "Normal"
+        },
+        "callForwarding" : {
+          "action" : "UNCHANGED",
+          "type" : null,
+          "ftNumber" : null
+        }
+      } ]
+    } ]
+  } ]
+}

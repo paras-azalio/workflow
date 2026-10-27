@@ -1,0 +1,348 @@
+id: cr_child_order
+namespace: cr_automation
+description: |
+  Child order (on demand): continues a VALIDATED order with ONE of its CRs. Pick the order in "order_id" and the CR
+  in "cr_name" (the list shows the order's CR_LIST and the last child order of each CR). Run it again for the next CR.
+
+  The child gets its own request id from the request store - the next whole number (e.g. order 1 -> child 2, or 3
+  if 2 is taken): CHILD_REQ_ID, the label req_id and its folder <SHARED_DATA_DIR>/<child id>/, like
+  /mnt/shared_data/<child request id>/ in BST. The order id is PARENT_REQ_ID. Every step below is recorded in the
+  store (table request_step) with its IO.
+
+    1. MOP generation - CLICR MOP_GENERATION for the CR (CR_NAME): the MOP html in the child folder and
+                        ACTIVITY_CR_NODE_NAMES, the nodes (zones) the CR runs on.
+    2. MOP execution  - CLICR MOP_EXECUTION per node (NODE_NAME), one node after the other (run_execution=true).
+                        Every node runs, also after another node failed. The engine writes
+                        LOGS/<node>_execution.log and REPORT/<..>_EXECUTION_REPORT_<node>.json.
+                        A failed node gets its failure report (FileCR GENERATE_REPORT, NODE_FAILURE_REPORT=TRUE).
+    3. Summary        - FileCR GENERATE_REPORT for the CR over all its nodes: REPORT/<..>_<CR>_SUMMARY_REPORT.html.
+                        The child FAILS when any node failed (its failure reports say why).
+
+  A node whose execution ended with ROLLBACK_ENABLED=TRUE can be rolled back later with cr_node_rollback (or the
+  "Order" tab), when the activity allows it (config rollback.<NODE_TYPE>_<ACTIVITY>).
+  IO and MML logs: <child folder>/logs/ (also this execution's output files and the "IO / MML" tab).
+  Secrets: Kestra secrets CLICR_REPO_PASSWORD (GRC REPO_PASSWORD), CLICR_M2MPASSWORD1 (login M2MPASSWORD1),
+  CR_DB_PASSWORD (request store).
+
+labels:
+  project: CR_AUTOMATION
+  order_type: CHILD
+
+inputs:
+  - id: order_id
+    type: SELECT
+    expression: >-
+      {{ (kv('ORDERS', errorOnMissing=false) ?? []) | jq('[.[] | select(.stage == "VALIDATED")]') | first }}
+    description: Validated order to continue
+  - id: cr_name
+    type: SELECT
+    dependsOn:
+      inputs:
+        - order_id
+    expression: "{{ kv('ORDER_' ~ inputs.order_id).cr_options }}"
+    description: CR of the order to run now (CR_NAME)
+  - id: run_execution
+    type: BOOL
+    defaults: true
+    description: Execute the MOP on the nodes after generating it (false = generate the MOP only)
+
+variables:
+  child_id: "{{ outputs.allocate.vars.req_id ?? '' }}"
+  order_dir: "{{ kv('SHARED_DATA_DIR') }}/{{ outputs.allocate.vars.req_id ?? '' }}"
+  json_file: "{{ kv('ORDER_' ~ inputs.order_id).json_file }}"
+  node_type: "{{ kv('ORDER_' ~ inputs.order_id).node_type }}"
+  activity: "{{ kv('ORDER_' ~ inputs.order_id).activity }}"
+  node_version: "{{ kv('ORDER_' ~ inputs.order_id).node_version }}"
+
+tasks:
+  - id: allocate
+    type: io.kestra.plugin.scripts.shell.Commands
+    description: This child in the request store - its request id (the next number) and its folder
+    taskRunner:
+      type: io.kestra.plugin.core.runner.Process
+    namespaceFiles:
+      enabled: true
+      include: [bin/**, wrappers/**, lib/**, config/**]
+    env:
+      SHARED_DATA_DIR: "{{ kv('SHARED_DATA_DIR') }}"
+      STORE_JDBC_PASSWORD: "{{ secret('CR_DB_PASSWORD') }}"
+    commands:
+      - >-
+        sh bin/store.sh new-request --kind CHILD --parent "{{ inputs.order_id }}" --cr "{{ inputs.cr_name }}"
+        --execution "{{ execution.id }}"
+
+  - id: save_taken_ids
+    type: io.kestra.plugin.core.kv.Set
+    description: Request ids in use - what the order number check of the forms reads
+    key: REQ_IDS_TAKEN
+    kvType: JSON
+    value: "{{ outputs.allocate.vars.taken | toJson }}"
+
+  - id: set_labels
+    type: io.kestra.plugin.core.execution.Labels
+    labels:
+      req_id: "{{ render(vars.child_id) }}"
+      order_id: "{{ inputs.order_id }}"
+      cr_name: "{{ inputs.cr_name }}"
+
+  - id: register_start
+    type: io.kestra.plugin.scripts.shell.Commands
+    description: The order as the forms see it, now with this child (RUNNING)
+    taskRunner:
+      type: io.kestra.plugin.core.runner.Process
+    namespaceFiles:
+      enabled: true
+      include: [bin/**, wrappers/**, lib/**, config/**]
+    env:
+      SHARED_DATA_DIR: "{{ kv('SHARED_DATA_DIR') }}"
+      STORE_JDBC_PASSWORD: "{{ secret('CR_DB_PASSWORD') }}"
+    commands:
+      - sh bin/store.sh registry --order "{{ inputs.order_id }}"
+
+  - id: save_order_start
+    type: io.kestra.plugin.core.kv.Set
+    key: "ORDER_{{ inputs.order_id }}"
+    kvType: JSON
+    value: "{{ outputs.register_start.vars.order | toJson }}"
+
+  # ---- 1. MOP generation for this CR ----
+  - id: mop_generation
+    type: io.kestra.plugin.scripts.shell.Commands
+    description: CLICR NEI, ACTION=MOP_GENERATION, CR_NAME=<this CR>
+    taskRunner:
+      type: io.kestra.plugin.core.runner.Process
+    namespaceFiles:
+      enabled: true
+      include: [bin/**, wrappers/**, lib/**, nei/clicr/**, templates/clicr/**, config/**]
+    outputFiles:
+      - out/**
+    env:
+      ORDER_DIR: "{{ render(vars.order_dir) }}"
+      NEI_GRC_REPO_PASSWORD: "{{ secret('CLICR_REPO_PASSWORD') }}"
+      SHARED_DATA_DIR: "{{ kv('SHARED_DATA_DIR') }}"
+      STORE_JDBC_PASSWORD: "{{ secret('CR_DB_PASSWORD') }}"
+      STORE_REQ_ID: "{{ render(vars.child_id) }}"
+      STORE_STEP: MOP_GENERATION
+      EXECUTION_ID: "{{ execution.id }}"
+    commands:
+      - >-
+        sh bin/nei.sh clicr mop_generation
+        --param REQ_TYPE=1
+        --param ACTION=MOP_GENERATION
+        --param "JSON_FILE_NAME={{ render(vars.json_file) }}"
+        --param "OUTPUT_FILE_LOCATION=$ORDER_DIR/"
+        --param "OUTPUT_JSON_REPORT_LOCATION=$ORDER_DIR/REPORT"
+        --param "CR_NAME={{ inputs.cr_name }}"
+        --param "NODE_TYPE={{ render(vars.node_type) }}"
+        --param "SUB_ACTIVITY_NAME={{ render(vars.activity) }}"
+        --param "NODE_VERSION={{ render(vars.node_version) }}"
+        --param "ORDER_NO={{ inputs.order_id }}"
+        --param "PARENT_REQ_ID={{ inputs.order_id }}"
+        --param "CHILD_REQ_ID={{ render(vars.child_id) }}"
+        --param "REQ_ID={{ render(vars.child_id) }}"
+      - cp "$ORDER_DIR"/*.html out/ 2>/dev/null || true
+
+  - id: mop_generation_failed
+    type: io.kestra.plugin.core.execution.Fail
+    runIf: "{{ outputs.mop_generation.vars.status != 0 }}"
+    errorMessage: >-
+      MOP generation failed for {{ inputs.cr_name }}: {{ outputs.mop_generation.vars.message }} - see
+      logs/mop_generation.mml in {{ render(vars.order_dir) }}/
+
+  - id: mop_ready
+    type: io.kestra.plugin.core.log.Log
+    message: >-
+      MOP for {{ inputs.cr_name }}: {{ outputs.mop_generation.vars.results.ACTIVITY_CR_MOP }},
+      nodes: {{ outputs.mop_generation.vars.results.ACTIVITY_CR_NODE_NAMES }}
+      {{ inputs.run_execution ? '- executing node by node' : '- execution not requested (run_execution=false)' }}
+
+  # ---- 2. MOP execution, node by node; 3. reports ----
+  - id: execution_stage
+    type: io.kestra.plugin.core.flow.If
+    # an If, not runIf on the Loop: Kestra 2.0 starts Loop iterations even when the Loop's runIf is false
+    condition: "{{ inputs.run_execution }}"
+    then:
+      - id: nodes
+        type: io.kestra.plugin.core.flow.Loop
+        values: "{{ outputs.mop_generation.vars.results.ACTIVITY_CR_NODE_NAMES | split(',') | toJson }}"
+        concurrencyLimit: 1
+        tasks:
+          - id: mop_execution
+            type: io.kestra.plugin.scripts.shell.Commands
+            description: CLICR NEI, ACTION=MOP_EXECUTION, NODE_NAME=<node>
+            taskRunner:
+              type: io.kestra.plugin.core.runner.Process
+            namespaceFiles:
+              enabled: true
+              include: [bin/**, wrappers/**, lib/**, nei/clicr/**, templates/clicr/**, config/**]
+            outputFiles:
+              - out/**
+            env:
+              ORDER_DIR: "{{ render(vars.order_dir) }}"
+              NODE: "{{ item.value | trim }}"
+              NEI_GRC_REPO_PASSWORD: "{{ secret('CLICR_REPO_PASSWORD') }}"
+              NEI_LOGIN_M2MPASSWORD1: "{{ secret('CLICR_M2MPASSWORD1') }}"
+              SHARED_DATA_DIR: "{{ kv('SHARED_DATA_DIR') }}"
+              STORE_JDBC_PASSWORD: "{{ secret('CR_DB_PASSWORD') }}"
+              STORE_REQ_ID: "{{ render(vars.child_id) }}"
+              STORE_STEP: MOP_EXECUTION
+              STORE_NODE: "{{ item.value | trim }}"
+              EXECUTION_ID: "{{ execution.id }}"
+            commands:
+              - >-
+                sh bin/nei.sh clicr "mop_execution_$NODE"
+                --param REQ_TYPE=1
+                --param ACTION=MOP_EXECUTION
+                --param "INPUT_JSON_FILE_NAME={{ render(vars.json_file) }}"
+                --param "OUTPUT_LOGS_FILE_LOCATION=$ORDER_DIR/LOGS"
+                --param "OUTPUT_JSON_REPORT_LOCATION=$ORDER_DIR/REPORT"
+                --param "CR_NAME={{ inputs.cr_name }}"
+                --param "NODE_NAME=$NODE"
+                --param "NODE_TYPE={{ render(vars.node_type) }}"
+                --param "SUB_ACTIVITY_NAME={{ render(vars.activity) }}"
+                --param "NODE_VERSION={{ render(vars.node_version) }}"
+                --param ROLLBACK_ONLY=false
+                --param "IL_TASK_GROUP=ACTIVITY_EXECUTION_$NODE"
+                --param "ORDER_NO={{ inputs.order_id }}"
+                --param "PARENT_REQ_ID={{ inputs.order_id }}"
+                --param "CHILD_REQ_ID={{ render(vars.child_id) }}"
+                --param "REQ_ID={{ render(vars.child_id) }}"
+
+          - id: failure_report
+            type: io.kestra.plugin.scripts.shell.Commands
+            description: Failed node only - FileCR NEI, ACTION=GENERATE_REPORT, NODE_FAILURE_REPORT=TRUE
+            runIf: "{{ outputs.mop_execution.vars.status != 0 }}"
+            taskRunner:
+              type: io.kestra.plugin.core.runner.Process
+            namespaceFiles:
+              enabled: true
+              include: [bin/**, wrappers/**, lib/**, nei/filecr/**, templates/**, config/**]
+            outputFiles:
+              - out/**
+            env:
+              ORDER_DIR: "{{ render(vars.order_dir) }}"
+              NODE: "{{ item.value | trim }}"
+              SHARED_DATA_DIR: "{{ kv('SHARED_DATA_DIR') }}"
+              STORE_JDBC_PASSWORD: "{{ secret('CR_DB_PASSWORD') }}"
+              STORE_REQ_ID: "{{ render(vars.child_id) }}"
+              STORE_STEP: FAILURE_REPORT
+              STORE_NODE: "{{ item.value | trim }}"
+              EXECUTION_ID: "{{ execution.id }}"
+            commands:
+              - >-
+                sh bin/nei.sh filecr "failure_report_$NODE"
+                --param REQ_TYPE=1
+                --param ACTION=GENERATE_REPORT
+                --param NODE_FAILURE_REPORT=TRUE
+                --param "NODE_NAME=$NODE"
+                --param "CR_NAME={{ inputs.cr_name }}"
+                --param "NODE_TYPE={{ render(vars.node_type) }}"
+                --param "ACTIVITY_NAME={{ render(vars.activity) }}"
+                --param "SUB_ACTIVITY_NAME={{ render(vars.activity) }}"
+                --param "OUTPUT_REPORT_LOCATION=$ORDER_DIR/REPORT"
+                --param "FAILURE_REPORT_LOCATION=$ORDER_DIR/REPORT"
+                --param "PARENT_REQ_ID={{ inputs.order_id }}"
+                --param "CHILD_REQ_ID={{ render(vars.child_id) }}"
+                --param "REQ_ID={{ render(vars.child_id) }}"
+
+      - id: summary_report
+        type: io.kestra.plugin.scripts.shell.Commands
+        description: FileCR NEI, ACTION=GENERATE_REPORT - the CR's summary over all its nodes
+        taskRunner:
+          type: io.kestra.plugin.core.runner.Process
+        namespaceFiles:
+          enabled: true
+          include: [bin/**, wrappers/**, lib/**, nei/filecr/**, templates/**, config/**]
+        outputFiles:
+          - out/**
+        env:
+          ORDER_DIR: "{{ render(vars.order_dir) }}"
+          SHARED_DATA_DIR: "{{ kv('SHARED_DATA_DIR') }}"
+          STORE_JDBC_PASSWORD: "{{ secret('CR_DB_PASSWORD') }}"
+          STORE_REQ_ID: "{{ render(vars.child_id) }}"
+          STORE_STEP: SUMMARY_REPORT
+          EXECUTION_ID: "{{ execution.id }}"
+        commands:
+          - >-
+            sh bin/nei.sh filecr summary_report
+            --param REQ_TYPE=1
+            --param ACTION=GENERATE_REPORT
+            --param "CR_NAME={{ inputs.cr_name }}"
+            --param "NODE_TYPE={{ render(vars.node_type) }}"
+            --param "ACTIVITY_NAME={{ render(vars.activity) }}"
+            --param "SUB_ACTIVITY_NAME={{ render(vars.activity) }}"
+            --param "OUTPUT_REPORT_LOCATION=$ORDER_DIR/REPORT"
+            --param "PARENT_REQ_ID={{ inputs.order_id }}"
+            --param "CHILD_REQ_ID={{ render(vars.child_id) }}"
+            --param "REQ_ID={{ render(vars.child_id) }}"
+
+      - id: child_result
+        type: io.kestra.plugin.scripts.shell.Commands
+        description: From the request store - which nodes failed (latest MOP_EXECUTION per node)
+        taskRunner:
+          type: io.kestra.plugin.core.runner.Process
+        namespaceFiles:
+          enabled: true
+          include: [bin/**, wrappers/**, lib/**, config/**]
+        env:
+          SHARED_DATA_DIR: "{{ kv('SHARED_DATA_DIR') }}"
+          STORE_JDBC_PASSWORD: "{{ secret('CR_DB_PASSWORD') }}"
+        commands:
+          - sh bin/store.sh child-status --req-id "{{ render(vars.child_id) }}"
+
+      - id: nodes_failed
+        type: io.kestra.plugin.core.execution.Fail
+        runIf: "{{ outputs.child_result.vars.failed_count > 0 }}"
+        errorMessage: >-
+          MOP execution failed on {{ outputs.child_result.vars.failed_count }} of
+          {{ outputs.child_result.vars.nodes | length }} node(s) ({{ inputs.cr_name }}):
+          {{ outputs.child_result.vars.failed_nodes | join(', ') }} - see the failure reports and the summary in
+          {{ render(vars.order_dir) }}/REPORT/
+
+  - id: child_done
+    type: io.kestra.plugin.core.log.Log
+    message: >-
+      Child order {{ render(vars.child_id) }} ({{ inputs.cr_name }} of order {{ inputs.order_id }}) complete
+
+finally:
+  - id: collect_logs
+    type: io.kestra.plugin.scripts.shell.Commands
+    description: The child's IO and MML logs, CLICR's LOGS and the reports as output files (the "IO / MML" tab)
+    runIf: "{{ render(vars.child_id) is not empty }}"
+    taskRunner:
+      type: io.kestra.plugin.core.runner.Process
+    outputFiles:
+      - logs/**
+      - LOGS/**
+      - REPORT/**
+    env:
+      ORDER_DIR: "{{ render(vars.order_dir) }}"
+    commands:
+      - mkdir -p logs LOGS REPORT
+      - cp "$ORDER_DIR"/logs/* logs/ 2>/dev/null || true
+      - cp -r "$ORDER_DIR"/LOGS/* LOGS/ 2>/dev/null || true
+      - cp -r "$ORDER_DIR"/REPORT/* REPORT/ 2>/dev/null || true
+
+afterExecution:
+  - id: register_end
+    type: io.kestra.plugin.scripts.shell.Commands
+    description: The child's final state in the request store, and the order as the forms see it
+    runIf: "{{ render(vars.child_id) is not empty }}"
+    taskRunner:
+      type: io.kestra.plugin.core.runner.Process
+    namespaceFiles:
+      enabled: true
+      include: [bin/**, wrappers/**, lib/**, config/**]
+    env:
+      SHARED_DATA_DIR: "{{ kv('SHARED_DATA_DIR') }}"
+      STORE_JDBC_PASSWORD: "{{ secret('CR_DB_PASSWORD') }}"
+    commands:
+      - sh bin/store.sh set-stage --req-id "{{ render(vars.child_id) }}" --stage "{{ execution.state }}" > /dev/null
+      - sh bin/store.sh registry --order "{{ inputs.order_id }}"
+
+  - id: save_order_end
+    type: io.kestra.plugin.core.kv.Set
+    runIf: "{{ render(vars.child_id) is not empty }}"
+    key: "ORDER_{{ inputs.order_id }}"
+    kvType: JSON
+    value: "{{ outputs.register_end.vars.order | toJson }}"

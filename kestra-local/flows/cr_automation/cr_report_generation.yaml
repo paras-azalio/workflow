@@ -1,0 +1,83 @@
+id: cr_report_generation
+namespace: cr_automation
+description: |
+  Execution report of a child order (on demand): FileCR NEI, ACTION=GENERATE_REPORT, after cr_child_order ran
+  MOP_EXECUTION. Reads the child's REPORT/*_EXECUTION_REPORT_<node>.json and writes
+  <NODE_TYPE>_<ACTIVITY>_<CR>_SUMMARY_REPORT.html next to them.
+
+labels:
+  project: CR_AUTOMATION
+  ne_type: FILECR
+  action: GENERATE_REPORT
+
+inputs:
+  - id: order_id
+    type: SELECT
+    expression: >-
+      {{ (kv('ORDERS', errorOnMissing=false) ?? []) | jq('[.[] | select(.stage == "VALIDATED")]') | first }}
+  - id: cr_name
+    type: SELECT
+    dependsOn:
+      inputs: [order_id]
+    expression: "{{ kv('ORDER_' ~ inputs.order_id).cr_options }}"
+
+variables:
+  child_id: "{{ (kv('ORDER_' ~ inputs.order_id).children[inputs.cr_name] | last).child_id }}"
+  order_dir: "{{ kv('SHARED_DATA_DIR') }}/{{ render(vars.child_id) }}"
+  node_type: "{{ kv('ORDER_' ~ inputs.order_id).node_type }}"
+  activity: "{{ kv('ORDER_' ~ inputs.order_id).activity }}"
+
+tasks:
+  - id: set_labels
+    type: io.kestra.plugin.core.execution.Labels
+    labels:
+      req_id: "{{ render(vars.child_id) }}"
+      order_id: "{{ inputs.order_id }}"
+      cr_name: "{{ inputs.cr_name }}"
+
+  - id: summary_report
+    type: io.kestra.plugin.scripts.shell.Commands
+    taskRunner:
+      type: io.kestra.plugin.core.runner.Process
+    namespaceFiles:
+      enabled: true
+      include: [bin/**, wrappers/**, nei/filecr/**, templates/**, config/**]
+    outputFiles:
+      - out/**
+    env:
+      ORDER_DIR: "{{ render(vars.order_dir) }}"
+    commands:
+      - >-
+        sh bin/nei.sh filecr report_summary
+        --param REQ_TYPE=1
+        --param ACTION=GENERATE_REPORT
+        --param "NODE_TYPE={{ render(vars.node_type) }}"
+        --param "ACTIVITY_NAME={{ render(vars.activity) }}"
+        --param "CR_NAME={{ inputs.cr_name }}"
+        --param NODE_FAILURE_REPORT=false
+        --param ROLLBACK_REPORT=false
+        --param "OUTPUT_REPORT_LOCATION=$ORDER_DIR/REPORT"
+        --param "FAILURE_REPORT_LOCATION=$ORDER_DIR/REPORT"
+        --param "ORDER_NO={{ inputs.order_id }}"
+        --param "PARENT_REQ_ID={{ inputs.order_id }}"
+        --param "REQ_ID={{ render(vars.child_id) }}"
+      - cp "$ORDER_DIR"/REPORT/*.html out/ 2>/dev/null || true
+
+  - id: report_failed
+    type: io.kestra.plugin.core.execution.Fail
+    runIf: "{{ outputs.summary_report.vars.status != 0 }}"
+    errorMessage: "Report generation failed for {{ inputs.cr_name }}: {{ outputs.summary_report.vars.message }}"
+
+finally:
+  - id: collect_logs
+    type: io.kestra.plugin.scripts.shell.Commands
+    taskRunner:
+      type: io.kestra.plugin.core.runner.Process
+    outputFiles: [logs/**, LOGS/**, REPORT/**]
+    env:
+      ORDER_DIR: "{{ render(vars.order_dir) }}"
+    commands:
+      - mkdir -p logs LOGS REPORT
+      - cp "$ORDER_DIR"/logs/* logs/ 2>/dev/null || true
+      - cp "$ORDER_DIR"/LOGS/* LOGS/ 2>/dev/null || true
+      - cp "$ORDER_DIR"/REPORT/* REPORT/ 2>/dev/null || true

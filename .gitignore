@@ -1,0 +1,37 @@
+# ---- Secrets (never commit) ----
+.env
+**/.env
+!**/.env.example
+
+# ---- Kestra upstream source (its own git repo: github.com/kestra-io/kestra, v2.0.7 commit 49b62a2, + node_modules) ----
+# Our UI changes to it are kept in kestra-local/kestra-ui-cr-automation.patch (git apply after a fresh clone).
+/kestra/
+
+# ---- Build outputs ----
+component-wrappers/target/
+kestra-local/ui-overlay/
+# assembled by kestra-local/assemble-namespace-files.sh from the NEI builds and version/1051 (bin/ and config/ stay tracked)
+kestra-local/namespace-files/*/wrappers/
+kestra-local/namespace-files/*/nei/
+kestra-local/namespace-files/*/templates/
+kestra-local/namespace-files/*/lib/
+
+# ---- Vendor material (Nokia BST manuals, FlowOne logic exports) and text extracted from it ----
+# Kept out of Git on purpose (proprietary); remove these lines to version them.
+docs/f1/*.pdf
+docs/f1/*.zip
+analysis/extracted/
+
+# ---- Scratch / tool files ----
+.curl.out
+**/.curl.out
+*.log
+*.tmp
+__pycache__/
+*.pyc
+node_modules/
+.idea/
+*.iml
+.vscode/
+.DS_Store
+Thumbs.db

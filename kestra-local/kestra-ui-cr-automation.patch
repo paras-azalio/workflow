@@ -1,0 +1,744 @@
+diff --git a/ui/src/components/executions/Executions.vue b/ui/src/components/executions/Executions.vue
+index dd7664b..9952d27 100644
+--- a/ui/src/components/executions/Executions.vue
++++ b/ui/src/components/executions/Executions.vue
+@@ -77,6 +77,9 @@
+             </template>
+ 
+             <template #bulk-actions>
++                <KsButton v-if="continueOrderTarget" :icon="PlayBoxMultiple" @click="router.push(continueOrderTarget)">
++                    {{ $t("cr_order.continue_button") }}
++                </KsButton>
+                 <KsButton v-if="canUpdate" :icon="StateMachine" @click="changeStatusDialogVisible = !changeStatusDialogVisible">
+                     {{ $t("change state") }}
+                 </KsButton>
+@@ -175,7 +178,8 @@
+                         }"
+                         class="execution-id"
+                     >
+-                        <KsId :value="scope.row?.id" :shrink="true" placement="right" />
++                        <span v-if="requestId(scope.row)" class="request-id" :title="scope.row?.id">{{ requestId(scope.row) }}</span>
++                        <KsId v-else :value="scope.row?.id" :shrink="true" placement="right" />
+                     </RouterLink>
+                 </template>
+             </KsTableColumn>
+@@ -440,6 +444,7 @@
+     import Download from "vue-material-design-icons/Download.vue"
+ 
+     import {KsId} from "@kestra-io/design-system"
++    import {requestId} from "../../utils/requestId"
+     import {State} from "@kestra-io/design-system"
+     import {KsExecutionStatus} from "@kestra-io/design-system"
+     import Labels from "../layout/Labels.vue"
+@@ -718,6 +723,17 @@
+     useRouteContext(routeInfo, props.embed)
+ 
+     const selection = computed(() => dataTable.value?.selection ?? [])
++
++    // cr_automation: one selected execution of an order -> its "Order" tab (validate a CIQ / start a child order)
++    const continueOrderTarget = computed(() => {
++        if (selection.value.length !== 1) return undefined
++        const row: any = executionsStore.executions?.find((e: any) => e.id === selection.value[0])
++        if (!row?.labels?.some((l: any) => l.key === "order_id")) return undefined
++        return {
++            name: "executions/update/order",
++            params: {tenant: route.params.tenant, namespace: row.namespace, flowId: row.flowId, id: row.id},
++        }
++    })
+     const queryBulkAction = computed(() => dataTable.value?.queryBulkAction ?? false)
+     const toggleAllUnselected = () => dataTable.value?.toggleAllUnselected()
+ 
+diff --git a/ui/src/components/executions/IoMmlLogs.vue b/ui/src/components/executions/IoMmlLogs.vue
+new file mode 100644
+index 0000000..454826b
+--- /dev/null
++++ b/ui/src/components/executions/IoMmlLogs.vue
+@@ -0,0 +1,272 @@
++<template>
++    <div class="io-mml">
++        <div v-if="loading" class="io-mml-empty">
++            {{ $t("loading") }}
++        </div>
++        <div v-else-if="groups.length === 0" class="io-mml-empty">
++            {{ $t("io_mml_logs.empty") }}
++        </div>
++        <template v-else>
++            <aside class="io-mml-list">
++                <div v-for="group in groups" :key="group.name" class="io-mml-group">
++                    <div class="io-mml-group-name" :title="group.name">
++                        {{ group.name }}
++                    </div>
++                    <div class="io-mml-kinds">
++                        <button
++                            v-for="kind in KINDS.filter(k => group.files[k])"
++                            :key="kind"
++                            type="button"
++                            class="io-mml-kind"
++                            :class="{active: selected?.group === group.name && selected?.kind === kind}"
++                            @click="select(group, kind)"
++                        >
++                            {{ kind }}
++                        </button>
++                    </div>
++                </div>
++            </aside>
++            <section class="io-mml-view">
++                <div class="io-mml-bar">
++                    <span class="io-mml-file">{{ selectedFile?.name }}</span>
++                    <input
++                        v-model="filter"
++                        class="io-mml-filter"
++                        type="search"
++                        :placeholder="$t('io_mml_logs.filter')"
++                    >
++                    <a v-if="selectedFile" class="io-mml-download" :href="downloadUrl(selectedFile.uri)">
++                        {{ $t("download") }}
++                    </a>
++                </div>
++                <div v-if="contentLoading" class="io-mml-empty">
++                    {{ $t("loading") }}
++                </div>
++                <pre v-else class="io-mml-content"><code>{{ shownContent }}</code></pre>
++            </section>
++        </template>
++    </div>
++</template>
++
++<script setup lang="ts">
++    /**
++     * "IO / MML" tab (cr_automation): the NEI logs of the execution's order, like FlowOne's IO and MML views.
++     *   IO   <log-name>.io.log    request parameters in, status and results out (NEI component wrapper)
++     *   MML  <log-name>.mml       what the NEI wrote with printMml, closed with $END$ <request id>
++     *   EXEC <node>_execution.log CLICR's execution log of a node
++     * The files are output files of the execution: the flows' collect_logs step copies the order folder's
++     * logs (all steps, also those of Loop iterations); without it, every task's own output files are used.
++     */
++    import {computed, ref, watch} from "vue"
++    import * as OutputsAPI from "@kestra-io/kestra-sdk/outputs"
++    import {apiUrl} from "override/utils/route"
++    import {useExecutionsStore} from "../../stores/executions"
++
++    type Kind = "IO" | "MML" | "EXEC"
++    interface LogFile { name: string; uri: string }
++    interface Group { name: string; files: Partial<Record<Kind, LogFile>> }
++
++    const KINDS: Kind[] = ["IO", "MML", "EXEC"]
++    const COLLECT_TASK = "collect_logs"
++
++    const executionsStore = useExecutionsStore()
++    const execution = computed(() => executionsStore.execution)
++
++    const loading = ref(true)
++    const groups = ref<Group[]>([])
++    const selected = ref<{group: string; kind: Kind} | undefined>()
++    const content = ref("")
++    const contentLoading = ref(false)
++    const filter = ref("")
++
++    function classify(path: string): {group: string; kind: Kind; name: string} | undefined {
++        const name = path.split("/").pop() ?? path
++        if (name.endsWith(".io.log")) return {group: name.slice(0, -".io.log".length), kind: "IO", name}
++        if (name.endsWith(".mml")) return {group: name.slice(0, -".mml".length), kind: "MML", name}
++        if (name.endsWith("_execution.log")) {
++            // CLICR's <node>_execution.log belongs to the wrapper logs mop_execution_<node>, or mop_rollback_<node>
++            // for a rollback run (cr_node_rollback keeps its engine logs in LOGS_ROLLBACK/)
++            const step = path.includes("LOGS_ROLLBACK/") ? "mop_rollback_" : "mop_execution_"
++            return {group: step + name.slice(0, -"_execution.log".length), kind: "EXEC", name}
++        }
++        return undefined
++    }
++
++    async function loadGroups(executionId: string) {
++        const runs = await OutputsAPI.taskOutputsInformation({executionId}, {
++            validateStatus: (s: number) => s === 200 || s === 404,
++        }) ?? []
++        const collect = runs.filter((r) => r.taskId === COLLECT_TASK)
++        const byName = new Map<string, Group>()
++        for (const run of (collect.length > 0 ? collect : runs)) {
++            if (!run.taskRunId) continue
++            const outputs: any = await OutputsAPI.taskRunOutputs({executionId, taskRunId: run.taskRunId}, {
++                validateStatus: (s: number) => s === 200 || s === 404,
++            }) ?? {}
++            for (const [path, uri] of Object.entries(outputs.outputFiles ?? {})) {
++                const c = classify(path)
++                if (!c) continue
++                const group = byName.get(c.group) ?? {name: c.group, files: {}}
++                group.files[c.kind] = {name: c.name, uri: String(uri)}
++                byName.set(c.group, group)
++            }
++        }
++        return [...byName.values()]
++    }
++
++    async function select(group: Group, kind: Kind) {
++        const file = group.files[kind]
++        const id = execution.value?.id
++        if (!file || !id) return
++        selected.value = {group: group.name, kind}
++        contentLoading.value = true
++        try {
++            content.value = await executionsStore.fileContent({executionId: id, path: file.uri})
++        } catch (e) {
++            content.value = "Could not load " + file.name + ": " + e
++        } finally {
++            contentLoading.value = false
++        }
++    }
++
++    const selectedFile = computed(() => {
++        const s = selected.value
++        return s ? groups.value.find((g) => g.name === s.group)?.files[s.kind] : undefined
++    })
++
++    const shownContent = computed(() => {
++        const f = filter.value.trim().toLowerCase()
++        return f ? content.value.split("\n").filter((l) => l.toLowerCase().includes(f)).join("\n") : content.value
++    })
++
++    function downloadUrl(uri: string) {
++        return `${apiUrl()}/executions/${execution.value?.id}/file?path=${encodeURIComponent(uri)}`
++    }
++
++    // Reload while the execution runs: collect_logs (a finally task) adds the files at the end.
++    watch(
++        () => [execution.value?.id, execution.value?.state?.current] as const,
++        async ([id]) => {
++            if (!id) return
++            try {
++                groups.value = await loadGroups(id)
++            } finally {
++                loading.value = false
++            }
++            const keep = selected.value && groups.value.find((g) => g.name === selected.value?.group)
++            if (keep && selected.value) {
++                await select(keep, selected.value.kind)
++            } else if (groups.value.length > 0) {
++                const first = groups.value[0]
++                await select(first, KINDS.find((k) => first.files[k]) ?? "IO")
++            }
++        },
++        {immediate: true},
++    )
++</script>
++
++<style scoped lang="scss">
++    .io-mml {
++        display: flex;
++        gap: 1rem;
++        min-height: 60vh;
++    }
++
++    .io-mml-empty {
++        padding: 1rem;
++        color: var(--ks-text-secondary);
++    }
++
++    .io-mml-list {
++        flex: 0 0 18rem;
++        border: 1px solid var(--ks-border-default);
++        border-radius: 0.5rem;
++        background: var(--ks-bg-surface);
++        overflow: auto;
++    }
++
++    .io-mml-group {
++        padding: 0.5rem 0.75rem;
++        border-bottom: 1px solid var(--ks-border-default);
++    }
++
++    .io-mml-group-name {
++        color: var(--ks-text-primary);
++        font-size: var(--ks-font-size-sm);
++        overflow: hidden;
++        text-overflow: ellipsis;
++        white-space: nowrap;
++    }
++
++    .io-mml-kinds {
++        display: flex;
++        gap: 0.375rem;
++        margin-top: 0.375rem;
++    }
++
++    .io-mml-kind {
++        padding: 0.125rem 0.625rem;
++        border: 1px solid var(--ks-border-default);
++        border-radius: 0.25rem;
++        background: transparent;
++        color: var(--ks-text-secondary);
++        font-size: var(--ks-font-size-xs);
++        cursor: pointer;
++
++        &.active, &:hover {
++            background: var(--ks-dropdown-bg-active);
++            color: var(--ks-text-primary);
++        }
++    }
++
++    .io-mml-view {
++        flex: 1;
++        min-width: 0;
++        display: flex;
++        flex-direction: column;
++        border: 1px solid var(--ks-border-default);
++        border-radius: 0.5rem;
++        background: var(--ks-bg-surface);
++    }
++
++    .io-mml-bar {
++        display: flex;
++        align-items: center;
++        gap: 0.75rem;
++        padding: 0.5rem 0.75rem;
++        border-bottom: 1px solid var(--ks-border-default);
++    }
++
++    .io-mml-file {
++        flex: 1;
++        color: var(--ks-text-primary);
++        font-size: var(--ks-font-size-sm);
++        overflow: hidden;
++        text-overflow: ellipsis;
++        white-space: nowrap;
++    }
++
++    .io-mml-filter {
++        width: 14rem;
++        padding: 0.25rem 0.5rem;
++        border: 1px solid var(--ks-border-default);
++        border-radius: 0.25rem;
++        background: var(--ks-bg-base);
++        color: var(--ks-text-primary);
++    }
++
++    .io-mml-download {
++        font-size: var(--ks-font-size-sm);
++    }
++
++    .io-mml-content {
++        flex: 1;
++        margin: 0;
++        padding: 0.75rem;
++        overflow: auto;
++        max-height: 70vh;
++        color: var(--ks-text-primary);
++        font-size: var(--ks-font-size-xs);
++        white-space: pre;
++    }
++</style>
+diff --git a/ui/src/components/executions/OrderPanel.vue b/ui/src/components/executions/OrderPanel.vue
+new file mode 100644
+index 0000000..f2a7f5b
+--- /dev/null
++++ b/ui/src/components/executions/OrderPanel.vue
+@@ -0,0 +1,302 @@
++<template>
++    <div class="order">
++        <div v-if="!orderId" class="order-empty">
++            {{ $t("cr_order.not_an_order") }}
++        </div>
++        <div v-else-if="loadError" class="order-empty">
++            {{ loadError }}
++        </div>
++        <div v-else-if="!order" class="order-empty">
++            {{ $t("loading") }}
++        </div>
++        <template v-else>
++            <section class="order-card">
++                <h3>{{ $t("cr_order.order") }} {{ orderId }} <span class="order-stage" :class="order.stage">{{ order.stage }}</span></h3>
++                <dl>
++                    <dt>{{ $t("cr_order.activity") }}</dt>
++                    <dd>{{ order.node_type }}_{{ order.activity }} ({{ order.node_version }})</dd>
++                    <dt>{{ $t("cr_order.folder") }}</dt>
++                    <dd>{{ order.order_dir }}</dd>
++                    <dt>CRs</dt>
++                    <dd>{{ (order.cr_list ?? []).join(", ") || "-" }}</dd>
++                </dl>
++                <table class="order-table">
++                    <thead>
++                        <tr><th>{{ $t("cr_order.step") }}</th><th>{{ $t("cr_order.result") }}</th><th>{{ $t("cr_order.at") }}</th></tr>
++                    </thead>
++                    <tbody>
++                        <tr v-for="(step, i) in order.steps ?? []" :key="i">
++                            <td><a href="#" @click.prevent="open(step.execution_id)">{{ step.execution_id }}</a></td>
++                            <td>{{ step.stage }}</td>
++                            <td>{{ step.at }}</td>
++                        </tr>
++                        <template v-for="(runs, cr) in order.children ?? {}" :key="cr">
++                            <tr v-for="run in runs" :key="run.child_id">
++                                <td>
++                                    {{ $t("cr_order.child") }} {{ run.child_id }} ({{ cr }})
++                                    <a v-if="run.execution_id" href="#" @click.prevent="open(run.execution_id, CHILD_FLOW)">{{ $t("cr_order.open") }}</a>
++                                </td>
++                                <td>
++                                    {{ run.state }}
++                                    <div v-for="n in run.nodes ?? []" :key="n.node" class="order-node">
++                                        {{ n.node }}: {{ n.status }}{{ n.rolled_back ? ", " + $t("cr_order.rolled_back") : "" }}
++                                    </div>
++                                </td>
++                                <td>{{ run.at }}</td>
++                            </tr>
++                        </template>
++                    </tbody>
++                </table>
++            </section>
++
++            <section class="order-card">
++                <h3>{{ $t("cr_order.continue") }}</h3>
++
++                <div class="order-action">
++                    <h4>{{ $t("cr_order.validate_title") }}</h4>
++                    <p class="order-hint">{{ $t("cr_order.validate_hint") }}</p>
++                    <input type="file" accept=".xlsx" @change="ciqFile = ($event.target as HTMLInputElement).files?.[0]">
++                    <button type="button" class="order-run" :disabled="busy" @click="runValidation">
++                        {{ $t("cr_order.validate_run") }}
++                    </button>
++                </div>
++
++                <div v-if="order.stage === 'VALIDATED'" class="order-action">
++                    <h4>{{ $t("cr_order.child_title") }}</h4>
++                    <select v-model="crName" class="order-select">
++                        <option v-for="o in order.cr_options ?? []" :key="o.value" :value="o.value">
++                            {{ o.label }}
++                        </option>
++                    </select>
++                    <label class="order-check">
++                        <input v-model="runExecution" type="checkbox">
++                        {{ $t("cr_order.run_execution") }}
++                    </label>
++                    <button type="button" class="order-run" :disabled="!crName || busy" @click="runChild">
++                        {{ $t("cr_order.child_run") }}
++                    </button>
++                </div>
++                <p v-else class="order-hint">{{ $t("cr_order.child_after_validation") }}</p>
++
++                <div v-if="(order.rollback_options ?? []).length" class="order-action">
++                    <h4>{{ $t("cr_order.rollback_title") }}</h4>
++                    <p class="order-hint">{{ $t("cr_order.rollback_hint") }}</p>
++                    <select v-model="rollbackTarget" class="order-select">
++                        <option v-for="o in order.rollback_options" :key="o.value" :value="o.value">
++                            {{ o.label }}
++                        </option>
++                    </select>
++                    <button type="button" class="order-run" :disabled="!rollbackTarget || busy" @click="runRollback">
++                        {{ $t("cr_order.rollback_run") }}
++                    </button>
++                </div>
++
++                <p v-if="actionError" class="order-error">{{ actionError }}</p>
++            </section>
++        </template>
++    </div>
++</template>
++
++<script setup lang="ts">
++    /**
++     * "Order" tab (cr_automation): the order this execution belongs to (label order_id), as the flows publish it
++     * from the request store (namespace KV ORDER_<id>, written by bin/store.sh registry), and the next steps -
++     * validate a (corrected) CIQ for this order, start a child order for one of its CRs, or roll back a node -
++     * like FlowOne's order actions. Each starts a normal execution of ciq_validation / cr_child_order /
++     * cr_node_rollback.
++     */
++    import {computed, ref, watch} from "vue"
++    import {useRouter, useRoute} from "vue-router"
++    import {useClient} from "@kestra-io/kestra-sdk"
++    import {apiUrl} from "override/utils/route"
++    import {useExecutionsStore} from "../../stores/executions"
++
++    const VALIDATION_FLOW = "ciq_validation"
++    const CHILD_FLOW = "cr_child_order"
++    const ROLLBACK_FLOW = "cr_node_rollback"
++
++    const executionsStore = useExecutionsStore()
++    const router = useRouter()
++    const route = useRoute()
++    const http = useClient()
++    const execution = computed(() => executionsStore.execution)
++
++    const orderId = computed(() => execution.value?.labels?.find((l: any) => l.key === "order_id")?.value)
++    const order = ref<any>()
++    const loadError = ref("")
++    const ciqFile = ref<File | undefined>()
++    const crName = ref("")
++    const runExecution = ref(true)
++    const rollbackTarget = ref("")
++    const busy = ref(false)
++    const actionError = ref("")
++
++    async function load() {
++        if (!orderId.value || !execution.value) return
++        try {
++            const response = await http.get(`${apiUrl()}/namespaces/${execution.value.namespace}/kv/ORDER_${orderId.value}`)
++            order.value = response.data?.value ?? response.data
++            loadError.value = ""
++            if (!crName.value && order.value?.cr_list?.length) crName.value = order.value.cr_list[0]
++        } catch (e) {
++            loadError.value = "Order " + orderId.value + " is not in the order registry (" + e + ")"
++        }
++    }
++
++    function open(executionId: string, flowId?: string) {
++        router.push({
++            name: "executions/update",
++            params: {tenant: route.params.tenant, namespace: execution.value?.namespace, flowId: flowId ?? flowOf(executionId), id: executionId},
++        })
++    }
++
++    // the order's own steps: GENERATE_TEMPLATE (generate_ciq_template) or CIQ_VALIDATION (ciq_validation)
++    function flowOf(executionId: string) {
++        const step = order.value?.steps?.find((s: any) => s.execution_id === executionId)
++        return String(step?.stage ?? "").startsWith("GENERATE_TEMPLATE") ? "generate_ciq_template" : VALIDATION_FLOW
++    }
++
++    async function start(flowId: string, formData: Record<string, any>) {
++        busy.value = true
++        actionError.value = ""
++        try {
++            const created: any = await executionsStore.triggerExecution({
++                namespace: execution.value!.namespace!, id: flowId, formData, kind: "NORMAL",
++            })
++            open(created.id, flowId)
++        } catch (e: any) {
++            actionError.value = e?.response?.data?.message ?? String(e)
++        } finally {
++            busy.value = false
++        }
++    }
++
++    // no file chosen: the flow validates the CIQ already placed in the order folder
++    const runValidation = () => start(VALIDATION_FLOW, {
++        order_type: "EXISTING", order_id: orderId.value, ...(ciqFile.value ? {ciq: ciqFile.value} : {}),
++    })
++    const runChild = () => start(CHILD_FLOW, {order_id: orderId.value, cr_name: crName.value, run_execution: runExecution.value})
++    const runRollback = () => start(ROLLBACK_FLOW, {order_id: orderId.value, node: rollbackTarget.value})
++
++    watch(() => [execution.value?.id, execution.value?.state?.current, orderId.value], load, {immediate: true})
++</script>
++
++<style scoped lang="scss">
++    .order {
++        display: flex;
++        flex-wrap: wrap;
++        gap: 1rem;
++        align-items: flex-start;
++    }
++
++    .order-empty, .order-hint {
++        color: var(--ks-text-secondary);
++        font-size: var(--ks-font-size-sm);
++    }
++
++    .order-empty {
++        padding: 1rem;
++    }
++
++    .order-card {
++        flex: 1 1 26rem;
++        padding: 1rem;
++        border: 1px solid var(--ks-border-default);
++        border-radius: 0.5rem;
++        background: var(--ks-bg-surface);
++        color: var(--ks-text-primary);
++
++        h3 {
++            margin: 0 0 0.75rem;
++            font-size: var(--ks-font-size-lg);
++        }
++
++        h4 {
++            margin: 0 0 0.375rem;
++        }
++    }
++
++    .order-stage {
++        margin-left: 0.5rem;
++        padding: 0.125rem 0.5rem;
++        border-radius: 0.25rem;
++        background: var(--ks-bg-tag);
++        font-size: var(--ks-font-size-xs);
++
++        &.VALIDATED { color: var(--ks-text-success, #22c55e); }
++        &.INVALID { color: var(--ks-text-warning); }
++    }
++
++    dl {
++        display: grid;
++        grid-template-columns: max-content 1fr;
++        gap: 0.25rem 1rem;
++        margin: 0 0 1rem;
++        font-size: var(--ks-font-size-sm);
++
++        dt { color: var(--ks-text-secondary); }
++        dd { margin: 0; word-break: break-all; }
++    }
++
++    .order-table {
++        width: 100%;
++        border-collapse: collapse;
++        font-size: var(--ks-font-size-sm);
++
++        th, td {
++            padding: 0.375rem 0.5rem;
++            border-bottom: 1px solid var(--ks-border-default);
++            text-align: left;
++        }
++
++        th { color: var(--ks-text-secondary); }
++        a { margin-left: 0.25rem; }
++    }
++
++    .order-action {
++        display: flex;
++        flex-direction: column;
++        gap: 0.5rem;
++        padding: 0.75rem 0;
++        border-bottom: 1px solid var(--ks-border-default);
++    }
++
++    .order-select {
++        padding: 0.375rem;
++        border: 1px solid var(--ks-border-default);
++        border-radius: 0.25rem;
++        background: var(--ks-bg-base);
++        color: var(--ks-text-primary);
++    }
++
++    .order-check {
++        display: flex;
++        gap: 0.5rem;
++        align-items: center;
++        font-size: var(--ks-font-size-sm);
++    }
++
++    .order-run {
++        align-self: flex-start;
++        padding: 0.375rem 1rem;
++        border: none;
++        border-radius: 0.25rem;
++        background: #8405ff;
++        color: var(--ks-white);
++        cursor: pointer;
++
++        &:disabled {
++            opacity: 0.5;
++            cursor: not-allowed;
++        }
++    }
++
++    .order-node {
++        color: var(--ks-text-secondary);
++        font-size: var(--ks-font-size-xs);
++    }
++
++    .order-error {
++        color: var(--ks-text-warning);
++    }
++</style>
+diff --git a/ui/src/components/executions/composables/useExecutionRoot.ts b/ui/src/components/executions/composables/useExecutionRoot.ts
+index 129b31d..6933daa 100644
+--- a/ui/src/components/executions/composables/useExecutionRoot.ts
++++ b/ui/src/components/executions/composables/useExecutionRoot.ts
+@@ -5,6 +5,7 @@ import {useI18n} from "vue-i18n"
+ import {useFlowStore} from "../../../stores/flow"
+ import {useExecutionsStore} from "../../../stores/executions"
+ import {EXECUTION_PARENT_ROUTE, EXECUTION_TAB_ROUTES} from "../executionTabs"
++import {requestId} from "../../../utils/requestId"
+ 
+ export function useExecutionRoot() {
+     const {t} = useI18n()
+@@ -25,7 +26,7 @@ export function useExecutionRoot() {
+         }
+ 
+         return {
+-            title: route.params.id as string,
++            title: requestId(executionsStore.execution) ?? route.params.id as string,
+             breadcrumb: [
+                 {
+                     label: t("executions"),
+diff --git a/ui/src/components/executions/executionTabs.ts b/ui/src/components/executions/executionTabs.ts
+index e805817..501b87c 100644
+--- a/ui/src/components/executions/executionTabs.ts
++++ b/ui/src/components/executions/executionTabs.ts
+@@ -32,6 +32,13 @@ export const EXECUTION_TAB_ROUTES: RouteRecordRaw[] = [
+         component: () => import("./overview/Overview.vue"),
+         meta: {tab: "overview", title: "overview", fullHeight: true},
+     },
++    {
++        // cr_automation: the execution's order (order registry) and its next steps (validate CIQ, child order)
++        name: `${EXECUTION_PARENT_ROUTE}/order`,
++        path: "order",
++        component: () => import("./OrderPanel.vue"),
++        meta: {tab: "order", title: "cr_order.tab"},
++    },
+     {
+         name: `${EXECUTION_PARENT_ROUTE}/gantt`,
+         path: "gantt",
+@@ -44,6 +51,13 @@ export const EXECUTION_TAB_ROUTES: RouteRecordRaw[] = [
+         component: () => import("./Logs.vue"),
+         meta: {tab: "logs", title: "logs"},
+     },
++    {
++        // cr_automation: the NEI IO and MML logs of the execution's order (FlowOne-like view)
++        name: `${EXECUTION_PARENT_ROUTE}/io-mml`,
++        path: "io-mml",
++        component: () => import("./IoMmlLogs.vue"),
++        meta: {tab: "io-mml", title: "io_mml_logs.title"},
++    },
+     {
+         name: `${EXECUTION_PARENT_ROUTE}/outputs`,
+         path: "outputs",
+diff --git a/ui/src/translations/en.json b/ui/src/translations/en.json
+index f4a164d..4bcde7b 100644
+--- a/ui/src/translations/en.json
++++ b/ui/src/translations/en.json
+@@ -199,6 +199,36 @@
+     "details": "Details",
+     "overview": "Overview",
+     "gantt": "Gantt",
++    "cr_order": {
++      "tab": "Order",
++      "continue_button": "Continue order",
++      "not_an_order": "This execution is not part of a cr_automation order (no order_id label).",
++      "order": "Order",
++      "activity": "Activity",
++      "folder": "Folder",
++      "step": "Step (execution)",
++      "result": "Result",
++      "at": "At",
++      "child": "Child order",
++      "open": "open",
++      "continue": "Continue this order",
++      "validate_title": "Validate a CIQ for this order",
++      "validate_hint": "Optional: choose the filled (or corrected) CIQ - it replaces the CIQ in the order folder. Without a file, the CIQ already placed in the order folder is validated.",
++      "validate_run": "Run CIQ validation",
++      "child_title": "Start a child order",
++      "run_execution": "Execute the MOP on the nodes (unticked: generate the MOP only)",
++      "child_run": "Run MOP generation and execution",
++      "child_after_validation": "Child orders can be started once the order is VALIDATED.",
++      "rolled_back": "rolled back",
++      "rollback_title": "Roll back a node",
++      "rollback_hint": "Nodes whose execution ended with ROLLBACK_ENABLED=TRUE, for activities that allow rollback. Runs MOP_EXECUTION with ROLLBACK_ONLY=true for that node, then the rollback report.",
++      "rollback_run": "Run rollback"
++    },
++    "io_mml_logs": {
++      "title": "IO / MML",
++      "empty": "No IO or MML logs for this execution (yet).",
++      "filter": "Filter lines"
++    },
+     "gantt_no_tasks_executed": "This execution ended without running any task.\nCheck its overview and logs for the reason.",
+     "gantt_no_tasks_match_filters": "Try adjusting the search, state, or log-level filters.",
+     "gantt_no_tasks_match_filters_title": "No tasks match the selected filters.",
+diff --git a/ui/src/utils/requestId.ts b/ui/src/utils/requestId.ts
+new file mode 100644
+index 0000000..be2b653
+--- /dev/null
++++ b/ui/src/utils/requestId.ts
+@@ -0,0 +1,8 @@
++/**
++ * cr_automation: the request id of an execution - the whole number (1, 2, 3, ...) the flows give every order and
++ * child order (bin/req_id.py) and put in the label `req_id`. Shown instead of Kestra's own execution id, which
++ * Kestra generates and cannot be changed; undefined when the execution has no such label.
++ */
++export function requestId(execution?: {labels?: {key?: string; value?: string}[] | null}): string | undefined {
++    return execution?.labels?.find((l) => l.key === "req_id")?.value ?? undefined
++}
