@@ -328,10 +328,10 @@ index 0000000..454826b
 +</style>
 diff --git a/ui/src/components/executions/OrderPanel.vue b/ui/src/components/executions/OrderPanel.vue
 new file mode 100644
-index 0000000..f2a7f5b
+index 0000000..f398049
 --- /dev/null
 +++ b/ui/src/components/executions/OrderPanel.vue
-@@ -0,0 +1,302 @@
+@@ -0,0 +1,374 @@
 +<template>
 +    <div class="order">
 +        <div v-if="!orderId" class="order-empty">
@@ -383,7 +383,48 @@ index 0000000..f2a7f5b
 +                </table>
 +            </section>
 +
-+            <section class="order-card">
++            <section v-if="!continuable" class="order-card">
++                <h3>{{ $t("cr_order.continue") }}</h3>
++                <p class="order-hint">{{ $t("cr_order.not_continuable", {order: orderId}) }}</p>
++            </section>
++
++            <section v-else-if="childId" class="order-card">
++                <h3>{{ $t("cr_order.child_continue", {child: childId, cr: child?.cr_name ?? ""}) }}</h3>
++
++                <div v-if="childNodes.length" class="order-action">
++                    <h4>{{ $t("cr_order.exec_title") }}</h4>
++                    <p class="order-hint">{{ $t("cr_order.exec_hint") }}</p>
++                    <label class="order-check">
++                        <input v-model="allNodes" type="checkbox">
++                        {{ $t("cr_order.exec_all", {count: childNodes.length}) }}
++                    </label>
++                    <label v-for="o in childNodes" :key="o.value" class="order-check order-node-choice">
++                        <input v-model="chosenNodes" type="checkbox" :value="o.value" :disabled="allNodes || isRunning(o.value)">
++                        {{ o.label }}
++                    </label>
++                    <button type="button" class="order-run" :disabled="!nodesToRun.length || busy" @click="runExecutionStep">
++                        {{ $t("cr_order.exec_run") }}
++                    </button>
++                </div>
++                <p v-else class="order-hint">{{ $t("cr_order.exec_no_mop") }}</p>
++
++                <div v-if="childRollbackOptions.length" class="order-action">
++                    <h4>{{ $t("cr_order.rollback_title") }}</h4>
++                    <p class="order-hint">{{ $t("cr_order.rollback_hint") }}</p>
++                    <select v-model="rollbackTarget" class="order-select">
++                        <option v-for="o in childRollbackOptions" :key="o.value" :value="o.value">
++                            {{ o.label }}
++                        </option>
++                    </select>
++                    <button type="button" class="order-run" :disabled="!rollbackTarget || busy" @click="runRollback">
++                        {{ $t("cr_order.rollback_run") }}
++                    </button>
++                </div>
++
++                <p v-if="actionError" class="order-error">{{ actionError }}</p>
++            </section>
++
++            <section v-else class="order-card">
 +                <h3>{{ $t("cr_order.continue") }}</h3>
 +
 +                <div class="order-action">
@@ -434,10 +475,10 @@ index 0000000..f2a7f5b
 +<script setup lang="ts">
 +    /**
 +     * "Order" tab (cr_automation): the order this execution belongs to (label order_id), as the flows publish it
-+     * from the request store (namespace KV ORDER_<id>, written by bin/store.sh registry), and the next steps -
-+     * validate a (corrected) CIQ for this order, start a child order for one of its CRs, or roll back a node -
-+     * like FlowOne's order actions. Each starts a normal execution of ciq_validation / cr_child_order /
-+     * cr_node_rollback.
++     * from the request store (namespace KV ORDER_<id>, written by bin/store.sh registry), and the next steps,
++     * like FlowOne's order actions. On an order: validate a (corrected) CIQ, start a child order for one of its CRs,
++     * roll back a node. On a child order: only execute its MOP on some or all of its nodes, or roll back one of its
++     * nodes. Each starts a normal execution of ciq_validation / cr_child_order / cr_mop_execution / cr_node_rollback.
 +     */
 +    import {computed, ref, watch} from "vue"
 +    import {useRouter, useRoute} from "vue-router"
@@ -447,7 +488,9 @@ index 0000000..f2a7f5b
 +
 +    const VALIDATION_FLOW = "ciq_validation"
 +    const CHILD_FLOW = "cr_child_order"
++    const EXECUTION_FLOW = "cr_mop_execution"
 +    const ROLLBACK_FLOW = "cr_node_rollback"
++    const ALL_NODES = "*"
 +
 +    const executionsStore = useExecutionsStore()
 +    const router = useRouter()
@@ -455,21 +498,42 @@ index 0000000..f2a7f5b
 +    const http = useClient()
 +    const execution = computed(() => executionsStore.execution)
 +
-+    const orderId = computed(() => execution.value?.labels?.find((l: any) => l.key === "order_id")?.value)
++    const label = (key: string) => execution.value?.labels?.find((l: any) => l.key === key)?.value
++    const orderId = computed(() => label("order_id"))
++    // an execution of a child order carries the child's request id, which differs from its order's
++    const childId = computed(() => {
++        const reqId = label("req_id")
++        return reqId && reqId !== orderId.value ? reqId : undefined
++    })
 +    const order = ref<any>()
++    // the orders the flows' forms accept (KV ORDERS, published from the request store); an order missing there
++    // (e.g. one created before the store) is shown, but offering its next steps would only end in a rejected form
++    const continuable = ref(false)
 +    const loadError = ref("")
 +    const ciqFile = ref<File | undefined>()
 +    const crName = ref("")
-+    const runExecution = ref(true)
++    const runExecution = ref(false)
 +    const rollbackTarget = ref("")
 +    const busy = ref(false)
 +    const actionError = ref("")
 +
++    const child = computed(() => childId.value ? order.value?.children_by_id?.[childId.value] : undefined)
++    const childNodes = computed(() => (child.value?.node_options ?? []).filter((o: any) => o.value !== ALL_NODES))
++    const childRollbackOptions = computed(() =>
++        (order.value?.rollback_options ?? []).filter((o: any) => String(o.value).startsWith(childId.value + ":")))
++    const allNodes = ref(true)
++    const chosenNodes = ref<string[]>([])
++    const isRunning = (node: string) => child.value?.nodes?.some((n: any) => n.node === node && n.status === "RUNNING")
++    const nodesToRun = computed(() => allNodes.value ? [ALL_NODES] : chosenNodes.value)
++
 +    async function load() {
 +        if (!orderId.value || !execution.value) return
 +        try {
-+            const response = await http.get(`${apiUrl()}/namespaces/${execution.value.namespace}/kv/ORDER_${orderId.value}`)
++            const kv = `${apiUrl()}/namespaces/${execution.value.namespace}/kv`
++            const [response, orders] = await Promise.all([http.get(`${kv}/ORDER_${orderId.value}`), http.get(`${kv}/ORDERS`)])
 +            order.value = response.data?.value ?? response.data
++            const list = orders.data?.value ?? orders.data
++            continuable.value = Array.isArray(list) && list.some((o: any) => String(o.value) === String(orderId.value))
 +            loadError.value = ""
 +            if (!crName.value && order.value?.cr_list?.length) crName.value = order.value.cr_list[0]
 +        } catch (e) {
@@ -511,6 +575,10 @@ index 0000000..f2a7f5b
 +    })
 +    const runChild = () => start(CHILD_FLOW, {order_id: orderId.value, cr_name: crName.value, run_execution: runExecution.value})
 +    const runRollback = () => start(ROLLBACK_FLOW, {order_id: orderId.value, node: rollbackTarget.value})
++    // MULTISELECT inputs go to the API as a JSON array, as Kestra's own execute form sends them
++    const runExecutionStep = () => start(EXECUTION_FLOW, {
++        order_id: orderId.value, child_id: childId.value, nodes: JSON.stringify(nodesToRun.value),
++    })
 +
 +    watch(() => [execution.value?.id, execution.value?.state?.current, orderId.value], load, {immediate: true})
 +</script>
@@ -630,6 +698,10 @@ index 0000000..f2a7f5b
 +        font-size: var(--ks-font-size-xs);
 +    }
 +
++    .order-node-choice {
++        padding-left: 1.5rem;
++    }
++
 +    .order-error {
 +        color: var(--ks-text-warning);
 +    }
@@ -688,10 +760,10 @@ index e805817..501b87c 100644
          name: `${EXECUTION_PARENT_ROUTE}/outputs`,
          path: "outputs",
 diff --git a/ui/src/translations/en.json b/ui/src/translations/en.json
-index f4a164d..4bcde7b 100644
+index f4a164d..c295420 100644
 --- a/ui/src/translations/en.json
 +++ b/ui/src/translations/en.json
-@@ -199,6 +199,36 @@
+@@ -199,6 +199,43 @@
      "details": "Details",
      "overview": "Overview",
      "gantt": "Gantt",
@@ -712,13 +784,20 @@ index f4a164d..4bcde7b 100644
 +      "validate_hint": "Optional: choose the filled (or corrected) CIQ - it replaces the CIQ in the order folder. Without a file, the CIQ already placed in the order folder is validated.",
 +      "validate_run": "Run CIQ validation",
 +      "child_title": "Start a child order",
-+      "run_execution": "Execute the MOP on the nodes (unticked: generate the MOP only)",
-+      "child_run": "Run MOP generation and execution",
++      "run_execution": "Also execute the MOP on all its nodes right after generating it (unticked: generate the MOP only)",
++      "child_run": "Start child order",
 +      "child_after_validation": "Child orders can be started once the order is VALIDATED.",
 +      "rolled_back": "rolled back",
 +      "rollback_title": "Roll back a node",
 +      "rollback_hint": "Nodes whose execution ended with ROLLBACK_ENABLED=TRUE, for activities that allow rollback. Runs MOP_EXECUTION with ROLLBACK_ONLY=true for that node, then the rollback report.",
-+      "rollback_run": "Run rollback"
++      "rollback_run": "Run rollback",
++      "child_continue": "Continue child order {child} ({cr})",
++      "exec_title": "Execute the MOP",
++      "exec_hint": "Choose all nodes or some of them - the chosen nodes run in parallel. A node that is running now cannot be chosen.",
++      "exec_all": "All nodes ({count})",
++      "exec_run": "Execute on the chosen nodes",
++      "exec_no_mop": "This child has no generated MOP yet - nothing to execute.",
++      "not_continuable": "Order {order} is not in the request store (it was created before the store existed), so it cannot be continued. Start a new order: generate_ciq_template, or ciq_validation as a NEW order."
 +    },
 +    "io_mml_logs": {
 +      "title": "IO / MML",

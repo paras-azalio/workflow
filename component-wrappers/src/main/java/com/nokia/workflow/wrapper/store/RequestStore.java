@@ -36,18 +36,26 @@ import java.util.TimeZone;
  * request_step  step_id, req_id, parent_req_id, kestra_execution_id, step, node_name, status, status_text,
  *               message, request (jsonb: IO in), results (jsonb: IO out), io_log, mml_log, started_at,
  *               duration_ms, recorded_at
+ * node_lock     req_id, node_name (PK), kestra_execution_id, claimed_at - a node being executed right now
  * </pre>
  *
- * Commands (each prints one Kestra outputs line {@code ::{"outputs": {...}}::}):
+ * Commands (each prints one Kestra outputs line {@code ::{"outputs": {...}}::}, except {@code locked}):
  * <pre>
- *   new-request  --kind ORDER|CHILD [--wanted N] [--parent P] [--cr CR] [--node-type T] [--activity A]
- *                [--node-version V] [--execution E] --shared-dir DIR
- *                -> req_id (N if given and free, else the next number), taken (all ids); creates DIR/&lt;id&gt;/
- *   record-step  --req-id R --step S [--node N] [--execution E] --result result.json [--io-log F] [--mml-log F]
- *   set-stage    --req-id R --stage S [--cr-list CR1,CR2] [--json-file F]
- *   child-status --req-id R      -> nodes, failed_nodes, status (SUCCESS / FAILED) from the node executions
- *   registry     --order R       -> orders (the order list for the forms), order (one order with its steps,
- *                                   children, cr_options, rollback_options)
+ *   new-request   --kind ORDER|CHILD [--wanted N] [--parent P] [--cr CR] [--node-type T] [--activity A]
+ *                 [--node-version V] [--execution E] --shared-dir DIR
+ *                 -> req_id (N if given and free, else the next number), taken (all ids); creates DIR/&lt;id&gt;/
+ *   record-step   --req-id R --step S [--node N] [--execution E] --result result.json [--io-log F] [--mml-log F]
+ *   set-stage     --req-id R --stage S [--if-stage S1,S2] [--cr-list CR1,CR2] [--json-file F]
+ *   claim-nodes   --req-id R --nodes N1,N2|* --execution E
+ *                 -> the child's data and the claimed nodes; all or none: fails when a node is not in the child's
+ *                    MOP or another execution is running it
+ *   release-nodes --req-id R (--execution E | --all)
+ *   child-status  --req-id R [--nodes N1,N2] [--update-stage]
+ *                 -> nodes, failed_nodes, status of these nodes (default all), child_stage of the whole child
+ *   registry      --order R       -> orders (the order list for the forms), order (one order with its steps,
+ *                                    children, cr_options, child_options, node options, rollback_options)
+ *   locked        --key K -- command args...   runs the command while holding a database lock on K (one at a
+ *                 time across all executions); exits with the command's exit code
  * </pre>
  * Config ({@code --config} properties): {@code store.jdbc.url}, {@code store.jdbc.user}; the password comes from the
  * environment variable {@code STORE_JDBC_PASSWORD}. Rollback is offered for an activity only when
@@ -97,6 +105,9 @@ public final class RequestStore {
             try {
                 RequestStore store = new RequestStore(db, config);
                 store.ensureSchema();
+                if ("locked".equals(args[0])) {
+                    return store.locked(require(opt, "key"), commandAfterDashes(args));
+                }
                 Map<String, Object> outputs = store.command(args[0], opt);
                 out.println("::" + SimpleJson.writeCompact(java.util.Collections.singletonMap("outputs", outputs)) + "::");
                 return 0;
@@ -119,8 +130,12 @@ public final class RequestStore {
             return recordStep(opt);
         } else if ("set-stage".equals(name)) {
             return setStage(opt);
+        } else if ("claim-nodes".equals(name)) {
+            return claimNodes(Long.parseLong(require(opt, "req-id")), require(opt, "nodes"), require(opt, "execution"));
+        } else if ("release-nodes".equals(name)) {
+            return releaseNodes(Long.parseLong(require(opt, "req-id")), opt.get("execution"), opt.containsKey("all"));
         } else if ("child-status".equals(name)) {
-            return childStatus(Long.parseLong(require(opt, "req-id")));
+            return childStatus(Long.parseLong(require(opt, "req-id")), opt.get("nodes"), opt.containsKey("update-stage"));
         } else if ("registry".equals(name)) {
             return registry(Long.parseLong(require(opt, "order")));
         }
@@ -151,6 +166,12 @@ public final class RequestStore {
                     + " request JSONB, results JSONB, io_log TEXT, mml_log TEXT,"
                     + " started_at TIMESTAMPTZ, duration_ms BIGINT,"
                     + " recorded_at TIMESTAMPTZ NOT NULL DEFAULT now())");
+            st.execute("CREATE TABLE IF NOT EXISTS " + SCHEMA + ".node_lock ("
+                    + " req_id BIGINT NOT NULL REFERENCES " + SCHEMA + ".request(req_id),"
+                    + " node_name VARCHAR(128) NOT NULL,"
+                    + " kestra_execution_id VARCHAR(64) NOT NULL,"
+                    + " claimed_at TIMESTAMPTZ NOT NULL DEFAULT now(),"
+                    + " PRIMARY KEY (req_id, node_name))");
             st.execute("CREATE INDEX IF NOT EXISTS request_step_req ON " + SCHEMA + ".request_step (req_id)");
             st.execute("CREATE INDEX IF NOT EXISTS request_parent ON " + SCHEMA + ".request (parent_req_id)");
         } finally {
@@ -291,43 +312,244 @@ public final class RequestStore {
         }
     }
 
+    /** With {@code --if-stage}, the stage changes only while the request is in one of those stages (no error otherwise). */
     Map<String, Object> setStage(Map<String, String> opt) throws SQLException {
         long reqId = Long.parseLong(require(opt, "req-id"));
-        PreparedStatement ps = db.prepareStatement("UPDATE " + SCHEMA + ".request SET stage = ?,"
+        List<String> ifStages = csv(opt.get("if-stage"));
+        StringBuilder sql = new StringBuilder("UPDATE " + SCHEMA + ".request SET stage = ?,"
                 + " cr_list = COALESCE(?, cr_list), json_file = COALESCE(?, json_file), updated_at = now()"
                 + " WHERE req_id = ?");
+        for (int i = 0; i < ifStages.size(); i++) {
+            sql.append(i == 0 ? " AND stage IN (?" : ",?");
+        }
+        if (!ifStages.isEmpty()) {
+            sql.append(')');
+        }
+        PreparedStatement ps = db.prepareStatement(sql.toString());
         try {
             ps.setString(1, require(opt, "stage"));
             ps.setString(2, opt.containsKey("cr-list") ? opt.get("cr-list").replace(" ", "") : null);
             ps.setString(3, emptyToNull(opt.get("json-file")));
             ps.setLong(4, reqId);
-            if (ps.executeUpdate() != 1) {
+            for (int i = 0; i < ifStages.size(); i++) {
+                ps.setString(5 + i, ifStages.get(i));
+            }
+            int updated = ps.executeUpdate();
+            if (updated != 1 && ifStages.isEmpty()) {
                 throw new StoreException("request " + reqId + " does not exist");
             }
+            Map<String, Object> out = single("req_id", reqId);
+            out.put("updated", updated == 1);
+            return out;
         } finally {
             ps.close();
         }
-        return single("req_id", reqId);
+    }
+
+    // ------------------------------------------------------------------ claim-nodes / release-nodes
+
+    /**
+     * Claims nodes of a child for one execution, all or none, in one transaction: a node already claimed by another
+     * execution makes the whole claim fail, so two executions never run the same node at the same time. A claim by
+     * the same execution again (a restarted task) succeeds. {@code *} means every node of the child's MOP.
+     */
+    Map<String, Object> claimNodes(long reqId, String nodes, String execution) throws Exception {
+        Map<String, Object> child = request(reqId);
+        if (!"CHILD".equals(child.get("kind"))) {
+            throw new StoreException("request " + reqId + " is not a child order");
+        }
+        List<String> mopNodes = mopNodes(reqId);
+        if (mopNodes.isEmpty()) {
+            throw new StoreException("child " + reqId + " has no generated MOP - run its MOP generation first");
+        }
+        List<String> wanted = "*".equals(nodes.trim()) ? mopNodes : csv(nodes);
+        if (wanted.contains("*")) {
+            wanted = mopNodes;
+        }
+        for (String node : wanted) {
+            if (!mopNodes.contains(node)) {
+                throw new StoreException("node " + node + " is not in the MOP of child " + reqId + " (its nodes: "
+                        + join(mopNodes) + ")");
+            }
+        }
+        if (wanted.isEmpty()) {
+            throw new StoreException("no node chosen for child " + reqId);
+        }
+        db.setAutoCommit(false);
+        try {
+            List<String> busy = new ArrayList<String>();
+            PreparedStatement ps = db.prepareStatement("INSERT INTO " + SCHEMA + ".node_lock (req_id, node_name,"
+                    + " kestra_execution_id) VALUES (?,?,?) ON CONFLICT (req_id, node_name) DO UPDATE"
+                    + " SET claimed_at = now() WHERE " + SCHEMA + ".node_lock.kestra_execution_id = EXCLUDED.kestra_execution_id");
+            try {
+                for (String node : wanted) {
+                    ps.setLong(1, reqId);
+                    ps.setString(2, node);
+                    ps.setString(3, execution);
+                    if (ps.executeUpdate() == 0) {
+                        busy.add(node);
+                    }
+                }
+            } finally {
+                ps.close();
+            }
+            if (!busy.isEmpty()) {
+                db.rollback();
+                StringBuilder sb = new StringBuilder();
+                for (Map<String, Object> l : locks(reqId)) {
+                    if (busy.contains(l.get("node_name"))) {
+                        sb.append(sb.length() == 0 ? "" : ", ").append(l.get("node_name")).append(" (execution ")
+                          .append(l.get("kestra_execution_id")).append(')');
+                    }
+                }
+                throw new StoreException("child " + reqId + ": node(s) already being executed by another execution: " + sb
+                        + " - wait until it ends, or choose other nodes");
+            }
+            db.commit();
+        } catch (Exception e) {
+            db.rollback();
+            throw e;
+        } finally {
+            db.setAutoCommit(true);
+        }
+        Map<String, Object> out = new LinkedHashMap<String, Object>();
+        out.put("nodes", wanted);
+        out.put("node_count", wanted.size());
+        out.put("child_id", String.valueOf(reqId));
+        out.put("order_id", String.valueOf(child.get("parent_req_id")));
+        for (String k : new String[] {"cr_name", "node_type", "activity", "node_version", "json_file", "folder"}) {
+            out.put(k, child.get(k));
+        }
+        return out;
+    }
+
+    Map<String, Object> releaseNodes(long reqId, String execution, boolean all) throws SQLException {
+        if (!all && emptyToNull(execution) == null) {
+            throw new StoreException("--execution (or --all) is required");
+        }
+        PreparedStatement ps = db.prepareStatement("DELETE FROM " + SCHEMA + ".node_lock WHERE req_id = ?"
+                + (all ? "" : " AND kestra_execution_id = ?"));
+        try {
+            ps.setLong(1, reqId);
+            if (!all) {
+                ps.setString(2, execution);
+            }
+            return single("released", ps.executeUpdate());
+        } finally {
+            ps.close();
+        }
+    }
+
+    private List<Map<String, Object>> locks(long reqId) throws SQLException {
+        return query("SELECT node_name, kestra_execution_id, claimed_at FROM " + SCHEMA + ".node_lock WHERE req_id = ?"
+                + " ORDER BY node_name", reqId);
+    }
+
+    /** The nodes (zones) of the child's MOP: ACTIVITY_CR_NODE_NAMES of its latest successful MOP_GENERATION. */
+    List<String> mopNodes(long reqId) throws SQLException {
+        List<Map<String, Object>> rows = query("SELECT results ->> 'ACTIVITY_CR_NODE_NAMES' AS nodes FROM " + SCHEMA
+                + ".request_step WHERE req_id = ? AND step = 'MOP_GENERATION' AND status = 0 ORDER BY step_id DESC LIMIT 1",
+                reqId);
+        return rows.isEmpty() ? new ArrayList<String>() : csv((String) rows.get(0).get("nodes"));
+    }
+
+    // ------------------------------------------------------------------ locked
+
+    /**
+     * Runs a command while holding the PostgreSQL advisory lock on {@code key}: across all executions only one
+     * command per key runs at a time (e.g. the summary report of one child). The lock goes with the connection, so
+     * it is released even when this JVM dies.
+     */
+    int locked(String key, List<String> command) throws Exception {
+        if (command.isEmpty()) {
+            throw new StoreException("locked: no command after --");
+        }
+        PreparedStatement ps = db.prepareStatement("SELECT pg_advisory_lock(hashtext(?))");
+        try {
+            ps.setString(1, key);
+            ps.execute();
+        } finally {
+            ps.close();
+        }
+        try {
+            return new ProcessBuilder(command).inheritIO().start().waitFor();
+        } finally {
+            PreparedStatement un = db.prepareStatement("SELECT pg_advisory_unlock(hashtext(?))");
+            try {
+                un.setString(1, key);
+                un.execute();
+            } finally {
+                un.close();
+            }
+        }
     }
 
     // ------------------------------------------------------------------ child-status
 
-    /** The latest MOP_EXECUTION per node of a child: which nodes ran, which failed. */
-    Map<String, Object> childStatus(long reqId) throws SQLException {
-        List<String> nodes = new ArrayList<String>();
-        List<String> failed = new ArrayList<String>();
-        for (Map<String, Object> row : latestPerNode(reqId, "MOP_EXECUTION")) {
-            nodes.add((String) row.get("node_name"));
-            if (((Number) row.get("status")).intValue() != 0) {
-                failed.add((String) row.get("node_name"));
+    /**
+     * The latest MOP_EXECUTION per node of a child. {@code nodes}, {@code failed_nodes}, {@code status}: the given
+     * nodes (default: every executed node). {@code child_stage}: the whole child - EXECUTING while a node is claimed,
+     * else FAILED when a node's latest execution failed, SUCCESS when every MOP node succeeded, PARTIAL when some MOP
+     * nodes were not executed yet, MOP_GENERATED when none was. With {@code --update-stage} it is stored, computed and
+     * written in one transaction under a row lock, so executions ending together cannot overwrite each other.
+     */
+    Map<String, Object> childStatus(long reqId, String onlyNodes, boolean updateStage) throws SQLException {
+        db.setAutoCommit(false);
+        try {
+            query("SELECT req_id FROM " + SCHEMA + ".request WHERE req_id = ? FOR UPDATE", reqId);
+            List<String> filter = csv(onlyNodes);
+            List<String> nodes = new ArrayList<String>();
+            List<String> failed = new ArrayList<String>();
+            Map<String, Boolean> latestOk = new LinkedHashMap<String, Boolean>();
+            for (Map<String, Object> row : latestPerNode(reqId, "MOP_EXECUTION")) {
+                String node = (String) row.get("node_name");
+                boolean ok = ((Number) row.get("status")).intValue() == 0;
+                latestOk.put(node, ok);
+                if (filter.isEmpty() || filter.contains(node)) {
+                    nodes.add(node);
+                    if (!ok) {
+                        failed.add(node);
+                    }
+                }
             }
+            List<String> mopNodes = mopNodes(reqId);
+            String stage;
+            if (!locks(reqId).isEmpty()) {
+                stage = "EXECUTING";
+            } else if (latestOk.containsValue(Boolean.FALSE)) {
+                stage = "FAILED";
+            } else if (latestOk.isEmpty()) {
+                stage = "MOP_GENERATED";
+            } else if (latestOk.keySet().containsAll(mopNodes)) {
+                stage = "SUCCESS";
+            } else {
+                stage = "PARTIAL";
+            }
+            if (updateStage && !mopNodes.isEmpty()) {
+                PreparedStatement ps = db.prepareStatement("UPDATE " + SCHEMA + ".request SET stage = ?, updated_at = now()"
+                        + " WHERE req_id = ?");
+                try {
+                    ps.setString(1, stage);
+                    ps.setLong(2, reqId);
+                    ps.executeUpdate();
+                } finally {
+                    ps.close();
+                }
+            }
+            db.commit();
+            Map<String, Object> out = new LinkedHashMap<String, Object>();
+            out.put("nodes", nodes);
+            out.put("failed_nodes", failed);
+            out.put("failed_count", failed.size());
+            out.put("status", failed.isEmpty() ? "SUCCESS" : "FAILED");
+            out.put("child_stage", stage);
+            return out;
+        } catch (SQLException e) {
+            db.rollback();
+            throw e;
+        } finally {
+            db.setAutoCommit(true);
         }
-        Map<String, Object> out = new LinkedHashMap<String, Object>();
-        out.put("nodes", nodes);
-        out.put("failed_nodes", failed);
-        out.put("failed_count", failed.size());
-        out.put("status", failed.isEmpty() ? "SUCCESS" : "FAILED");
-        return out;
     }
 
     private List<Map<String, Object>> latestPerNode(long reqId, String step) throws SQLException {
@@ -389,10 +611,17 @@ public final class RequestStore {
                 "rollback." + o.get("node_type") + "_" + o.get("activity"), "false"));
         order.put("rollback_supported", rollbackSupported);
         Map<String, Object> children = new LinkedHashMap<String, Object>();
+        Map<String, Object> childrenById = new LinkedHashMap<String, Object>();
+        List<Object> childOptions = new ArrayList<Object>();
         List<Object> rollbackOptions = new ArrayList<Object>();
         for (Map<String, Object> c : query("SELECT * FROM " + SCHEMA + ".request WHERE parent_req_id = ?"
                 + " ORDER BY req_id", orderId)) {
             long childId = ((Number) c.get("req_id")).longValue();
+            List<String> mopNodes = mopNodes(childId);
+            Map<String, String> runningIn = new LinkedHashMap<String, String>();
+            for (Map<String, Object> l : locks(childId)) {
+                runningIn.put((String) l.get("node_name"), (String) l.get("kestra_execution_id"));
+            }
             List<Object> nodes = new ArrayList<Object>();
             Map<String, Object> lastRollback = new LinkedHashMap<String, Object>();
             for (Map<String, Object> r : latestPerNode(childId, "ROLLBACK")) {
@@ -415,12 +644,47 @@ public final class RequestStore {
                     rollbackOptions.add(opt);
                 }
             }
+            List<Object> nodeOptions = new ArrayList<Object>();
+            if (!mopNodes.isEmpty()) {
+                nodeOptions.add(option("*", "All nodes (" + mopNodes.size() + "): " + join(mopNodes)));
+            }
+            for (String node : mopNodes) {
+                Map<String, Object> last = null;
+                for (Object entry : nodes) {
+                    @SuppressWarnings("unchecked")
+                    Map<String, Object> n = (Map<String, Object>) entry;
+                    if (node.equals(n.get("node"))) {
+                        last = n;
+                    }
+                }
+                if (last == null) {
+                    last = new LinkedHashMap<String, Object>();
+                    last.put("node", node);
+                    last.put("status", "NOT_EXECUTED");
+                    last.put("rollback_enabled", false);
+                    last.put("rolled_back", false);
+                    nodes.add(last);
+                }
+                if (runningIn.containsKey(node)) {
+                    last.put("status", "RUNNING");
+                    last.put("running_execution_id", runningIn.get(node));
+                }
+                nodeOptions.add(option(node, node + " | " + last.get("status")));
+            }
             Map<String, Object> run = new LinkedHashMap<String, Object>();
             run.put("child_id", String.valueOf(childId));
+            run.put("cr_name", c.get("cr_name"));
             run.put("execution_id", c.get("kestra_execution_id"));
             run.put("state", c.get("stage"));
             run.put("at", at(c.get("updated_at")));
             run.put("nodes", nodes);
+            run.put("mop_nodes", mopNodes);
+            run.put("node_options", nodeOptions);
+            childrenById.put(String.valueOf(childId), run);
+            if (!mopNodes.isEmpty()) {
+                childOptions.add(option(String.valueOf(childId), "child " + childId + " (" + c.get("cr_name") + ") | "
+                        + c.get("stage") + " | " + join(mopNodes)));
+            }
             @SuppressWarnings("unchecked")
             List<Object> runs = (List<Object>) children.get(c.get("cr_name"));
             if (runs == null) {
@@ -430,6 +694,8 @@ public final class RequestStore {
             runs.add(run);
         }
         order.put("children", children);
+        order.put("children_by_id", childrenById);
+        order.put("child_options", childOptions);
         order.put("rollback_options", rollbackOptions);
 
         List<Object> crOptions = new ArrayList<Object>();
@@ -523,6 +789,48 @@ public final class RequestStore {
         return m;
     }
 
+    /** Comma-separated values, trimmed, without empty ones and duplicates, in order. */
+    static List<String> csv(String s) {
+        List<String> out = new ArrayList<String>();
+        if (s != null) {
+            for (String v : s.split(",")) {
+                if (!v.trim().isEmpty() && !out.contains(v.trim())) {
+                    out.add(v.trim());
+                }
+            }
+        }
+        return out;
+    }
+
+    private static String join(List<String> values) {
+        StringBuilder sb = new StringBuilder();
+        for (String v : values) {
+            sb.append(sb.length() == 0 ? "" : ",").append(v);
+        }
+        return sb.toString();
+    }
+
+    private static Map<String, Object> option(String value, String label) {
+        Map<String, Object> m = new LinkedHashMap<String, Object>();
+        m.put("value", value);
+        m.put("label", label);
+        return m;
+    }
+
+    /** The command after {@code --} (locked). */
+    static List<String> commandAfterDashes(String[] args) {
+        List<String> out = new ArrayList<String>();
+        boolean after = false;
+        for (String a : args) {
+            if (after) {
+                out.add(a);
+            } else if ("--".equals(a)) {
+                after = true;
+            }
+        }
+        return out;
+    }
+
     private static String first(String a, String b) {
         return a != null && !a.isEmpty() ? a : b;
     }
@@ -539,10 +847,13 @@ public final class RequestStore {
         return v.trim();
     }
 
-    /** {@code --name value} pairs after the command. */
+    /** {@code --name value} pairs after the command, up to a lone {@code --}. */
     static Map<String, String> options(String[] args) {
         Map<String, String> m = new LinkedHashMap<String, String>();
         for (int i = 1; i < args.length; i++) {
+            if ("--".equals(args[i])) {
+                break;
+            }
             if (args[i].startsWith("--")) {
                 String name = args[i].substring(2);
                 m.put(name, i + 1 < args.length && !args[i + 1].startsWith("--") ? args[++i] : "");

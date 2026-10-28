@@ -48,7 +48,7 @@ Where we are with replacing Nokia BST / InstantLink (FlowOne) orchestration for 
  ┌──────────────────────────────────────────────────────────┐     ┌────────────────────────────────┐
  │ UI  (Kestra UI + our tabs: Order, IO / MML)              │     │ <order id>/  CIQ, validation   │
  │ flows: generate_ciq_template, ciq_validation,            │────▶│   reports, activity JSON, logs/│
- │        cr_child_order, cr_node_rollback,                 │     │ <child id>/  MOP html, logs/,  │
+ │        cr_child_order, cr_mop_execution, cr_node_rollback│     │ <child id>/  MOP html, logs/,  │
  │        cr_report_generation (added by someone else)      │     │   LOGS/, REPORT/,              │
  │ KV: SHARED_DATA_DIR, ORDERS, ORDER_<id>, REQ_IDS_TAKEN   │     │   LOGS_ROLLBACK/,              │
  │ secrets: SECRET_CLICR_*, SECRET_CR_DB_PASSWORD           │     │   ROLLBACK_REPORT/             │
@@ -115,7 +115,7 @@ Java 8, no compile dependencies. Contract: `analysis/06_component_wrapper.md` (�
 | `…/config/cr_automation.properties` | FileCR and CLICR GRC sections (paths with `${WORKDIR}`), FileCR report templates, CLICR NIAM / repo / M2M user (local placeholders), configdirs, `store.jdbc.url` / `store.jdbc.user`, `rollback.<NODE_TYPE>_<ACTIVITY>` (1051: `false`) |
 | `…/{wrappers,nei,templates,lib}/` | Built by `assemble-namespace-files.sh`, not in Git (§7); `lib/` = `postgresql-42.7.4.jar` from `~/.m2` |
 | `assemble-namespace-files.sh`, `deploy.sh` | Collect jars/templates; REST deploy (KV `SHARED_DATA_DIR`, namespace files, flows) |
-| `run.sh` | `template`, `validate <ciq.xlsx\|-> [order]` (`-` = no upload; no order = new order), `child <order> <CR> [true\|false]`, `orders` |
+| `run.sh` | `template`, `validate <ciq.xlsx\|-> [order]` (`-` = no upload; no order = new order), `child <order> <CR> [false\|true]` (default false = MOP only), `exec <order> <child> [NODE,NODE\|*]` (parallel, default all), `orders` |
 | `status.sh` | Waits for an execution, shows its real error (follows Loop sub-executions) and its order with every execution |
 | `simulate.sh` | Runs the FileCR steps like Kestra would, without Kestra |
 | `Dockerfile`, `docker-compose.yml`, `.env.example` | See below |
@@ -135,14 +135,16 @@ All scripts read login/URL from `.env`; `ENV_FILE=<file>` uses another env file 
 |---|---|
 | `generate_ciq_template` | **Starts an order:** request id (order number or next), FileCR `GENERATE_CR_CIQ_TEMPLATE`. Stage `TEMPLATE`. |
 | `ciq_validation` | `order_type` **EXISTING** (pick `order_id`; CIQ upload optional – an uploaded CIQ replaces `<order>/<NT>_<ACT>_CIQ.xlsx`, otherwise the `.xlsx` placed in the order folder last, by ctime, is used) or **NEW** (creates the order like the template; CIQ upload required – checked before an id is taken). FileCR `CR_CIQ_PROCESSOR`. Stage `VALIDATED` with `CR_LIST`, or `INVALID` (validate the same order again). Attempts logged as `ciq_validation_1`, `_2`, … |
-| `cr_child_order` | **One CR of a validated order:** `order_id` dropdown (validated orders) → dependent `cr_name` dropdown (CRs with their last child and state). Child request id = next number. CLICR `MOP_GENERATION` (CR_NAME), then (`run_execution=true`) `MOP_EXECUTION` per node (Loop, concurrency 1) – **every node runs, also after a failure**; a failed node → FileCR **failure report**; then the CR **summary report**; the store's `child-status` decides: the child FAILS when any node failed ("MOP execution failed on 2 of 2 node(s) (CR1): NORTH1, SOUTH1"). |
+| `cr_child_order` | **One CR of a validated order = MOP generation only:** `order_id` dropdown (validated orders) → dependent `cr_name` dropdown (CRs with their last child and state). Child request id = next number. CLICR `MOP_GENERATION` (CR_NAME) → child stage `MOP_GENERATED` / `MOP_FAILED`. Only when the user ticks `run_execution` (**off by default**, decided 2026-10-27: generation and execution are different things) it calls `cr_mop_execution` for **all** nodes as a Subflow (`wait`, `transmitFailed`), so execution exists in one place only. |
+| `cr_mop_execution` | **MOP execution of a child, on demand (user 2026-10-27):** `order_id` → `child_id` (children with a generated MOP, `child_options`) → `nodes` MULTISELECT (`All nodes` = `*`, or any nodes, each with its state; `children_by_id[<child>].node_options`). Nodes come from the child's own `MOP_GENERATION` result (`ACTIVITY_CR_NODE_NAMES`) – nothing activity-specific. Steps: `claim-nodes` (all or none; a node another execution is running is refused with its execution id) → child `EXECUTING` published → Loop **`concurrencyLimit: 0` = the chosen nodes in parallel** (one JVM per node): CLICR `MOP_EXECUTION`, failure report for a failed node → **summary report under `store.sh locked --key summary_report:<child>`** (one writer per child) → `child-status --nodes` → Fail when one of *its* nodes failed. `afterExecution` (also after failure/kill): `release-nodes` (own locks), `child-status --update-stage` (EXECUTING / FAILED / SUCCESS / PARTIAL / MOP_GENERATED, computed under a row lock), registry → KV. |
 | `cr_node_rollback` | **On demand, one node:** `order_id` → dependent `node` dropdown (`rollback_options`: nodes whose latest MOP_EXECUTION has `ROLLBACK_ENABLED=TRUE`, not rolled back yet, activity allowed by `rollback.<NT>_<ACT>=true`). CLICR `MOP_EXECUTION` `ROLLBACK_ONLY=true` under the **child's** request id (needs the child folder's backup/precheck), logs to `LOGS_ROLLBACK/`, report to `ROLLBACK_REPORT/`, then `GENERATE_REPORT` `ROLLBACK_REPORT=true`. |
 
 **Request store (PostgreSQL, Kestra's database, schema `cr_automation`):**
 
 | Table | Rows |
 |---|---|
-| `request` | one per order / child: `req_id` (PK), `parent_req_id`, `kind` ORDER/CHILD, node type, activity, node version, `cr_name`, `stage` (order: NEW/TEMPLATE/TEMPLATE_FAILED/INVALID/VALIDATED; child: RUNNING/SUCCESS/FAILED/…), `cr_list`, `json_file`, `folder`, creating Kestra execution, timestamps |
+| `request` | one per order / child: `req_id` (PK), `parent_req_id`, `kind` ORDER/CHILD, node type, activity, node version, `cr_name`, `stage` (order: NEW/TEMPLATE/TEMPLATE_FAILED/INVALID/VALIDATED; child: RUNNING → MOP_GENERATED / MOP_FAILED → EXECUTING → SUCCESS / FAILED / PARTIAL), `cr_list`, `json_file`, `folder`, creating Kestra execution, timestamps |
+| `node_lock` | one per node being executed **now**: (`req_id`, `node_name`) PK, Kestra execution id, claimed at. Written by `claim-nodes`, removed by `release-nodes` in `cr_mop_execution`'s `afterExecution`. A lock left by a crash of Kestra itself: `sh bin/store.sh release-nodes --req-id <child> --all` (from a task, or the table directly). |
 | `request_step` | one per NEI step: `req_id`, `parent_req_id`, Kestra execution id, `step` (GENERATE_TEMPLATE, CIQ_VALIDATION, MOP_GENERATION, MOP_EXECUTION, FAILURE_REPORT, SUMMARY_REPORT, ROLLBACK, ROLLBACK_REPORT), `node_name`, status, status text, message, **`request` / `results` JSONB** (the IO), IO/MML log paths, start, duration |
 
 - **Request ids** (`store.sh new-request`, table lock): new order = the given **order number** (must be free) or **one more than the highest id in use** (table **or** numeric folders, so pre-table ids 12…72 are respected; gaps not reused); child = next number. Creates the folder. Used as `REQ_ID` / `PARENT_REQ_ID` / `CHILD_REQ_ID` / `ORDER_NO`, labels `req_id`, `order_id` (children `cr_name`), the visible Id in our UI. Kestra's own alphanumeric execution id stays the key in URLs/API.
@@ -159,14 +161,16 @@ All scripts read login/URL from `.env`; `ENV_FILE=<file>` uses another env file 
 ## 7. Where the YAMLs and templates come from
 
 `assemble-namespace-files.sh` copies them. After editing a source: `./assemble-namespace-files.sh && ./deploy.sh`.
+**User's rule (2026-10-27): templates come only from the two NEI repositories, every activity – never from `version/1051/ggnyaml`.** `deploy.sh` URL-encodes the namespace-file paths (one CLICR file name holds `&`).
 
 | What | Source | In namespace files | Read by |
 |---|---|---|---|
-| `*_validation-rules.yaml` | `version/1051/ggnyaml/` | `templates/rules/` | FileCR (`yaml_path`) |
-| `*_json-output.yaml` | `version/1051/ggnyaml/` | `templates/json/`, `templates/clicr/jsonTemplate/` | FileCR (`jsonTemp_path`); CLICR schema |
-| CLICR workflow YAMLs (names in `ACTIVITIES`) | `version/1051/ggnyaml/` | `templates/clicr/yaml/` | CLICR (`moptemplates_path`) |
+| `*_validation-rules.yaml` | `NOKIA_FILE_CR_V1/src/main/resources/templates/yaml/` | `templates/rules/` | FileCR (`yaml_path`) |
+| `*_json-output.yaml` (FileCR) | `NOKIA_FILE_CR_V1/src/main/resources/templates/jsonTemplate/` | `templates/json/` | FileCR (`jsonTemp_path`) |
+| CLICR workflow YAMLs (all) | `JAVA_NOKIA_CLICR_AUTOMATION/src/main/resources/templates/yaml/` | `templates/clicr/yaml/` | CLICR (`moptemplates_path`) |
+| `*_json-output.yaml` (CLICR schema) | `JAVA_NOKIA_CLICR_AUTOMATION/src/main/resources/templates/jsonTemplate/` | `templates/clicr/jsonTemplate/` | CLICR |
 | Validation report HTML, `mop_execution_*_template.html`, `application.properties` | `NOKIA_FILE_CR_V1/src/main/resources/templates/` | `templates/html/`, `templates/` | FileCR |
-| MOP report HTML (`mop_summary_report_template*.html`) | `version/1051/ggnyaml/templates/html/` | `templates/clicr/html/` | CLICR |
+| MOP report HTML (`mop_summary_report_template*.html`) | `JAVA_NOKIA_CLICR_AUTOMATION/src/main/resources/templates/html/` | `templates/clicr/html/` | CLICR |
 | NEI jars, `lib/`, `config/*_codes.txt` | `NOKIA_FILE_CR_V1/target/`, `JAVA_NOKIA_CLICR_AUTOMATION/target/` | `nei/filecr/`, `nei/clicr/` | the wrapper |
 | PostgreSQL JDBC driver | `~/.m2/.../postgresql-42.7.4.jar` (`PG_JAR`) | `lib/` | `store.sh` |
 
@@ -175,7 +179,9 @@ All scripts read login/URL from `.env`; `ENV_FILE=<file>` uses another env file 
 ## 8. Kestra UI changes (our fork of the open-source UI)
 
 **Source:** `BST/kestra/` = shallow clone of Kestra v2.0.7 (commit `49b62a2`), changes uncommitted there. **All UI changes are saved as `kestra-local/kestra-ui-cr-automation.patch`** (7 files) – after a fresh clone: `cd BST/kestra && git apply ../kestra-local/kestra-ui-cr-automation.patch`, then `kestra-local/build-ui.sh`. Changed files under `ui/src/`:
-- `components/executions/OrderPanel.vue` (new) – **Order** tab: the order (id, stage, activity, folder, CRs, steps, children with their nodes and links) and **Continue this order**: validate a CIQ (file optional), start a child order (CR, execution yes/no), **roll back a node** (when `rollback_options` exist).
+- `components/executions/OrderPanel.vue` (new) – **Order** tab: the order (id, stage, activity, folder, CRs, steps, children with their nodes and links), then depending on the execution (generic: label `req_id` ≠ `order_id` ⇒ a child's execution):
+  - **an order's execution – Continue this order:** validate a CIQ (file optional), start a child order (CR, execute yes/no), roll back a node;
+  - **a child's execution – Continue child order N (CR):** only **Execute the MOP** (All nodes, or tick nodes; running nodes cannot be ticked; starts `cr_mop_execution`, nodes sent as a JSON array like Kestra's own form) and roll back one of *its* nodes. Never CIQ validation or a new child (user 2026-10-27).
 - `components/executions/IoMmlLogs.vue` (new) – **IO / MML** tab: every step with IO / MML / EXEC buttons (EXEC = CLICR node log; `LOGS_ROLLBACK/` → `mop_rollback_<node>`), viewer, line filter, Download. Data: the `collect_logs` output files via Kestra's outputs/file API.
 - `components/executions/executionTabs.ts` – the two tab routes.
 - `utils/requestId.ts` (new), `components/executions/Executions.vue`, `components/executions/composables/useExecutionRoot.ts` – `req_id` as the Id; **Continue order** in the Executions list selection bar.
@@ -208,7 +214,8 @@ docker compose up -d --build        # UI http://localhost:8080
 - **2026-10-26/27, order process:** template → orders 21 (order number) / 22 (next); 21 again refused in the form (422); invalid then valid CIQ on one order; CR2 MOP only → child 23 (`PARENT_REQ_ID=21`, `CHILD_REQ_ID=23`); CR1 with execution → FAILED at NORTH1 `PRE_NODE_HEALTH_CHECK` (SSH refused: **no lab reachable**, expected).
 - **Validation form:** existing order without upload (blank template → INVALID; CIQ placed as `myciq.xlsx` → VALIDATED), upload replaces the order CIQ (checksum equal), NEW without CIQ stops before taking an id, NEW with order number 40.
 - **2026-10-27, request store / reports / rollback:** order 73 → children 74 (CR1, FAILED) / 75 (CR2, SUCCESS) with all steps and IO in the tables; order 77 (one CR on two nodes) → NORTH1 failed, **SOUTH1 still ran**, two failure reports + one summary, child 78 FAILED naming both nodes; rollback flow tested with one **staged** `ROLLBACK_ENABLED=TRUE` row (removed afterwards, with the two rollback steps): `ROLLBACK_ONLY=true` reached CLICR under child 78, logs/report in `LOGS_ROLLBACK/` / `ROLLBACK_REPORT/`, rollback report created, steps recorded; the rollback itself failed at SSH.
-- **UI:** dropdowns (dependent CR), Order tab (nodes, buttons, no-file validation), Continue order, IO / MML tab, numeric Id in list and title.
+- **2026-10-27, MOP execution as its own step (order 77, CR1 on NORTH1 + SOUTH1):** child 82 MOP only (`MOP_GENERATED`); `exec 77 82 *` ran **both nodes in parallel** (SOUTH1 10:29:20.6, NORTH1 10:29:21.2 while SOUTH1 ran); a second execution started at the same moment for SOUTH1 was **refused at claim** ("already being executed by … 6irmYs…") and recorded nothing; two executions on *different* nodes of 82 both ran, their summary reports one after the other (lock); `child 77 CR1 true` → child 83: MOP, then the Subflow ran both nodes in parallel and the child took over its failure; no lock left, stages recomputed (FAILED – SSH refused, no lab). Wrapper tests 24 + 3 (2 new `RequestStoreTest`).
+- **UI:** dropdowns (dependent CR), Order tab (nodes, buttons, no-file validation), Continue order, IO / MML tab, numeric Id in list and title. Child view of the Order tab: built and served, its data (`children_by_id`, `node_options`) checked through the API; **not yet clicked through in a browser.**
 - **Secrets:** none in any folder, log or Kestra log. **Wrapper tests:** 25/25.
 
 ---
@@ -223,7 +230,7 @@ docker compose up -d --build        # UI http://localhost:8080
 - `split` takes a regex (avoid `|`). Inline `# comments` inside a folded (`>-`) command become shell comments and cut the command.
 - The execution GET has no task outputs (use the outputs API). Stderr lines are logged as ERROR.
 - Secrets: `SECRET_<NAME>` env vars (base64) → `secret('NAME')`. KV PUT takes `text/plain` (JSON text).
-- **Basic auth:** config credentials replace the stored ones at start-up only if valid (e-mail user; password 8+ chars with upper, lower, digit). The user's `.env` `KESTRA_PASSWORD` fails this, so the `.env.example` default login (`admin@example.com` / `ChangeMe123`) still works; tests used `ENV_FILE` with that login.
+- **Basic auth:** config credentials replace the stored ones at start-up only if valid (e-mail user; password 8+ chars with upper, lower, digit). The user fixed `.env` on 2026-10-27 15:36; since the restart at 15:37 the `.env` login is the only one (the old `.env.example` default no longer works), so all scripts work with plain `.env` again.
 - The PostgreSQL password is fixed when its volume is created; a later `.env` change needs `ALTER USER kestra PASSWORD ...` (done once, 2026-10-26).
 
 **Files:** a copied file keeps its mtime (Explorer, `docker cp`) → pick "placed last" by **ctime** (`ls -tc`).
@@ -239,13 +246,13 @@ docker compose up -d --build        # UI http://localhost:8080
 ## 12. Open points / next steps
 
 - **MOP execution on real nodes** needs the lab: real `NIAM_IP` / `M2MPORT` / `REPO_*` in `cr_automation.properties`, the secrets in `.env`, and the 1051 YAML's hardcoded `ACTIVITY_PYTHON_SCRIPT_PATH` (an InstantLink server path) on the Kestra worker. Then a real rollback test on an activity with a rollback phase (and `rollback.<NT>_<ACT>=true`).
-- **CLICR jar is stale:** `macro_CLICR_ANY_V1.jar` (2026-10-09 17:49) is older than later changes to `MopGenerator.java` / `MopExecutionUtil.java`. Rebuild before a lab run.
+- **CLICR jar rebuilt 2026-10-27 15:42** from the committed source (the 10-09 jar left `{{MOP_LABELS_JSON}}` unfilled in the v2 MOP template, so every MOP page rendered empty). Maven 3.0.5 offline cannot run `package` (surefire 2.10 missing), so it was `mvn -o compiler:compile` + `jar cf target/macro_CLICR_ANY_V1.jar` over `target/classes/**/*.class` (classes only, like the old jar; old jar kept in the session scratchpad). After any CLICR Java change, rebuild the same way, then `./assemble-namespace-files.sh && ./deploy.sh`.
 - **CLICR handle leak:** close the YAML stream in `YamlWorkflowLoader` (needs the user's go-ahead).
 - **`cr_report_generation`** (not ours): add `SUB_ACTIVITY_NAME`.
-- **User's `.env`:** fix `KESTRA_PASSWORD` (rule above). Remove `/tmp/store` in the container (above).
+- Remove `/tmp/store` in the container (above).
 - **Not decided:** an approval step between MOP generation and execution (today `run_execution=false` is the manual stop); RBAC / SSO / audit (Kestra OSS vs Enterprise vs Operaton); production layout (install NEI packages on the worker instead of ~28 MB namespace files per step); whether the request store should get its own database user / database later.
 - **Not built yet:** email steps, MMTel refresh, POSTCOMPLETION activity flows, other projects; import of pre-store orders (12–40, 69–72) into the tables (their ids are respected, not listed).
-- **Old test data:** earlier test orders (alphanumeric ids, and 21–40 from before the store) remain in Kestra history and `/mnt/shared_data`; they are no longer in the order dropdowns once a flow republishes `ORDERS` from the store.
+- **Old test data:** earlier test orders (alphanumeric ids, and the pre-store orders 12, 21, 22, 24, 30, 32, 40, 69 with children 23, 31, 71, 72) remain in Kestra history, `/mnt/shared_data` and their old KV `ORDER_<id>`; they are not in the store, so not in `ORDERS`. The Order tab shows them but offers no action ("not in the request store … start a new order") – it offers actions only for orders listed in `ORDERS`, because the forms would reject anything else (seen 2026-10-27: order 69 → 422 "must match the values [77, 73]"). Importing them into the tables was not done (test data).
 
 ---
 

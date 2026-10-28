@@ -22,7 +22,9 @@ curl -sS -f "${AUTH[@]}" -X PUT "$URL/api/v1/main/namespaces/$NS/kv/SHARED_DATA_
 
 echo "== namespace files -> $NS"
 (cd "namespace-files/$NS" && find . -type f | sed 's#^\./##' | sort) | while read -r rel; do
-  curl -sS -f "${AUTH[@]}" -X POST "$URL/api/v1/main/namespaces/$NS/files?path=/$rel" \
+  # activity file names may hold '&' (e.g. SBC_146_..._&_...), which would end the query parameter
+  enc=$(python -c 'import sys, urllib.parse; print(urllib.parse.quote(sys.argv[1]))' "/$rel")
+  curl -sS -f "${AUTH[@]}" -X POST "$URL/api/v1/main/namespaces/$NS/files?path=$enc" \
        -F "fileContent=@namespace-files/$NS/$rel" > /dev/null
   echo "   /$rel"
 done
