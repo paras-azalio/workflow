@@ -1406,10 +1406,10 @@ index 0000000..4d9d491
 +</style>
 diff --git a/ui/src/components/crdesigner/WidgetForm.vue b/ui/src/components/crdesigner/WidgetForm.vue
 new file mode 100644
-index 0000000..90cb703
+index 0000000..117b744
 --- /dev/null
 +++ b/ui/src/components/crdesigner/WidgetForm.vue
-@@ -0,0 +1,193 @@
+@@ -0,0 +1,195 @@
 +<template>
 +    <div class="widget-form">
 +        <template v-if="w.widget === 'NEI'">
@@ -1501,7 +1501,9 @@ index 0000000..90cb703
 +            <div class="row">
 +                <label class="field narrow"><span>{{ $t("cr_designer.f_list") }}</span><KsInput v-model="w.list" :disabled="!editable" placeholder="MMTEL_SUCCESS" /></label>
 +                <label class="field"><span>{{ $t("cr_designer.f_value") }}</span><KsInput v-model="w.value" :disabled="!editable" placeholder="${item}" /></label>
++                <label class="field narrow"><span>{{ $t("cr_designer.f_separator") }}</span><KsInput v-model="w.separator" :disabled="!editable" placeholder="," /></label>
 +            </div>
++            <span class="hint">{{ $t("cr_designer.separator_hint") }}</span>
 +        </template>
 +
 +        <template v-else-if="w.widget === 'END'">
@@ -2889,10 +2891,10 @@ index e243b34..98af7e7 100644
      {name: "kv/list", path: "/:tenant?/kv", component: () => import("../components/kv/KVs.vue")},
  
 diff --git a/ui/src/translations/en.json b/ui/src/translations/en.json
-index f4a164d..66c1ff3 100644
+index f4a164d..46145bc 100644
 --- a/ui/src/translations/en.json
 +++ b/ui/src/translations/en.json
-@@ -199,6 +199,185 @@
+@@ -199,6 +199,187 @@
      "details": "Details",
      "overview": "Overview",
      "gantt": "Gantt",
@@ -3017,7 +3019,7 @@ index f4a164d..66c1ff3 100644
 +      "ref_node": "the node this pipeline runs for",
 +      "ref_run": "the nodes of this run that failed / succeeded",
 +      "ref_item": "the current item, inside For each",
-+      "ref_step": "a result of an earlier widget (NEI results, MESSAGE_ID of a mail, decision of a decision)",
++      "ref_step": "a result of an earlier widget: NEI results, MESSAGE_ID of a mail; a decision gives decision, comment, decided_by, from, received_at, subject",
 +      "ref_secret": "a Kestra secret and the step's folder - NEI parameters and mail fields only",
 +      "add_widget": "Add widget",
 +      "no_widgets": "No widget yet.",
@@ -3067,6 +3069,8 @@ index f4a164d..66c1ff3 100644
 +      "f_concurrency": "At once (0 = all)",
 +      "f_list": "List",
 +      "f_value": "Value",
++      "f_separator": "Separator",
++      "separator_hint": "With , (default) the value is a comma-separated list of items. With any other separator (e.g. ;) the value is one item kept whole - for texts such as mail replies - and the list is read joined by it.",
 +      "f_status": "Status",
 +      "f_message": "Message"
 +    },

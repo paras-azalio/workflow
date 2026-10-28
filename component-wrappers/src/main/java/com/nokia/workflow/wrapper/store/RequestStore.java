@@ -62,7 +62,8 @@ import java.util.TimeZone;
  *                                          version attaches to flow F ("" when none)
  *   pipeline-context --req-id R [--nodes N1,N2]
  *                 -> order, child (with its collected lists), ciq, activity, run (with --nodes: their results)
- *   collect       --req-id R --name LIST --value V1,V2 [--node N] [--execution E]   adds values to a child's list
+ *   collect       --req-id R --name LIST --value V1,V2 [--separator S] [--node N] [--execution E]   adds values to a
+ *                 child's list; with a separator other than "," the value is kept whole and the list is read joined by S
  *   record        --req-id R --step S --status-text T [--status N] [--node N] [--execution E] [--message M]
  *                 [--request-json J] [--results-json J] [--unless-since ISO]   records a step without an NEI result;
  *                 with --unless-since, only when the request has no row of that step / node since then
@@ -157,8 +158,8 @@ public final class RequestStore {
         } else if ("pipeline-context".equals(name)) {
             return pipelineContext(Long.parseLong(require(opt, "req-id")), opt.get("nodes"));
         } else if ("collect".equals(name)) {
-            return collect(Long.parseLong(require(opt, "req-id")), require(opt, "name"), opt.get("value"), opt.get("node"),
-                    opt.get("execution"));
+            return collect(Long.parseLong(require(opt, "req-id")), require(opt, "name"), opt.get("value"), opt.get("separator"),
+                    opt.get("node"), opt.get("execution"));
         } else if ("record".equals(name)) {
             return record(opt);
         }
@@ -205,6 +206,7 @@ public final class RequestStore {
                     + " name VARCHAR(64) NOT NULL, value TEXT NOT NULL, node_name VARCHAR(128),"
                     + " kestra_execution_id VARCHAR(64), added_at TIMESTAMPTZ NOT NULL DEFAULT now())");
             st.execute("CREATE INDEX IF NOT EXISTS request_value_req ON " + SCHEMA + ".request_value (req_id, name)");
+            st.execute("ALTER TABLE " + SCHEMA + ".request_value ADD COLUMN IF NOT EXISTS separator VARCHAR(8)");
             st.execute("CREATE INDEX IF NOT EXISTS request_step_req ON " + SCHEMA + ".request_step (req_id)");
             st.execute("CREATE INDEX IF NOT EXISTS request_parent ON " + SCHEMA + ".request (parent_req_id)");
         } finally {
@@ -851,16 +853,18 @@ public final class RequestStore {
         return out;
     }
 
-    /** The request with each of its collected lists (request_value) as one comma-separated field. */
+    /** The request with each of its collected lists (request_value) as one field: its distinct values joined by its separator. */
     Map<String, Object> withValues(Map<String, Object> req) throws SQLException {
         Map<String, Object> out = new LinkedHashMap<String, Object>(req);
         Map<String, List<String>> lists = new LinkedHashMap<String, List<String>>();
-        for (Map<String, Object> v : query("SELECT name, value FROM " + SCHEMA + ".request_value WHERE req_id = ?"
+        Map<String, String> separators = new LinkedHashMap<String, String>();
+        for (Map<String, Object> v : query("SELECT name, value, separator FROM " + SCHEMA + ".request_value WHERE req_id = ?"
                 + " ORDER BY value_id", req.get("req_id"))) {
             List<String> l = lists.get((String) v.get("name"));
             if (l == null) {
                 l = new ArrayList<String>();
                 lists.put((String) v.get("name"), l);
+                separators.put((String) v.get("name"), v.get("separator") == null ? "," : (String) v.get("separator"));
             }
             if (!l.contains((String) v.get("value"))) {
                 l.add((String) v.get("value"));
@@ -868,21 +872,39 @@ public final class RequestStore {
         }
         for (Map.Entry<String, List<String>> e : lists.entrySet()) {
             if (!out.containsKey(e.getKey())) {
-                out.put(e.getKey(), join(e.getValue()));
+                StringBuilder sb = new StringBuilder();
+                for (String v : e.getValue()) {
+                    sb.append(sb.length() == 0 ? "" : separators.get(e.getKey())).append(v);
+                }
+                out.put(e.getKey(), sb.toString());
             }
         }
         return out;
     }
 
-    /** Adds values (comma-separated) to a child's list; concurrent pipelines each insert their own rows. */
-    Map<String, Object> collect(long reqId, String name, String values, String node, String execution) throws SQLException {
+    /**
+     * Adds values to a child's list; concurrent pipelines each insert their own rows. With the default separator ","
+     * the value is a comma-separated list of items; with another one (e.g. ";" for mail texts, which hold commas) the
+     * value is one item, kept as it is.
+     */
+    Map<String, Object> collect(long reqId, String name, String values, String separator, String node, String execution)
+            throws SQLException {
         if (!name.matches("[A-Z][A-Z0-9_]{0,63}")) {
             throw new StoreException("list name must be upper-case letters, digits and _ (got '" + name + "')");
         }
+        String sep = separator == null || separator.isEmpty() ? "," : separator;
+        if (sep.length() > 8) {
+            throw new StoreException("a list separator is at most 8 characters");
+        }
         request(reqId);
-        List<String> added = csv(values);
+        List<String> added = new ArrayList<String>();
+        if (",".equals(sep)) {
+            added.addAll(csv(values));
+        } else if (values != null && !values.trim().isEmpty()) {
+            added.add(values);
+        }
         PreparedStatement ps = db.prepareStatement("INSERT INTO " + SCHEMA + ".request_value (req_id, name, value,"
-                + " node_name, kestra_execution_id) VALUES (?,?,?,?,?)");
+                + " node_name, kestra_execution_id, separator) VALUES (?,?,?,?,?,?)");
         try {
             for (String v : added) {
                 ps.setLong(1, reqId);
@@ -890,6 +912,7 @@ public final class RequestStore {
                 ps.setString(3, v);
                 ps.setString(4, emptyToNull(node));
                 ps.setString(5, emptyToNull(execution));
+                ps.setString(6, sep);
                 ps.executeUpdate();
             }
         } finally {

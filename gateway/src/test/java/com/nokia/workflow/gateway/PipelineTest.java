@@ -189,6 +189,25 @@ public class PipelineTest {
     }
 
     @Test
+    public void aReplysSenderTimeAndSubjectCanBeCollectedWholeWithTheirOwnSeparator() {
+        String json = """
+                [{"id": "each", "widget": "FOR_EACH", "items": "A,B", "body": [
+                   {"id": "m", "widget": "MAIL", "to": "x@y.z", "subject": "Refresh ${item}"},
+                   {"id": "r", "widget": "DECISION", "mode": "REPLY", "question": "?", "reply_to": "m", "options": ["SUCCESS", "FAILURE"]},
+                   {"id": "body", "widget": "COLLECT", "list": "EMAIL_BODY_IMSI", "separator": ";",
+                    "value": "(INTERNAL_IMSI_BODY)${item}~|~${step.r.from}~|~${step.r.received_at}~|~${step.r.subject}~|~${step.r.comment}"}]}]""";
+        List<String> p = new ArrayList<>();
+        String y = PipelineCompiler.compile("cr_automation", "P", 1, "s", parse(Pipeline.Hook.NODE, json, p)).yaml();
+        assertEquals(List.of(), p);
+        assertTrue(y.contains("SEPARATOR: \";\""), y);
+        assertTrue(y.contains("--separator \\\"$SEPARATOR\\\""), y);
+        assertTrue(y.contains("results['RECEIVED_AT']"), y);
+        assertTrue(y.contains("MAIL_SUBJECT=$P_"), "the reply reader gets the mail's subject: " + y);
+        assertTrue(has(problems(Pipeline.Hook.NODE, """
+                [{"id": "c", "widget": "COLLECT", "list": "X", "value": "v", "separator": ""}]"""), "'separator' must be 1-8 characters"));
+    }
+
+    @Test
     public void yamlScalarsAreAlwaysQuoted() {
         assertEquals("\"a: \\\"b\\\"\\n#c\"", PipelineCompiler.Yaml.scalar("a: \"b\"\n#c"));
         assertEquals("5", PipelineCompiler.Yaml.scalar(5));

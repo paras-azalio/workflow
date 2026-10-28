@@ -28,14 +28,15 @@ import java.util.regex.Pattern;
  * IF        {"id", "widget": "IF", "conditions": [{"ref": "activity.sub_activity", "op": "equals", "value": "33"}],
  *            "then": [...], "else": [...]}
  * FOR_EACH  {"id", "widget": "FOR_EACH", "items": "${step.main.SUCCESS_IMSIS}", "concurrency": 1, "body": [...]}
- * COLLECT   {"id", "widget": "COLLECT", "list": "MMTEL_SUCCESS", "value": "${item}"}
+ * COLLECT   {"id", "widget": "COLLECT", "list": "MMTEL_SUCCESS", "value": "${item}", "separator": ","}   with another
+ *            separator than "," the value is one item kept whole (e.g. a mail text) and the list reads joined by it
  * END       {"id", "widget": "END", "status": "SUCCESS" | "FAILED", "message"}
  * </pre>
  * References in texts: {@code ${order.X}}, {@code ${child.X}} (also the child's collected lists), {@code ${ciq.X}},
  * {@code ${activity.node_type}}, {@code ${activity.sub_activity}}, {@code ${node}} (node pipeline),
  * {@code ${run.nodes|failed_nodes|succeeded_nodes|failed_count}} (after_nodes), {@code ${item}} (inside For each),
  * {@code ${step.ID.FIELD}} (an earlier widget: NEI / MAIL results, status, statusText, message; DECISION decision,
- * comment, decided_by), and in NEI parameters and mail fields {@code ${secret:NAME}} and {@code ${WORKDIR}}.
+ * comment, decided_by, from, received_at (yyyyMMddHHmmss), subject), and in NEI parameters and mail fields {@code ${secret:NAME}} and {@code ${WORKDIR}}.
  */
 final class Pipeline {
 
@@ -82,7 +83,7 @@ final class Pipeline {
     record ForEach(String id, String label, String items, int concurrency, List<Widget> body) implements Widget {
     }
 
-    record Collect(String id, String label, String list, String value) implements Widget {
+    record Collect(String id, String label, String list, String value, String separator) implements Widget {
     }
 
     record End(String id, String label, boolean failed, String message) implements Widget {
@@ -93,7 +94,7 @@ final class Pipeline {
 
     static final Pattern REF = Pattern.compile("\\$\\{([^}]*)\\}");
     static final Set<String> CONDITION_OPS = Set.of("equals", "not_equals", "in", "not_in", "empty", "non_empty");
-    static final Set<String> DECISION_FIELDS = Set.of("decision", "comment", "decided_by");
+    static final Set<String> DECISION_FIELDS = Set.of("decision", "comment", "decided_by", "from", "received_at", "subject");
     static final Set<String> RUN_FIELDS = Set.of("nodes", "failed_nodes", "succeeded_nodes", "failed_count");
     /** Parameters that identify the order; a pipeline cannot send others. */
     static final Set<String> IDENTITY_PARAMS = Set.of("REQ_ID", "CHILD_REQ_ID", "PARENT_REQ_ID", "ORDER_NO", "REQ_TYPE");
@@ -419,7 +420,11 @@ final class Pipeline {
                 problems.add(at + ": 'value' is required.");
             }
             text(at, "value", value, visible, loops, false);
-            return new Collect(id, label, list, value);
+            String separator = String.valueOf(m.getOrDefault("separator", ","));
+            if (separator.isEmpty() || separator.length() > 8 || separator.chars().anyMatch(c -> c < 0x20)) {
+                problems.add(at + ": 'separator' must be 1-8 characters on one line (default ,).");
+            }
+            return new Collect(id, label, list, value, separator);
         }
 
         End end(String at, String id, String label, Map<String, Object> m, Map<String, Widget> visible, int loops) {

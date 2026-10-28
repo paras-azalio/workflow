@@ -190,6 +190,8 @@ final class PipelineCompiler {
         String decision;
         String comment;
         String decidedBy;
+        String from;
+        String subject;
         if (d.manual()) {
             Map<String, Object> pause = new LinkedHashMap<>();
             pause.put("id", d.id() + "__wait");
@@ -206,9 +208,12 @@ final class PipelineCompiler {
             decision = "{{ " + r + ".decision ?? '" + escape(onTimeout) + "' }}";
             comment = "{{ " + r + ".comment ?? '' }}";
             decidedBy = "{{ " + r + ".decided_by ?? 'timeout' }}";
+            from = decidedBy;
+            subject = "";
         } else {
             Map<String, String> params = new LinkedHashMap<>();
             params.put("MESSAGE_ID", "${step." + d.replyTo() + ".MESSAGE_ID}");
+            params.put("MAIL_SUBJECT", mailSubject(d.replyTo()));
             params.put("OPTIONS", String.join(",", d.options()));
             context(params, loops);
             Map<String, Object> checkEnv = new LinkedHashMap<>();
@@ -229,11 +234,16 @@ final class PipelineCompiler {
             decision = "{{ " + r + " == 'PENDING' ? '" + escape(onTimeout) + "' : " + r + " }}";
             comment = "{{ outputs." + d.id() + "__final.vars.results['TEXT'] ?? '' }}";
             decidedBy = "{{ " + r + " == 'PENDING' ? 'timeout' : 'reply' }}";
+            from = "{{ outputs." + d.id() + "__final.vars.results['FROM'] ?? '' }}";
+            subject = "{{ outputs." + d.id() + "__final.vars.results['SUBJECT'] ?? '' }}";
         }
         Map<String, Object> values = new LinkedHashMap<>();
         values.put("id", d.id());
         values.put("type", "io.kestra.plugin.core.output.OutputValues");
-        values.put("values", map("decision", decision, "comment", comment, "decided_by", decidedBy));
+        values.put("values", map("decision", decision, "comment", comment, "decided_by", decidedBy, "from", from,
+                "received_at", d.manual() ? "{{ now() | date('yyyyMMddHHmmss') }}"
+                        : "{{ outputs." + d.id() + "__final.vars.results['RECEIVED_AT'] ?? '' }}",
+                "subject", subject));
         out.add(values);
 
         Map<String, Object> doneEnv = new LinkedHashMap<>();
@@ -300,8 +310,10 @@ final class PipelineCompiler {
     private Map<String, Object> collect(Pipeline.Collect c) {
         Map<String, Object> env = new LinkedHashMap<>();
         env.put("VALUE", template(c.value(), 1));
+        env.put("SEPARATOR", c.separator());
         return shell(c.id(), describe(c, "Collect into " + c.list()), BASE_FILES, env,
                 List.of("sh bin/store.sh collect --req-id \"{{ inputs.child_id }}\" --name " + c.list() + " --value \"$VALUE\""
+                        + " --separator \"$SEPARATOR\""
                         + (pipeline.hook == Pipeline.Hook.NODE ? " --node \"{{ inputs.node }}\"" : "")
                         + " --execution \"{{ execution.id }}\""), false);
     }
@@ -458,6 +470,12 @@ final class PipelineCompiler {
             default -> throw new IllegalArgumentException("unknown reference " + ref);
         };
         return "('' ~ (" + e + " ?? ''))";
+    }
+
+    /** The subject template of a mail widget, so a reply reader can match or quote it. */
+    private String mailSubject(String mailId) {
+        return Pipeline.flatten(pipeline.widgets).stream().filter(x -> x.id().equals(mailId)).findFirst()
+                .map(w -> ((Pipeline.Mail) w).subject()).orElse("");
     }
 
     private String stepRef(String widgetId, String field) {
