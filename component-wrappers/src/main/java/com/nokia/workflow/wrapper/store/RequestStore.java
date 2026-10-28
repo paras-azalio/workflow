@@ -46,6 +46,8 @@ import java.util.TimeZone;
  *                 -> req_id (N if given and free, else the next number), taken (all ids); creates DIR/&lt;id&gt;/
  *   record-step   --req-id R --step S [--node N] [--execution E] --result result.json [--io-log F] [--mml-log F]
  *   set-stage     --req-id R --stage S [--if-stage S1,S2] [--cr-list CR1,CR2] [--json-file F]
+ *   step-config   --req-id R --step S [--node N] --out FILE
+ *                 -> the step's request overrides from the order's activity configuration, as a properties file
  *   claim-nodes   --req-id R --nodes N1,N2|* --execution E
  *                 -> the child's data and the claimed nodes; all or none: fails when a node is not in the child's
  *                    MOP or another execution is running it
@@ -56,7 +58,16 @@ import java.util.TimeZone;
  *                                    children, cr_options, child_options, node options, rollback_options)
  *   locked        --key K -- command args...   runs the command while holding a database lock on K (one at a
  *                 time across all executions); exits with the command's exit code
+ *   pipelines     --req-id R --flow F   -> node, after_nodes: the compiled pipeline flows the order's process
+ *                                          version attaches to flow F ("" when none)
+ *   pipeline-context --req-id R [--nodes N1,N2]
+ *                 -> order, child (with its collected lists), ciq, activity, run (with --nodes: their results)
+ *   collect       --req-id R --name LIST --value V1,V2 [--node N] [--execution E]   adds values to a child's list
+ *   record        --req-id R --step S --status-text T [--status N] [--node N] [--execution E] [--message M]
+ *                 [--request-json J] [--results-json J] [--unless-since ISO]   records a step without an NEI result;
+ *                 with --unless-since, only when the request has no row of that step / node since then
  * </pre>
+ * A node's result is its latest MOP_EXECUTION or NODE_PIPELINE row (a pipeline records NODE_PIPELINE when it ends).
  * Config ({@code --config} properties): {@code store.jdbc.url}, {@code store.jdbc.user}; the password comes from the
  * environment variable {@code STORE_JDBC_PASSWORD}. Rollback is offered for an activity only when
  * {@code rollback.<NODE_TYPE>_<ACTIVITY>=true}. The PostgreSQL JDBC driver must be on the classpath.
@@ -130,6 +141,9 @@ public final class RequestStore {
             return recordStep(opt);
         } else if ("set-stage".equals(name)) {
             return setStage(opt);
+        } else if ("step-config".equals(name)) {
+            return stepConfig(Long.parseLong(require(opt, "req-id")), require(opt, "step"), opt.get("node"),
+                    new File(require(opt, "out")));
         } else if ("claim-nodes".equals(name)) {
             return claimNodes(Long.parseLong(require(opt, "req-id")), require(opt, "nodes"), require(opt, "execution"));
         } else if ("release-nodes".equals(name)) {
@@ -138,6 +152,15 @@ public final class RequestStore {
             return childStatus(Long.parseLong(require(opt, "req-id")), opt.get("nodes"), opt.containsKey("update-stage"));
         } else if ("registry".equals(name)) {
             return registry(Long.parseLong(require(opt, "order")));
+        } else if ("pipelines".equals(name)) {
+            return pipelines(Long.parseLong(require(opt, "req-id")), require(opt, "flow"));
+        } else if ("pipeline-context".equals(name)) {
+            return pipelineContext(Long.parseLong(require(opt, "req-id")), opt.get("nodes"));
+        } else if ("collect".equals(name)) {
+            return collect(Long.parseLong(require(opt, "req-id")), require(opt, "name"), opt.get("value"), opt.get("node"),
+                    opt.get("execution"));
+        } else if ("record".equals(name)) {
+            return record(opt);
         }
         throw new StoreException("unknown command '" + name + "'");
     }
@@ -172,6 +195,16 @@ public final class RequestStore {
                     + " kestra_execution_id VARCHAR(64) NOT NULL,"
                     + " claimed_at TIMESTAMPTZ NOT NULL DEFAULT now(),"
                     + " PRIMARY KEY (req_id, node_name))");
+            st.execute("ALTER TABLE " + SCHEMA + ".request ADD COLUMN IF NOT EXISTS process_id BIGINT");
+            st.execute("ALTER TABLE " + SCHEMA + ".request ADD COLUMN IF NOT EXISTS process_version INT");
+            st.execute("ALTER TABLE " + SCHEMA + ".request ADD COLUMN IF NOT EXISTS activity_id BIGINT");
+            st.execute("ALTER TABLE " + SCHEMA + ".request ADD COLUMN IF NOT EXISTS activity_version INT");
+            st.execute("CREATE TABLE IF NOT EXISTS " + SCHEMA + ".request_value ("
+                    + " value_id BIGSERIAL PRIMARY KEY,"
+                    + " req_id BIGINT NOT NULL REFERENCES " + SCHEMA + ".request(req_id),"
+                    + " name VARCHAR(64) NOT NULL, value TEXT NOT NULL, node_name VARCHAR(128),"
+                    + " kestra_execution_id VARCHAR(64), added_at TIMESTAMPTZ NOT NULL DEFAULT now())");
+            st.execute("CREATE INDEX IF NOT EXISTS request_value_req ON " + SCHEMA + ".request_value (req_id, name)");
             st.execute("CREATE INDEX IF NOT EXISTS request_step_req ON " + SCHEMA + ".request_step (req_id)");
             st.execute("CREATE INDEX IF NOT EXISTS request_parent ON " + SCHEMA + ".request (parent_req_id)");
         } finally {
@@ -215,9 +248,13 @@ public final class RequestStore {
                 throw new StoreException("cannot create the order folder " + folder);
             }
             Map<String, Object> from = parent == null ? new LinkedHashMap<String, Object>() : request(parent);
+            Object[] process = parent == null ? publishedProcess() : new Object[] {from.get("process_id"), from.get("process_version")};
+            Object[] activity = parent == null
+                    ? publishedActivity(first(opt.get("node-type"), null), first(opt.get("activity"), null))
+                    : new Object[] {from.get("activity_id"), from.get("activity_version")};
             PreparedStatement ps = db.prepareStatement("INSERT INTO " + SCHEMA + ".request (req_id, parent_req_id,"
-                    + " kind, node_type, activity, node_version, cr_name, stage, json_file, folder, kestra_execution_id)"
-                    + " VALUES (?,?,?,?,?,?,?,?,?,?,?)");
+                    + " kind, node_type, activity, node_version, cr_name, stage, json_file, folder, kestra_execution_id,"
+                    + " process_id, process_version, activity_id, activity_version) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)");
             try {
                 ps.setLong(1, id);
                 if (parent == null) {
@@ -234,6 +271,10 @@ public final class RequestStore {
                 ps.setString(9, (String) from.get("json_file"));
                 ps.setString(10, folder.getPath().replace('\\', '/'));
                 ps.setString(11, opt.get("execution"));
+                ps.setObject(12, process[0]);
+                ps.setObject(13, process[1]);
+                ps.setObject(14, activity[0]);
+                ps.setObject(15, activity[1]);
                 ps.executeUpdate();
             } finally {
                 ps.close();
@@ -254,6 +295,178 @@ public final class RequestStore {
         } finally {
             db.setAutoCommit(true);
         }
+    }
+
+    /**
+     * The process version a new order is pinned to: the latest PUBLISHED version of the project's process
+     * (config {@code store.project}, default CR_AUTOMATION). {null, null} while the gateway has not created the
+     * process tables; a child always takes its order's version.
+     */
+    private Object[] publishedProcess() throws SQLException {
+        List<Map<String, Object>> exists = query("SELECT to_regclass('" + SCHEMA + ".process_version') IS NOT NULL AS ok");
+        if (exists.isEmpty() || !Boolean.TRUE.equals(exists.get(0).get("ok"))) {
+            return new Object[] {null, null};
+        }
+        List<Map<String, Object>> rows = query("SELECT p.process_id, v.version FROM " + SCHEMA + ".process p JOIN " + SCHEMA
+                + ".process_version v ON v.process_id = p.process_id WHERE p.project = ? AND v.state = 'PUBLISHED'"
+                + " ORDER BY v.version DESC LIMIT 1", config.getProperty("store.project", "CR_AUTOMATION"));
+        return rows.isEmpty() ? new Object[] {null, null}
+                : new Object[] {rows.get(0).get("process_id"), rows.get(0).get("version")};
+    }
+
+    /**
+     * The activity configuration version a new order is pinned to: the latest PUBLISHED version declared for its
+     * node type + sub-activity. {null, null} when none is declared (the steps then run with the flows' own values).
+     */
+    private Object[] publishedActivity(String nodeType, String subActivity) throws SQLException {
+        List<Map<String, Object>> exists = query("SELECT to_regclass('" + SCHEMA + ".activity_version') IS NOT NULL AS ok");
+        if (nodeType == null || subActivity == null || exists.isEmpty() || !Boolean.TRUE.equals(exists.get(0).get("ok"))) {
+            return new Object[] {null, null};
+        }
+        List<Map<String, Object>> rows = query("SELECT a.activity_id, v.version FROM " + SCHEMA + ".activity a JOIN " + SCHEMA
+                + ".activity_version v ON v.activity_id = a.activity_id WHERE a.project = ? AND a.node_type = ?"
+                + " AND a.sub_activity = ? AND v.state = 'PUBLISHED' ORDER BY v.version DESC LIMIT 1",
+                config.getProperty("store.project", "CR_AUTOMATION"), nodeType, subActivity);
+        return rows.isEmpty() ? new Object[] {null, null}
+                : new Object[] {rows.get(0).get("activity_id"), rows.get(0).get("version")};
+    }
+
+    // ------------------------------------------------------------------ step-config (activity configuration of one step)
+
+    private static final java.util.regex.Pattern REF = java.util.regex.Pattern.compile("\\$\\{([^}]*)\\}");
+
+    /**
+     * Writes the request overrides of one step, from the activity configuration version the order is pinned to:
+     * section {@code *} then the step's section, each with {@code params} (as KEY), {@code login} (as login.KEY),
+     * {@code grc} (as grc.KEY), then its {@code nodes} entries whose pattern matches the node, in declaration order
+     * (later wins). References {@code ${order.X}}, {@code ${child.X}}, {@code ${node}}, {@code ${ciq.X}} are
+     * resolved here; {@code ${secret:NAME}} and {@code ${WORKDIR}} are left for the wrapper. An empty file when the
+     * order has no activity configuration.
+     */
+    @SuppressWarnings("unchecked")
+    Map<String, Object> stepConfig(long reqId, String step, String node, File out) throws Exception {
+        Map<String, Object> req = request(reqId);
+        Map<String, Object> order = req.get("parent_req_id") == null ? req
+                : request(((Number) req.get("parent_req_id")).longValue());
+        Map<String, String> overrides = new LinkedHashMap<String, String>();
+        String source = null;
+        if (order.get("activity_id") != null && order.get("activity_version") != null) {
+            List<Map<String, Object>> rows = query("SELECT a.node_type, a.sub_activity, v.config FROM " + SCHEMA + ".activity a JOIN "
+                    + SCHEMA + ".activity_version v ON v.activity_id = a.activity_id WHERE a.activity_id = ? AND v.version = ?",
+                    order.get("activity_id"), order.get("activity_version"));
+            if (rows.isEmpty()) {
+                throw new StoreException("order " + order.get("req_id") + " is pinned to activity configuration "
+                        + order.get("activity_id") + " v" + order.get("activity_version") + ", which does not exist");
+            }
+            Map<String, Object> row = rows.get(0);
+            source = row.get("node_type") + "/" + row.get("sub_activity") + " v" + order.get("activity_version");
+            Object cfg = SimpleJson.parse(String.valueOf(row.get("config")));
+            Object steps = cfg instanceof Map ? ((Map<String, Object>) cfg).get("steps") : null;
+            if (steps instanceof Map) {
+                for (String section : new String[] {"*", step}) {
+                    Object s = ((Map<String, Object>) steps).get(section);
+                    if (s instanceof Map) {
+                        apply((Map<String, Object>) s, overrides);
+                        Object nodes = ((Map<String, Object>) s).get("nodes");
+                        if (nodes instanceof Map && node != null && !node.isEmpty()) {
+                            for (Map.Entry<String, Object> n : ((Map<String, Object>) nodes).entrySet()) {
+                                if (glob(n.getKey(), node) && n.getValue() instanceof Map) {
+                                    apply((Map<String, Object>) n.getValue(), overrides);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            Map<String, Object> ciq = null;
+            for (Map.Entry<String, String> e : overrides.entrySet()) {
+                if (e.getValue().contains("${ciq.") && ciq == null) {
+                    ciq = ciqResults(((Number) order.get("req_id")).longValue());
+                }
+                e.setValue(resolve(e.getKey(), e.getValue(), order, req.get("parent_req_id") == null ? null : withValues(req), node, ciq));
+            }
+        }
+        Properties p = new Properties();
+        for (Map.Entry<String, String> e : overrides.entrySet()) {
+            p.setProperty(e.getKey(), e.getValue());
+        }
+        java.io.OutputStream os = new java.io.FileOutputStream(out);
+        try {
+            p.store(new java.io.OutputStreamWriter(os, StandardCharsets.UTF_8),
+                    source == null ? "no activity configuration" : "activity configuration " + source + ", step " + step);
+        } finally {
+            os.close();
+        }
+        Map<String, Object> o = new LinkedHashMap<String, Object>();
+        o.put("activity_config", source);
+        o.put("keys", new ArrayList<String>(overrides.keySet()));
+        return o;
+    }
+
+    @SuppressWarnings("unchecked")
+    private static void apply(Map<String, Object> section, Map<String, String> overrides) {
+        for (String[] part : new String[][] {{"params", ""}, {"login", "login."}, {"grc", "grc."}}) {
+            Object values = section.get(part[0]);
+            if (values instanceof Map) {
+                for (Map.Entry<String, Object> v : ((Map<String, Object>) values).entrySet()) {
+                    overrides.put(part[1] + v.getKey(), v.getValue() == null ? "" : String.valueOf(v.getValue()));
+                }
+            }
+        }
+    }
+
+    /** Node patterns: {@code *} any characters, {@code ?} one character, everything else literally. */
+    static boolean glob(String pattern, String value) {
+        StringBuilder re = new StringBuilder();
+        for (char c : pattern.toCharArray()) {
+            re.append(c == '*' ? ".*" : c == '?' ? "." : java.util.regex.Pattern.quote(String.valueOf(c)));
+        }
+        return value.matches(re.toString());
+    }
+
+    static String resolve(String key, String value, Map<String, Object> order, Map<String, Object> child, String node,
+                          Map<String, Object> ciq) {
+        java.util.regex.Matcher m = REF.matcher(value);
+        StringBuffer sb = new StringBuffer();
+        while (m.find()) {
+            String ref = m.group(1).trim();
+            String v;
+            if (ref.startsWith("secret:") || "WORKDIR".equals(ref)) {
+                v = m.group(0);   // resolved by the wrapper inside the step
+            } else if ("node".equals(ref)) {
+                v = node;
+            } else if (ref.startsWith("order.")) {
+                v = field(order, ref.substring(6));
+            } else if (ref.startsWith("child.")) {
+                v = child == null ? null : field(child, ref.substring(6));
+            } else if (ref.startsWith("ciq.")) {
+                Object c = ciq == null ? null : ciq.get(ref.substring(4));
+                v = c == null ? null : String.valueOf(c);
+            } else {
+                throw new StoreException(key + ": unknown reference ${" + ref + "} (use order.X, child.X, node, ciq.X,"
+                        + " secret:NAME or WORKDIR)");
+            }
+            if (v == null) {
+                throw new StoreException(key + ": ${" + ref + "} has no value for this step");
+            }
+            m.appendReplacement(sb, java.util.regex.Matcher.quoteReplacement(v));
+        }
+        m.appendTail(sb);
+        return sb.toString();
+    }
+
+    /** order.X / child.X: id, folder and the request's columns (node_type, activity, cr_name, json_file, ...). */
+    private static String field(Map<String, Object> request, String name) {
+        Object v = "id".equals(name) || "order_no".equals(name) ? request.get("req_id") : request.get(name);
+        return v == null ? null : String.valueOf(v);
+    }
+
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> ciqResults(long orderId) throws SQLException {
+        List<Map<String, Object>> rows = query("SELECT results FROM " + SCHEMA + ".request_step WHERE req_id = ?"
+                + " AND step = 'CIQ_VALIDATION' AND status = 0 ORDER BY step_id DESC LIMIT 1", orderId);
+        return rows.isEmpty() ? new LinkedHashMap<String, Object>()
+                : (Map<String, Object>) SimpleJson.parse(String.valueOf(rows.get(0).get("results")));
     }
 
     private Set<Long> takenIds(File shared) throws SQLException {
@@ -501,7 +714,7 @@ public final class RequestStore {
             List<String> nodes = new ArrayList<String>();
             List<String> failed = new ArrayList<String>();
             Map<String, Boolean> latestOk = new LinkedHashMap<String, Boolean>();
-            for (Map<String, Object> row : latestPerNode(reqId, "MOP_EXECUTION")) {
+            for (Map<String, Object> row : latestPerNode(reqId, "MOP_EXECUTION", "NODE_PIPELINE")) {
                 String node = (String) row.get("node_name");
                 boolean ok = ((Number) row.get("status")).intValue() == 0;
                 latestOk.put(node, ok);
@@ -552,10 +765,203 @@ public final class RequestStore {
         }
     }
 
-    private List<Map<String, Object>> latestPerNode(long reqId, String step) throws SQLException {
-        return query("SELECT DISTINCT ON (node_name) node_name, status, results ->> 'ROLLBACK_ENABLED' AS rollback_enabled,"
+    /** The latest row per node among the given steps. */
+    private List<Map<String, Object>> latestPerNode(long reqId, String... steps) throws SQLException {
+        StringBuilder in = new StringBuilder();
+        Object[] params = new Object[steps.length + 1];
+        params[0] = reqId;
+        for (int i = 0; i < steps.length; i++) {
+            in.append(i == 0 ? "?" : ",?");
+            params[i + 1] = steps[i];
+        }
+        return query("SELECT DISTINCT ON (node_name) node_name, step, status, results ->> 'ROLLBACK_ENABLED' AS rollback_enabled,"
                 + " kestra_execution_id, recorded_at FROM " + SCHEMA + ".request_step"
-                + " WHERE req_id = ? AND step = ? AND node_name IS NOT NULL ORDER BY node_name, step_id DESC", reqId, step);
+                + " WHERE req_id = ? AND step IN (" + in + ") AND node_name IS NOT NULL ORDER BY node_name, step_id DESC", params);
+    }
+
+    // ------------------------------------------------------------------ pipelines (compiled by the gateway at publish)
+
+    /**
+     * The pipeline flows the order's pinned process version attaches to {@code flow}: column {@code compiled} of
+     * {@code process_version}, {@code {"<flow>": {"node": "<flow id>", "after_nodes": "<flow id>"}}}. Empty values
+     * when the version has none (the flow then runs its own default steps).
+     */
+    @SuppressWarnings("unchecked")
+    Map<String, Object> pipelines(long reqId, String flow) throws SQLException {
+        Map<String, Object> out = new LinkedHashMap<String, Object>();
+        out.put("node", "");
+        out.put("after_nodes", "");
+        Map<String, Object> req = request(reqId);
+        Map<String, Object> order = req.get("parent_req_id") == null ? req : request(((Number) req.get("parent_req_id")).longValue());
+        List<Map<String, Object>> col = query("SELECT 1 FROM information_schema.columns WHERE table_schema = ?"
+                + " AND table_name = 'process_version' AND column_name = 'compiled'", SCHEMA);
+        if (col.isEmpty() || order.get("process_id") == null || order.get("process_version") == null) {
+            return out;
+        }
+        List<Map<String, Object>> rows = query("SELECT compiled::text AS compiled FROM " + SCHEMA + ".process_version"
+                + " WHERE process_id = ? AND version = ?", order.get("process_id"), order.get("process_version"));
+        if (rows.isEmpty() || rows.get(0).get("compiled") == null) {
+            return out;
+        }
+        Object compiled = SimpleJson.parse(String.valueOf(rows.get(0).get("compiled")));
+        Object hooks = compiled instanceof Map ? ((Map<String, Object>) compiled).get(flow) : null;
+        if (hooks instanceof Map) {
+            for (String hook : new String[] {"node", "after_nodes"}) {
+                Object id = ((Map<String, Object>) hooks).get(hook);
+                if (id != null) {
+                    out.put(hook, String.valueOf(id));
+                }
+            }
+        }
+        return out;
+    }
+
+    /**
+     * What a pipeline's references read: {@code order} and {@code child} (request columns as text, the child with
+     * its collected lists as comma-separated text), {@code ciq} (the order's validation results), {@code activity}
+     * ({@code node_type}, {@code sub_activity}) and, with {@code nodes}, {@code run}: nodes, failed_nodes,
+     * succeeded_nodes (comma-separated) and failed_count of those nodes.
+     */
+    @SuppressWarnings("unchecked")
+    Map<String, Object> pipelineContext(long reqId, String nodes) throws SQLException {
+        Map<String, Object> req = request(reqId);
+        boolean isChild = req.get("parent_req_id") != null;
+        Map<String, Object> order = isChild ? request(((Number) req.get("parent_req_id")).longValue()) : req;
+        Map<String, Object> out = new LinkedHashMap<String, Object>();
+        out.put("order", texts(order));
+        out.put("child", isChild ? texts(withValues(req)) : new LinkedHashMap<String, Object>());
+        out.put("ciq", ciqResults(((Number) order.get("req_id")).longValue()));
+        Map<String, Object> activity = new LinkedHashMap<String, Object>();
+        activity.put("node_type", text(order.get("node_type")));
+        activity.put("sub_activity", text(order.get("activity")));
+        out.put("activity", activity);
+        Map<String, Object> run = new LinkedHashMap<String, Object>();
+        if (nodes != null && isChild) {
+            Map<String, Object> status = childStatus(reqId, nodes, false);
+            List<String> ran = (List<String>) status.get("nodes");
+            List<String> failed = (List<String>) status.get("failed_nodes");
+            List<String> ok = new ArrayList<String>(ran);
+            ok.removeAll(failed);
+            run.put("nodes", join(csv(nodes)));
+            run.put("failed_nodes", join(failed));
+            run.put("succeeded_nodes", join(ok));
+            run.put("failed_count", String.valueOf(failed.size()));
+        }
+        out.put("run", run);
+        return out;
+    }
+
+    /** The request with each of its collected lists (request_value) as one comma-separated field. */
+    Map<String, Object> withValues(Map<String, Object> req) throws SQLException {
+        Map<String, Object> out = new LinkedHashMap<String, Object>(req);
+        Map<String, List<String>> lists = new LinkedHashMap<String, List<String>>();
+        for (Map<String, Object> v : query("SELECT name, value FROM " + SCHEMA + ".request_value WHERE req_id = ?"
+                + " ORDER BY value_id", req.get("req_id"))) {
+            List<String> l = lists.get((String) v.get("name"));
+            if (l == null) {
+                l = new ArrayList<String>();
+                lists.put((String) v.get("name"), l);
+            }
+            if (!l.contains((String) v.get("value"))) {
+                l.add((String) v.get("value"));
+            }
+        }
+        for (Map.Entry<String, List<String>> e : lists.entrySet()) {
+            if (!out.containsKey(e.getKey())) {
+                out.put(e.getKey(), join(e.getValue()));
+            }
+        }
+        return out;
+    }
+
+    /** Adds values (comma-separated) to a child's list; concurrent pipelines each insert their own rows. */
+    Map<String, Object> collect(long reqId, String name, String values, String node, String execution) throws SQLException {
+        if (!name.matches("[A-Z][A-Z0-9_]{0,63}")) {
+            throw new StoreException("list name must be upper-case letters, digits and _ (got '" + name + "')");
+        }
+        request(reqId);
+        List<String> added = csv(values);
+        PreparedStatement ps = db.prepareStatement("INSERT INTO " + SCHEMA + ".request_value (req_id, name, value,"
+                + " node_name, kestra_execution_id) VALUES (?,?,?,?,?)");
+        try {
+            for (String v : added) {
+                ps.setLong(1, reqId);
+                ps.setString(2, name);
+                ps.setString(3, v);
+                ps.setString(4, emptyToNull(node));
+                ps.setString(5, emptyToNull(execution));
+                ps.executeUpdate();
+            }
+        } finally {
+            ps.close();
+        }
+        Map<String, Object> out = single("added", added.size());
+        out.put("name", name);
+        return out;
+    }
+
+    /** A step row without an NEI result (pipeline outcome, decision, ...). */
+    Map<String, Object> record(Map<String, String> opt) throws Exception {
+        long reqId = Long.parseLong(require(opt, "req-id"));
+        String step = require(opt, "step");
+        String node = emptyToNull(opt.get("node"));
+        String text = require(opt, "status-text").toUpperCase();
+        int status = emptyToNull(opt.get("status")) != null ? Integer.parseInt(opt.get("status").trim())
+                : "SUCCESS".equals(text) || "DECIDED".equals(text) ? 0 : "FAILED".equals(text) || "KILLED".equals(text) ? 9 : 1;
+        Map<String, Object> req = request(reqId);
+        if (emptyToNull(opt.get("unless-since")) != null) {
+            Timestamp since = new Timestamp(java.time.OffsetDateTime.parse(opt.get("unless-since").trim()).toInstant().toEpochMilli());
+            List<Map<String, Object>> rows = query("SELECT step_id FROM " + SCHEMA + ".request_step WHERE req_id = ? AND step = ?"
+                    + " AND node_name IS NOT DISTINCT FROM ? AND recorded_at >= ?", reqId, step, node, since);
+            if (!rows.isEmpty()) {
+                Map<String, Object> out = single("step_id", rows.get(0).get("step_id"));
+                out.put("recorded", false);
+                return out;
+            }
+        }
+        PreparedStatement ps = db.prepareStatement("INSERT INTO " + SCHEMA + ".request_step (req_id, parent_req_id,"
+                + " kestra_execution_id, step, node_name, status, status_text, message, request, results, started_at,"
+                + " duration_ms) VALUES (?,?,?,?,?,?,?,?,CAST(? AS JSONB),CAST(? AS JSONB),now(),0) RETURNING step_id");
+        try {
+            ps.setLong(1, reqId);
+            ps.setObject(2, req.get("parent_req_id"));
+            ps.setString(3, emptyToNull(opt.get("execution")));
+            ps.setString(4, step);
+            ps.setString(5, node);
+            ps.setInt(6, status);
+            ps.setString(7, text);
+            ps.setString(8, opt.get("message"));
+            ps.setString(9, json(opt.get("request-json")));
+            ps.setString(10, json(opt.get("results-json")));
+            ResultSet rs = ps.executeQuery();
+            rs.next();
+            Map<String, Object> out = single("step_id", rs.getLong(1));
+            out.put("recorded", true);
+            return out;
+        } finally {
+            ps.close();
+        }
+    }
+
+    /** JSON text checked by parsing it ({@code {}} when empty), so a bad value fails here and not in PostgreSQL. */
+    static String json(String s) {
+        if (s == null || s.trim().isEmpty()) {
+            return "{}";
+        }
+        return SimpleJson.writeCompact(SimpleJson.parse(s));
+    }
+
+    private static Map<String, Object> texts(Map<String, Object> row) {
+        Map<String, Object> out = new LinkedHashMap<String, Object>();
+        for (Map.Entry<String, Object> e : row.entrySet()) {
+            out.put(e.getKey(), text(e.getValue()));
+        }
+        out.put("id", text(row.get("req_id")));
+        return out;
+    }
+
+    private static String text(Object v) {
+        return v == null ? "" : String.valueOf(v);
     }
 
     // ------------------------------------------------------------------ registry (what the forms and the Order tab read)
@@ -586,6 +992,10 @@ public final class RequestStore {
         order.put("node_version", o.get("node_version"));
         order.put("json_file", o.get("json_file"));
         order.put("order_dir", o.get("folder"));
+        order.put("process_id", o.get("process_id"));
+        order.put("process_version", o.get("process_version"));
+        order.put("activity_id", o.get("activity_id"));
+        order.put("activity_version", o.get("activity_version"));
         List<String> crList = new ArrayList<String>();
         if (o.get("cr_list") != null && "VALIDATED".equals(o.get("stage"))) {   // an invalid CIQ has no usable CRs
             for (String cr : ((String) o.get("cr_list")).split(",")) {
@@ -623,13 +1033,18 @@ public final class RequestStore {
                 runningIn.put((String) l.get("node_name"), (String) l.get("kestra_execution_id"));
             }
             List<Object> nodes = new ArrayList<Object>();
+            List<Object> childRollbackOptions = new ArrayList<Object>();
             Map<String, Object> lastRollback = new LinkedHashMap<String, Object>();
             for (Map<String, Object> r : latestPerNode(childId, "ROLLBACK")) {
                 lastRollback.put((String) r.get("node_name"), r.get("status"));
             }
-            for (Map<String, Object> n : latestPerNode(childId, "MOP_EXECUTION")) {
+            Map<String, Object> rollbackEnabled = new LinkedHashMap<String, Object>();
+            for (Map<String, Object> r : latestPerNode(childId, "MOP_EXECUTION")) {
+                rollbackEnabled.put((String) r.get("node_name"), r.get("rollback_enabled"));
+            }
+            for (Map<String, Object> n : latestPerNode(childId, "MOP_EXECUTION", "NODE_PIPELINE")) {
                 String node = (String) n.get("node_name");
-                boolean enabled = "TRUE".equalsIgnoreCase(String.valueOf(n.get("rollback_enabled")));
+                boolean enabled = "TRUE".equalsIgnoreCase(String.valueOf(rollbackEnabled.get(node)));
                 boolean rolledBack = lastRollback.containsKey(node) && ((Number) lastRollback.get(node)).intValue() == 0;
                 Map<String, Object> m = new LinkedHashMap<String, Object>();
                 m.put("node", node);
@@ -642,6 +1057,7 @@ public final class RequestStore {
                     opt.put("value", childId + ":" + node + ":" + c.get("cr_name"));   // child:node:CR
                     opt.put("label", "child " + childId + " (" + c.get("cr_name") + ") node " + node);
                     rollbackOptions.add(opt);
+                    childRollbackOptions.add(opt);
                 }
             }
             List<Object> nodeOptions = new ArrayList<Object>();
@@ -680,6 +1096,7 @@ public final class RequestStore {
             run.put("nodes", nodes);
             run.put("mop_nodes", mopNodes);
             run.put("node_options", nodeOptions);
+            run.put("rollback_options", childRollbackOptions);
             childrenById.put(String.valueOf(childId), run);
             if (!mopNodes.isEmpty()) {
                 childOptions.add(option(String.valueOf(childId), "child " + childId + " (" + c.get("cr_name") + ") | "

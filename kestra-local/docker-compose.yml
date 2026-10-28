@@ -6,8 +6,11 @@
 #   - no Docker socket: our steps use the Process task runner, which runs commands inside the Kestra container;
 #   - a shared-data volume mounted at /mnt/shared_data = the KV entry SHARED_DATA_DIR, BST's path (the CLICR
 #     workflow YAMLs use /mnt/shared_data/<CHILD_REQ_ID>/ literally);
-#   - Kestra OSS secrets as SECRET_<NAME> environment variables (base64), from .env.
-# Start:  docker compose up -d      UI: http://localhost:8080
+#   - Kestra OSS secrets as SECRET_<NAME> environment variables (base64), from .env;
+#   - the gateway (../gateway) in front of Kestra: our users and roles (viewer, executor, admin), sessions and audit.
+#     Only the gateway is published (port 8080); Kestra is reachable inside this network only, with its single
+#     technical login (KESTRA_USER / KESTRA_PASSWORD), which only the gateway uses.
+# Start:  docker compose up -d      UI: http://localhost:8080 (through the gateway)
 volumes:
   postgres-data:
   kestra-data:
@@ -16,6 +19,10 @@ volumes:
 services:
   postgres:
     image: postgres:18
+    # an init process as PID 1 reaps orphaned processes: as PID 1 itself, PostgreSQL 18 treats an orphan exiting
+    # with an error (e.g. a timed-out health check) as a crashed backend and restarts every connection - seen
+    # 2026-10-27: "untracked child process ... exited with exit code 2", recovery mode, Kestra shut down.
+    init: true
     ports:
       - "127.0.0.1:5432:5432"
     volumes:
@@ -25,7 +32,8 @@ services:
       POSTGRES_USER: kestra
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-k3str4}
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -d $${POSTGRES_DB} -U $${POSTGRES_USER}"]
+      # no shell in between: a timed-out check leaves no orphaned pg_isready behind
+      test: ["CMD", "pg_isready", "-d", "kestra", "-U", "kestra"]
       interval: 30s
       timeout: 10s
       retries: 10
@@ -34,6 +42,8 @@ services:
     build: .
     image: cr-automation/kestra:v2.0.7-nei
     pull_policy: build   # local image: build it, never try to pull it
+    init: true           # the flows' task processes (sh, java, python) are reaped even when orphaned
+    restart: unless-stopped
     stop_grace_period: 6m
     command: server standalone
     volumes:
@@ -66,9 +76,35 @@ services:
           queue:
             type: postgres
           url: http://localhost:8080/
-    ports:
-      - "8080:8080"
-      # 8081 is the management port: unauthenticated, keep it closed.
+    # no published port: the browser and the scripts reach Kestra only through the gateway.
+    # 8081 is the management port: unauthenticated, keep it closed.
     depends_on:
       postgres:
         condition: service_healthy
+
+  gateway:
+    build:
+      context: ..
+      dockerfile: gateway/Dockerfile
+    image: cr-automation/gateway:0.1.0
+    pull_policy: build
+    init: true
+    restart: unless-stopped
+    environment:
+      KESTRA_INTERNAL_URL: http://kestra:8080
+      KESTRA_USER: ${KESTRA_USER:?set it in .env}
+      KESTRA_PASSWORD: ${KESTRA_PASSWORD:?set it in .env}
+      GATEWAY_JDBC_URL: jdbc:postgresql://postgres:5432/kestra
+      GATEWAY_JDBC_USER: kestra
+      GATEWAY_JDBC_PASSWORD: ${POSTGRES_PASSWORD:-k3str4}
+      GATEWAY_PROCESS_NAMESPACE: cr_automation
+      # the first admin, only while the gateway has no user at all (default: the Kestra login of .env)
+      GATEWAY_ADMIN_USER: ${GATEWAY_ADMIN_USER:-${KESTRA_USER}}
+      GATEWAY_ADMIN_PASSWORD: ${GATEWAY_ADMIN_PASSWORD:-${KESTRA_PASSWORD}}
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kestra:
+        condition: service_started

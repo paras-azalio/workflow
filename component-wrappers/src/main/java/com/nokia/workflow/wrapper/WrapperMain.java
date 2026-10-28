@@ -14,10 +14,12 @@ import java.nio.charset.StandardCharsets;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Date;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
+import java.util.Set;
 import java.util.regex.Pattern;
 
 /**
@@ -26,7 +28,7 @@ import java.util.regex.Pattern;
  * <pre>
  * java -cp "component-wrappers.jar:lib/*" com.nokia.workflow.wrapper.WrapperMain \
  *      --component CIQ_PROCESSOR \
- *      [--request request.json|request.properties] [--param KEY=VALUE ...] \
+ *      [--request request.json|request.properties] [--param KEY=VALUE ...] [--override overrides.properties ...] \
  *      [--config project.properties] [--workdir DIR] \
  *      [--result result.json] [--emit keyvalue|json|kestra] [--exit-zero]
  * java ... WrapperMain --list
@@ -43,11 +45,18 @@ import java.util.regex.Pattern;
  *       workflow can decide from the status itself (per-step / per-workflow override of the success rule).</li>
  * </ul>
  * Anything the wrapped component prints is moved to stderr, so stdout carries only the result.
+ *
+ * <p>Request values: {@code --request} first, then {@code --param}, then each {@code --override} file (e.g. the
+ * activity configuration of the step). In any value, {@code ${WORKDIR}} is the working folder and
+ * {@code ${secret:NAME}} the Kestra secret NAME (environment variable {@code SECRET_NAME}, base64, as Kestra OSS
+ * keeps its secrets); a missing secret fails the call. Values that came from a secret are masked wherever the
+ * request or the results are shown, whatever their key.
  */
 public final class WrapperMain {
 
     /** Request keys whose values are masked in the echoed request and in logs. */
     static final Pattern SECRET_KEY = Pattern.compile("(?i).*(password|passwd|pswd|pwd|secret|token).*");
+    private static final Pattern SECRET_REF = Pattern.compile("\\$\\{secret:([A-Za-z0-9_]+)\\}");
 
     private WrapperMain() {
     }
@@ -58,6 +67,10 @@ public final class WrapperMain {
 
     /** Runs one call; returns the process exit code. Package-visible for tests. */
     static int run(String[] args, PrintStream out, PrintStream err) {
+        return run(args, out, err, System.getenv());
+    }
+
+    static int run(String[] args, PrintStream out, PrintStream err, Map<String, String> env) {
         String component = null;
         String requestFile = null;
         String configFile = System.getenv("WRAPPER_CONFIG");
@@ -69,6 +82,8 @@ public final class WrapperMain {
         boolean exitZero = false;
         boolean list = false;
         Map<String, String> inlineParams = new LinkedHashMap<String, String>();
+        List<String> overrideFiles = new ArrayList<String>();
+        Set<String> secretValues = new HashSet<String>();
 
         for (int i = 0; i < args.length; i++) {
             String a = args[i];
@@ -84,6 +99,8 @@ public final class WrapperMain {
                 }
                 inlineParams.put(next.substring(0, eq).trim(), next.substring(eq + 1));
                 i++;
+            } else if ("--override".equals(a) && next != null) {
+                overrideFiles.add(next); i++;
             } else if ("--config".equals(a) && next != null) {
                 configFile = next; i++;
             } else if ("--workdir".equals(a) && next != null) {
@@ -130,14 +147,23 @@ public final class WrapperMain {
                 requestParams.putAll(readRequest(new File(requestFile)));
             }
             requestParams.putAll(inlineParams);   // --param overrides the file
+            for (String f : overrideFiles) {
+                requestParams.putAll(readOverrides(new File(f)));   // e.g. the activity configuration of the step
+            }
             Properties config = configFile == null ? new Properties() : readProperties(new File(configFile));
             Map<String, String> options = new LinkedHashMap<String, String>();
             if (mmlLog != null) {
                 options.put("mml.log", mmlLog);
             }
             context = new WrapperContext(config, workDir == null ? new File(".") : new File(workDir), options);
+            String unresolved = resolveConfigSecrets(config, context.workDir(), env, secretValues);
+            if (unresolved == null) {
+                unresolved = resolveReferences(requestParams, context.workDir(), env, secretValues);
+            }
 
-            if (component == null) {
+            if (unresolved != null) {
+                result = WrapperResult.failed(unresolved);
+            } else if (component == null) {
                 result = WrapperResult.failed("Missing --component (use --list to see the available ones)");
             } else {
                 ComponentWrapper wrapper = registry.find(component);
@@ -155,7 +181,7 @@ public final class WrapperMain {
             result = WrapperResult.failed("Wrapper error: " + e);
         }
 
-        Map<String, Object> doc = document(component, requestParams, result, context, start);
+        Map<String, Object> doc = document(component, requestParams, result, context, start, secretValues);
         String io = ioLog(doc);
         try {
             if (resultFile != null) {
@@ -171,7 +197,7 @@ public final class WrapperMain {
         if ("kestra".equals(emit)) {
             out.print(io);   // the IO log in the task log, like InstantLink's request IO view
         }
-        emit(out, emit, doc, result);
+        emit(out, emit, doc, result, secretValues);
 
         if (exitZero || result.status() != WrapperResult.Status.FAILED) {
             return 0;
@@ -207,7 +233,12 @@ public final class WrapperMain {
 
     static Map<String, Object> document(String component, Map<String, String> request, WrapperResult result,
                                         WrapperContext context, long start) {
-        Map<String, String> masked = mask(request);
+        return document(component, request, result, context, start, new HashSet<String>());
+    }
+
+    static Map<String, Object> document(String component, Map<String, String> request, WrapperResult result,
+                                        WrapperContext context, long start, Set<String> secretValues) {
+        Map<String, String> masked = mask(request, secretValues);
         List<String> log = new ArrayList<String>();
         if (context != null) {
             log.addAll(context.logLines());
@@ -222,12 +253,13 @@ public final class WrapperMain {
         doc.put("startedAt", new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSSZ").format(new Date(start)));
         doc.put("durationMs", System.currentTimeMillis() - start);
         doc.put("request", masked);
-        doc.put("results", mask(result.results()));
-        doc.put("log", log);
+        doc.put("results", mask(result.results(), secretValues));
+        doc.put("log", maskLines(log, secretValues));
         return doc;
     }
 
-    private static void emit(PrintStream out, String emit, Map<String, Object> doc, WrapperResult result) {
+    private static void emit(PrintStream out, String emit, Map<String, Object> doc, WrapperResult result,
+                             Set<String> secretValues) {
         if ("json".equals(emit)) {
             out.println(SimpleJson.write(doc));
             return;
@@ -246,18 +278,120 @@ public final class WrapperMain {
         out.println("STATUS=" + result.status().code());
         out.println("STATUS_TEXT=" + result.status().name());
         out.println("MESSAGE=" + oneLine(result.message()));
-        for (Map.Entry<String, String> e : mask(result.results()).entrySet()) {
+        for (Map.Entry<String, String> e : mask(result.results(), secretValues).entrySet()) {
             out.println(e.getKey() + "=" + oneLine(e.getValue()));
         }
     }
 
     /** Same map with the values of password-like keys replaced by {@code *****}. */
     static Map<String, String> mask(Map<String, String> values) {
+        return mask(values, new HashSet<String>());
+    }
+
+    /** Also masks any value that came from a secret, whatever its key (e.g. an NEI echoing it back). */
+    static Map<String, String> mask(Map<String, String> values, Set<String> secretValues) {
         Map<String, String> masked = new LinkedHashMap<String, String>();
         for (Map.Entry<String, String> e : values.entrySet()) {
-            masked.put(e.getKey(), SECRET_KEY.matcher(e.getKey()).matches() ? "*****" : e.getValue());
+            boolean secret = SECRET_KEY.matcher(e.getKey()).matches() || containsSecret(e.getValue(), secretValues);
+            masked.put(e.getKey(), secret ? "*****" : e.getValue());
         }
         return masked;
+    }
+
+    private static List<String> maskLines(List<String> lines, Set<String> secretValues) {
+        List<String> out = new ArrayList<String>(lines.size());
+        for (String line : lines) {
+            String l = line;
+            for (String s : secretValues) {
+                l = l.replace(s, "*****");
+            }
+            out.add(l);
+        }
+        return out;
+    }
+
+    private static boolean containsSecret(String value, Set<String> secretValues) {
+        if (value == null) {
+            return false;
+        }
+        for (String s : secretValues) {
+            if (value.contains(s)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Resolves {@code ${secret:NAME}} in config values in place (e.g. {@code nei.clicr.login.M2MPASSWORD1}), so a
+     * credential never has to be passed to a step by its flow. Same rules and masking as request values.
+     */
+    static String resolveConfigSecrets(Properties config, File workDir, Map<String, String> env, Set<String> secretValues) {
+        Map<String, String> withSecrets = new LinkedHashMap<String, String>();
+        for (String key : config.stringPropertyNames()) {
+            if (config.getProperty(key).contains("${secret:")) {
+                withSecrets.put(key, config.getProperty(key));
+            }
+        }
+        String unresolved = resolveReferences(withSecrets, workDir, env, secretValues);
+        if (unresolved == null) {
+            for (Map.Entry<String, String> e : withSecrets.entrySet()) {
+                config.setProperty(e.getKey(), e.getValue());
+            }
+        }
+        return unresolved;
+    }
+
+    /**
+     * Replaces {@code ${WORKDIR}} and {@code ${secret:NAME}} in every request value. Secrets come from the environment
+     * variable {@code SECRET_NAME}, base64 as in Kestra OSS; their plain values are collected in {@code secretValues}
+     * for masking. Returns null, or the message for a secret that is not available.
+     */
+    static String resolveReferences(Map<String, String> request, File workDir, Map<String, String> env,
+                                    Set<String> secretValues) {
+        String wd = workDir.getAbsolutePath().replace('\\', '/');
+        for (Map.Entry<String, String> e : request.entrySet()) {
+            String v = e.getValue();
+            if (v == null || v.indexOf("${") < 0) {
+                continue;
+            }
+            v = v.replace("${WORKDIR}", wd);
+            java.util.regex.Matcher m = SECRET_REF.matcher(v);
+            StringBuffer sb = new StringBuffer();
+            while (m.find()) {
+                String encoded = env.get("SECRET_" + m.group(1));
+                if (encoded == null || encoded.trim().isEmpty()) {
+                    return "Secret " + m.group(1) + " (for " + e.getKey() + ") is not available to this step: define the"
+                            + " Kestra secret SECRET_" + m.group(1) + ".";
+                }
+                String plain;
+                try {
+                    plain = new String(java.util.Base64.getDecoder().decode(encoded.trim()), java.nio.charset.StandardCharsets.UTF_8);
+                } catch (IllegalArgumentException bad) {
+                    return "Secret " + m.group(1) + " is not valid base64 (Kestra secrets are base64-encoded).";
+                }
+                if (!plain.isEmpty()) {
+                    secretValues.add(plain);
+                }
+                m.appendReplacement(sb, java.util.regex.Matcher.quoteReplacement(plain));
+            }
+            m.appendTail(sb);
+            e.setValue(sb.toString());
+        }
+        return null;
+    }
+
+    /** A {@code .properties} file of overrides; an absent file is no overrides (the step has no configuration). */
+    static Map<String, String> readOverrides(File f) throws IOException {
+        Map<String, String> out = new LinkedHashMap<String, String>();
+        if (!f.isFile()) {
+            return out;
+        }
+        Properties p = readProperties(f);
+        for (String k : new java.util.TreeSet<String>(p.stringPropertyNames())) {
+            out.put(k, p.getProperty(k));
+        }
+        return out;
     }
 
     /**

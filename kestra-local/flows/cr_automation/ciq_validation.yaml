@@ -21,6 +21,7 @@ description: |
 
 labels:
   project: CR_AUTOMATION
+  process: "true"   # a step of the order process: executors may start it (gateway rule)
   ne_type: FILECR
   action: CR_CIQ_PROCESSOR
 

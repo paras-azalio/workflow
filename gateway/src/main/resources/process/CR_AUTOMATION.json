@@ -1,0 +1,97 @@
+{
+  "namespace": "cr_automation",
+  "steps": [
+    {
+      "id": "new_order_template",
+      "label": "New order: generate the CIQ template",
+      "description": "Starts an order with the blank CIQ of the activity (FileCR GENERATE_CR_CIQ_TEMPLATE).",
+      "scope": "ORDER",
+      "starts_order": true,
+      "runs": {"flow": "generate_ciq_template"},
+      "inputs": {
+        "node_type": {"from": "user", "type": "STRING", "label": "Node type", "required": true, "default": "PGW_RDS"},
+        "activity": {"from": "user", "type": "STRING", "label": "Sub-activity", "required": true, "default": "1051_SUBSCRIBER_PROFILE_CONFIGURATION"},
+        "node_version": {"from": "user", "type": "STRING", "label": "Node version", "required": true, "default": "ALL"},
+        "order_no": {"from": "user", "type": "STRING", "label": "Order number (empty: the next free number)"}
+      }
+    },
+    {
+      "id": "new_order_validation",
+      "label": "New order: validate a filled CIQ",
+      "description": "Starts an order with a filled CIQ (FileCR CR_CIQ_PROCESSOR).",
+      "scope": "ORDER",
+      "starts_order": true,
+      "runs": {"flow": "ciq_validation"},
+      "inputs": {
+        "order_type": {"value": "NEW"},
+        "ciq": {"from": "user", "type": "FILE", "label": "Filled CIQ (.xlsx)", "required": true},
+        "node_type": {"from": "user", "type": "STRING", "label": "Node type", "required": true, "default": "PGW_RDS"},
+        "activity": {"from": "user", "type": "STRING", "label": "Sub-activity", "required": true, "default": "1051_SUBSCRIBER_PROFILE_CONFIGURATION"},
+        "node_version": {"from": "user", "type": "STRING", "label": "Node version", "required": true, "default": "ALL"},
+        "order_no": {"from": "user", "type": "STRING", "label": "Order number (empty: the next free number)"}
+      }
+    },
+    {
+      "id": "validate",
+      "label": "Validate a CIQ for this order",
+      "description": "Optional: choose the filled (or corrected) CIQ - it replaces the CIQ in the order folder. Without a file, the CIQ already placed in the order folder is validated.",
+      "scope": "ORDER",
+      "runs": {"flow": "ciq_validation"},
+      "inputs": {
+        "order_type": {"value": "EXISTING"},
+        "order_id": {"from": "order.value"},
+        "ciq": {"from": "user", "type": "FILE", "label": "Filled CIQ (.xlsx)"}
+      }
+    },
+    {
+      "id": "child_order",
+      "label": "Start a child order",
+      "description": "MOP generation for one CR of the order (CLICR MOP_GENERATION); the child gets its own request id.",
+      "scope": "ORDER",
+      "available_when": {"order.stage": {"in": ["VALIDATED"]}},
+      "runs": {"flow": "cr_child_order"},
+      "inputs": {
+        "order_id": {"from": "order.value"},
+        "cr_name": {"from": "user", "type": "SELECT", "label": "CR", "required": true, "options_from": "order.cr_options"},
+        "run_execution": {"from": "user", "type": "BOOL", "label": "Also execute the MOP on all its nodes right after generating it (unticked: generate the MOP only)", "default": false}
+      }
+    },
+    {
+      "id": "rollback_order_node",
+      "label": "Roll back a node",
+      "description": "Nodes whose execution ended with ROLLBACK_ENABLED=TRUE, for activities that allow rollback: MOP_EXECUTION with ROLLBACK_ONLY=true, then the rollback report.",
+      "scope": "ORDER",
+      "available_when": {"order.rollback_options": {"non_empty": true}},
+      "runs": {"flow": "cr_node_rollback"},
+      "inputs": {
+        "order_id": {"from": "order.value"},
+        "node": {"from": "user", "type": "SELECT", "label": "Child and node", "required": true, "options_from": "order.rollback_options"}
+      }
+    },
+    {
+      "id": "mop_execution",
+      "label": "Execute the MOP",
+      "description": "Choose all nodes or some of them - the chosen nodes run in parallel. A node that is running now is refused.",
+      "scope": "CHILD",
+      "available_when": {"child.mop_nodes": {"non_empty": true}},
+      "runs": {"flow": "cr_mop_execution"},
+      "inputs": {
+        "order_id": {"from": "order.value"},
+        "child_id": {"from": "child.child_id"},
+        "nodes": {"from": "user", "type": "MULTISELECT", "label": "Nodes", "required": true, "options_from": "child.node_options", "all_value": "*", "default": ["*"]}
+      }
+    },
+    {
+      "id": "rollback_child_node",
+      "label": "Roll back a node",
+      "description": "Nodes of this child whose execution ended with ROLLBACK_ENABLED=TRUE, for activities that allow rollback.",
+      "scope": "CHILD",
+      "available_when": {"child.rollback_options": {"non_empty": true}},
+      "runs": {"flow": "cr_node_rollback"},
+      "inputs": {
+        "order_id": {"from": "order.value"},
+        "node": {"from": "user", "type": "SELECT", "label": "Node", "required": true, "options_from": "child.rollback_options"}
+      }
+    }
+  ]
+}

@@ -15,6 +15,11 @@
 #   STORE_STEP      step name (GENERATE_TEMPLATE, CIQ_VALIDATION, MOP_GENERATION, MOP_EXECUTION, ROLLBACK, ...)
 #   STORE_NODE      node name of the step (node steps), EXECUTION_ID the Kestra execution id
 #
+# Activity configuration: for a recorded step (STORE_REQ_ID + STORE_STEP), the step's request overrides from the
+# activity configuration the order is pinned to (store.sh step-config) go to the wrapper as --override, after the
+# flow's own --param values: extra / changed parameters, login.KEY, grc.KEY, per node. The file is kept as
+# out/<log-name>.activity.properties. A configuration that cannot be resolved fails the step.
+#
 # The wrapper runs with --exit-zero and --emit kestra: the step always ends OK and the flow decides from
 # outputs.<task>.vars.status (0 SUCCESS, 1 WARNING, 9 FAILED). Afterwards the IO and MML logs are copied to
 # out/logs/ (task output files) and the MML log is printed in the task log.
@@ -27,6 +32,12 @@ s="${CP_SEP:-:}"
 NE_TYPE=$(echo "$ne" | tr '[:lower:]' '[:upper:]')
 
 mkdir -p "$ORDER_DIR/logs" out/logs
+if [ -n "${STORE_REQ_ID:-}" ]; then
+  sh bin/store.sh step-config --req-id "$STORE_REQ_ID" --step "${STORE_STEP:?STORE_STEP is not set}" \
+    --node "${STORE_NODE:-}" --out "out/$name.activity.properties" > /dev/null \
+    || { echo "The activity configuration of step $STORE_STEP could not be applied (see above)." >&2; exit 1; }
+  set -- "$@" --override "out/$name.activity.properties"
+fi
 "${NEI_JAVA:-java}" -cp "wrappers/*${s}nei/$ne/*${s}nei/$ne/lib/*" com.nokia.workflow.wrapper.WrapperMain \
   --component NEI \
   --config "${WRAPPER_CONFIG:-config/cr_automation.properties}" \

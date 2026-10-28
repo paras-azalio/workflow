@@ -1,3 +1,2017 @@
+diff --git a/ui/src/components/crdesigner/ActivityDesigner.vue b/ui/src/components/crdesigner/ActivityDesigner.vue
+new file mode 100644
+index 0000000..c041d7c
+--- /dev/null
++++ b/ui/src/components/crdesigner/ActivityDesigner.vue
+@@ -0,0 +1,302 @@
++<template>
++    <div class="designer">
++        <div class="designer-top">
++            <KsSelect
++                :modelValue="activityKey"
++                filterable
++                class="activity-select"
++                :placeholder="$t('cr_designer.activity')"
++                data-test="activity-select"
++                @update:model-value="selectActivity"
++            >
++                <KsOption v-for="a in activities" :key="keyOf(a)" :label="keyOf(a)" :value="keyOf(a)">
++                    <span>{{ keyOf(a) }}</span>
++                    <span class="hint">{{ a.published_version ? ` v${a.published_version}` : "" }}{{ a.draft_version ? ` · ${$t("cr_designer.draft")} v${a.draft_version}` : "" }}</span>
++                </KsOption>
++            </KsSelect>
++            <KsButton v-if="me.can.admin" :icon="Plus" data-test="declare-activity" @click="declaring = true">
++                {{ $t("cr_designer.declare") }}
++            </KsButton>
++            <VersionBar
++                v-if="activity"
++                class="designer-bar"
++                :versions="versions"
++                :selected="selected"
++                :admin="me.can.admin"
++                :dirty="dirty"
++                :busy="busy"
++                :error="error"
++                :message="message"
++                :problems="problems"
++                v-on="handlers"
++            />
++        </div>
++        <KsAlert v-if="listError" type="error" :closable="false">
++            {{ listError }}
++        </KsAlert>
++        <KsEmpty v-if="!activities.length && !listError" :description="$t('cr_designer.no_activities')" />
++
++        <KsTabs v-if="config" v-model="view">
++            <KsTabPane name="form" :label="$t('cr_designer.form')">
++                <div class="config-form">
++                    <p class="hint">{{ $t("cr_designer.activity_hint") }}</p>
++                    <label class="field">
++                        <span>{{ $t("description") }}</span>
++                        <KsInput v-model="config.description" :disabled="!editable" />
++                    </label>
++
++                    <KsCard v-for="(section, stepName) in config.steps" :key="stepName" class="section" :data-test="`section-${stepName}`">
++                        <div class="section-head">
++                            <span>{{ $t("cr_designer.for_step") }}</span>
++                            <KsSelect
++                                :modelValue="stepName"
++                                filterable
++                                allowCreate
++                                class="step-select"
++                                :disabled="!editable"
++                                @update:model-value="(s: string) => config.steps = renameKey(config.steps, String(stepName), s)"
++                            >
++                                <KsOption v-for="s in stepChoices" :key="s" :label="s === '*' ? $t('cr_designer.every_step') : s" :value="s" />
++                            </KsSelect>
++                            <KsButton v-if="editable" :icon="Delete" size="small" @click="removeSection(String(stepName))">
++                                {{ $t("delete") }}
++                            </KsButton>
++                        </div>
++                        <KeyValues v-for="g in GROUPS" :key="g" v-model="section[g]" :group="g" :editable="editable" />
++
++                        <h5>{{ $t("cr_designer.node_overrides") }}</h5>
++                        <p class="hint">{{ $t("cr_designer.node_overrides_hint") }}</p>
++                        <div v-for="(node, pattern) in section.nodes ?? {}" :key="pattern" class="node-block">
++                            <div class="section-head">
++                                <span>{{ $t("cr_designer.node_pattern") }}</span>
++                                <KsInput
++                                    :modelValue="String(pattern)"
++                                    class="pattern-input"
++                                    :disabled="!editable"
++                                    @change="(p: string | number) => section.nodes = renameKey(section.nodes, String(pattern), String(p))"
++                                />
++                                <KsButton v-if="editable" :icon="Close" size="small" :aria-label="$t('delete')" @click="removeNode(section, String(pattern))" />
++                            </div>
++                            <KeyValues v-for="g in GROUPS" :key="g" v-model="node[g]" :group="g" :editable="editable" />
++                        </div>
++                        <KsButton v-if="editable" :icon="Plus" size="small" @click="addNode(section)">
++                            {{ $t("cr_designer.add_node_override") }}
++                        </KsButton>
++                    </KsCard>
++                    <KsButton v-if="editable" :icon="Plus" data-test="add-section" @click="addSection">
++                        {{ $t("cr_designer.add_section") }}
++                    </KsButton>
++                </div>
++            </KsTabPane>
++            <KsTabPane name="json" :label="$t('cr_designer.json')">
++                <JsonView :value="config" :editable="editable" @apply="(v: any) => config = normalize(v)" />
++            </KsTabPane>
++        </KsTabs>
++
++        <KsDialog v-model="declaring" :title="$t('cr_designer.declare')" :beforeClose="beforeClose" width="32rem">
++            <KsForm labelPosition="top" @submit.prevent="declare">
++                <KsFormItem :label="$t('cr_designer.node_type')" required>
++                    <KsInput v-model="draft.node_type" placeholder="PGW_RDS" data-test="declare-node-type" />
++                </KsFormItem>
++                <KsFormItem :label="$t('cr_designer.sub_activity')" required>
++                    <KsInput v-model="draft.sub_activity" placeholder="1051" data-test="declare-sub-activity" />
++                </KsFormItem>
++                <KsFormItem :label="$t('description')">
++                    <KsInput v-model="draft.description" />
++                </KsFormItem>
++            </KsForm>
++            <KsAlert v-if="declareError" type="error" :closable="false">
++                {{ declareError }}
++            </KsAlert>
++            <template #footer>
++                <KsButton @click="closeDeclare">
++                    {{ $t("cancel") }}
++                </KsButton>
++                <KsButton type="primary" :disabled="!draft.node_type || !draft.sub_activity" @click="declare">
++                    {{ $t("cr_designer.declare") }}
++                </KsButton>
++            </template>
++        </KsDialog>
++    </div>
++</template>
++
++<script setup lang="ts">
++    import {computed, onMounted, ref} from "vue"
++    import {useI18n} from "vue-i18n"
++    import Plus from "vue-material-design-icons/Plus.vue"
++    import Delete from "vue-material-design-icons/Delete.vue"
++    import Close from "vue-material-design-icons/Close.vue"
++    import VersionBar from "./VersionBar.vue"
++    import KeyValues from "./KeyValues.vue"
++    import JsonView from "./JsonView.vue"
++    import {gateway, activityUrl, renameKey} from "./crApi"
++    import type {Me} from "./crApi"
++    import {useVersioned} from "./useVersioned"
++    import {useDiscardGuard} from "../../composables/useDiscardGuard"
++
++    interface Activity {node_type: string, sub_activity: string, description?: string, published_version?: number, draft_version?: number}
++
++    const GROUPS = ["params", "login", "grc"] as const
++
++    const props = defineProps<{me: Me}>()
++    const {t} = useI18n()
++
++    const activities = ref<Activity[]>([])
++    const knownSteps = ref<string[]>([])
++    const activity = ref<Activity>()
++    const listError = ref("")
++    const view = ref("form")
++    const declaring = ref(false)
++    const draft = ref({node_type: "", sub_activity: "", description: ""})
++    const declareError = ref("")
++
++    const keyOf = (a: Activity) => `${a.node_type} / ${a.sub_activity}`
++    const activityKey = computed(() => activity.value ? keyOf(activity.value) : "")
++
++    const {versions, selected, loaded, content: config, busy, error, message, problems, dirty, loadVersions, leaveConfirmed, ask, handlers} = useVersioned({
++        base: () => activityUrl(activity.value!.node_type, activity.value!.sub_activity),
++        field: "config",
++        normalize,
++        onLoaded: () => refreshList(),
++    })
++
++    const editable = computed(() => props.me.can.admin && loaded.value?.state === "DRAFT")
++    const stepChoices = computed(() => ["*", ...knownSteps.value])
++
++    function normalize(c: any) {
++        const out = c ?? {}
++        out.steps = out.steps ?? {}
++        return out
++    }
++
++    async function refreshList() {
++        const res = await gateway<{activities: Activity[], known_steps: string[]}>("/cr/api/activities")
++        activities.value = res.activities
++        knownSteps.value = res.known_steps
++    }
++
++    async function selectActivity(key: string) {
++        if (!await leaveConfirmed()) return
++        activity.value = activities.value.find(a => keyOf(a) === key)
++        if (activity.value) await loadVersions()
++    }
++
++    function addSection() {
++        const name = stepChoices.value.find(s => !(s in config.value.steps)) ?? `STEP_${Object.keys(config.value.steps).length + 1}`
++        config.value.steps = {...config.value.steps, [name]: {}}
++    }
++
++    async function removeSection(name: string) {
++        if (!await ask(t("cr_designer.confirm_delete_section", {step: name}))) return
++        const next = {...config.value.steps}
++        delete next[name]
++        config.value.steps = next
++    }
++
++    function addNode(section: any) {
++        let n = Object.keys(section.nodes ?? {}).length + 1
++        while (`NODE${n}*` in (section.nodes ?? {})) n++
++        section.nodes = {...section.nodes, [`NODE${n}*`]: {}}
++    }
++
++    function removeNode(section: any, pattern: string) {
++        const next = {...section.nodes}
++        delete next[pattern]
++        section.nodes = Object.keys(next).length ? next : undefined
++    }
++
++    const declareDirty = () => Object.values(draft.value).some(v => v !== "")
++    const {guardedClose} = useDiscardGuard(declareDirty)
++    const beforeClose = (done: () => void) => guardedClose(() => {
++        closeDeclare()
++        done()
++    })
++
++    function closeDeclare() {
++        declaring.value = false
++        draft.value = {node_type: "", sub_activity: "", description: ""}
++        declareError.value = ""
++    }
++
++    async function declare() {
++        if (!draft.value.node_type || !draft.value.sub_activity) return
++        try {
++            const created = await gateway<Activity>("/cr/api/activities", {method: "POST", json: draft.value})
++            closeDeclare()
++            await refreshList()
++            await selectActivity(keyOf(created))
++        } catch (e: any) {
++            declareError.value = e?.message ?? String(e)
++        }
++    }
++
++    onMounted(async () => {
++        try {
++            await refreshList()
++            if (activities.value.length) await selectActivity(keyOf(activities.value[0]))
++        } catch (e: any) {
++            listError.value = e?.message ?? String(e)
++        }
++    })
++</script>
++
++<style scoped lang="scss">
++    .designer, .config-form {
++        display: flex;
++        flex-direction: column;
++        gap: var(--ks-spacing-3);
++    }
++
++    .designer-top, .section-head {
++        display: flex;
++        flex-wrap: wrap;
++        gap: var(--ks-spacing-2);
++        align-items: center;
++    }
++
++    .activity-select {
++        width: 22rem;
++    }
++
++    .designer-bar {
++        flex: 1;
++    }
++
++    .step-select, .pattern-input {
++        width: 16rem;
++    }
++
++    .section {
++        display: flex;
++        flex-direction: column;
++        gap: var(--ks-spacing-3);
++    }
++
++    .node-block {
++        display: flex;
++        flex-direction: column;
++        gap: var(--ks-spacing-2);
++        padding: var(--ks-spacing-3);
++        border: 1px solid var(--ks-border-subtle);
++        border-radius: var(--ks-spacing-1);
++    }
++
++    .field {
++        display: flex;
++        flex-direction: column;
++        gap: var(--ks-spacing-1);
++        max-width: 40rem;
++        color: var(--ks-text-secondary);
++        font-size: var(--ks-font-size-sm);
++    }
++
++    .hint {
++        margin: 0;
++        color: var(--ks-text-secondary);
++        font-size: var(--ks-font-size-xs);
++    }
++
++    h5 {
++        margin: 0;
++    }
++</style>
+diff --git a/ui/src/components/crdesigner/CrDesigner.vue b/ui/src/components/crdesigner/CrDesigner.vue
+new file mode 100644
+index 0000000..faea362
+--- /dev/null
++++ b/ui/src/components/crdesigner/CrDesigner.vue
+@@ -0,0 +1,49 @@
++<template>
++    <TopNavBar :title="routeInfo.title" />
++    <section class="full-container">
++        <KsAlert v-if="error" type="error" :closable="false">
++            {{ error }}
++        </KsAlert>
++        <KsTabs v-else-if="me" :modelValue="tab" @update:model-value="selectTab">
++            <KsTabPane name="processes" :label="$t('cr_designer.processes')" lazy>
++                <ProcessDesigner :me="me" />
++            </KsTabPane>
++            <KsTabPane name="activities" :label="$t('cr_designer.activities')" lazy>
++                <ActivityDesigner :me="me" />
++            </KsTabPane>
++        </KsTabs>
++    </section>
++</template>
++
++<script setup lang="ts">
++    import {computed, onMounted, ref} from "vue"
++    import {useRoute, useRouter} from "vue-router"
++    import {useI18n} from "vue-i18n"
++    import useRouteContext from "../../composables/useRouteContext"
++    import TopNavBar from "../layout/TopNavBar.vue"
++    import ProcessDesigner from "./ProcessDesigner.vue"
++    import ActivityDesigner from "./ActivityDesigner.vue"
++    import {gateway} from "./crApi"
++    import type {Me} from "./crApi"
++
++    const {t} = useI18n()
++    const route = useRoute()
++    const router = useRouter()
++
++    const routeInfo = computed(() => ({title: t("cr_designer.title")}))
++    useRouteContext(routeInfo)
++
++    const me = ref<Me>()
++    const error = ref("")
++    const tab = computed(() => route.params.tab === "activities" ? "activities" : "processes")
++
++    const selectTab = (name?: string) => router.replace({name: "cr/designer", params: {...route.params, tab: name}})
++
++    onMounted(async () => {
++        try {
++            me.value = await gateway<Me>("/cr/api/me")
++        } catch (e: any) {
++            error.value = t("cr_designer.gateway_missing", {error: e?.message ?? String(e)})
++        }
++    })
++</script>
+diff --git a/ui/src/components/crdesigner/JsonView.vue b/ui/src/components/crdesigner/JsonView.vue
+new file mode 100644
+index 0000000..2e622a4
+--- /dev/null
++++ b/ui/src/components/crdesigner/JsonView.vue
+@@ -0,0 +1,70 @@
++<template>
++    <div class="json-view">
++        <textarea v-model="text" class="json-text" :readonly="!editable" spellcheck="false" data-test="json-view" />
++        <div v-if="editable" class="json-actions">
++            <KsButton :icon="CodeJson" :disabled="text === original" @click="apply">
++                {{ $t("cr_designer.apply_json") }}
++            </KsButton>
++            <span v-if="invalid" class="json-error">{{ invalid }}</span>
++        </div>
++    </div>
++</template>
++
++<script setup lang="ts">
++    import {ref, watch} from "vue"
++    import {useI18n} from "vue-i18n"
++    import CodeJson from "vue-material-design-icons/CodeJson.vue"
++
++    const props = defineProps<{value: any, editable: boolean}>()
++    const emit = defineEmits<{apply: [value: any]}>()
++    const {t} = useI18n()
++
++    const original = ref("")
++    const text = ref("")
++    const invalid = ref("")
++
++    watch(() => props.value, v => {
++        original.value = JSON.stringify(v, null, 2)
++        text.value = original.value
++        invalid.value = ""
++    }, {immediate: true, deep: true})
++
++    function apply() {
++        try {
++            emit("apply", JSON.parse(text.value))
++            invalid.value = ""
++        } catch (e: any) {
++            invalid.value = t("cr_designer.json_invalid", {error: e?.message ?? String(e)})
++        }
++    }
++</script>
++
++<style scoped lang="scss">
++    .json-view {
++        display: flex;
++        flex-direction: column;
++        gap: var(--ks-spacing-2);
++    }
++
++    .json-text {
++        width: 100%;
++        height: 65vh;
++        padding: var(--ks-spacing-3);
++        border: 1px solid var(--ks-border-default);
++        border-radius: var(--ks-spacing-2);
++        background: var(--ks-bg-input);
++        color: var(--ks-text-primary);
++        font-family: monospace;
++        font-size: var(--ks-font-size-sm);
++    }
++
++    .json-actions {
++        display: flex;
++        gap: var(--ks-spacing-2);
++        align-items: center;
++    }
++
++    .json-error {
++        color: var(--ks-text-error);
++    }
++</style>
+diff --git a/ui/src/components/crdesigner/KeyValues.vue b/ui/src/components/crdesigner/KeyValues.vue
+new file mode 100644
+index 0000000..0f1c16e
+--- /dev/null
++++ b/ui/src/components/crdesigner/KeyValues.vue
+@@ -0,0 +1,85 @@
++<template>
++    <div class="key-values" :data-test="`key-values-${group}`">
++        <div class="kv-head">
++            <strong>{{ $t(`cr_designer.group_${group}`) }}</strong>
++            <span class="hint">{{ $t(`cr_designer.group_${group}_hint`) }}</span>
++        </div>
++        <div v-for="[key, value] in entries" :key="key" class="kv-row">
++            <KsInput :modelValue="key" class="kv-key" :disabled="!editable" @change="(k: string | number) => rename(key, String(k))" />
++            <KsInput :modelValue="value" class="kv-value" :disabled="!editable" @change="(v: string | number) => set(key, String(v))" />
++            <KsButton v-if="editable" :icon="Close" size="small" :aria-label="$t('delete')" @click="remove(key)" />
++            <span v-if="needsSecret(key, value)" class="kv-warning">{{ $t("cr_designer.secret_hint") }}</span>
++        </div>
++        <KsButton v-if="editable" :icon="Plus" size="small" @click="add">
++            {{ $t("cr_designer.add_key") }}
++        </KsButton>
++    </div>
++</template>
++
++<script setup lang="ts">
++    import {computed} from "vue"
++    import Close from "vue-material-design-icons/Close.vue"
++    import Plus from "vue-material-design-icons/Plus.vue"
++
++    const SECRET_KEY = /password|passwd|pswd|pwd|secret|token/i
++    const SECRET_REF = /^\$\{secret:[A-Za-z0-9_]+\}$/
++
++    const model = defineModel<Record<string, string> | undefined>()
++    defineProps<{group: "params" | "login" | "grc", editable: boolean}>()
++
++    const entries = computed(() => Object.entries(model.value ?? {}))
++    const needsSecret = (key: string, value: string) => SECRET_KEY.test(key) && !!value && !SECRET_REF.test(String(value))
++
++    function rename(from: string, to: string) {
++        if (!to || to === from || to in (model.value ?? {})) return
++        model.value = Object.fromEntries(entries.value.map(([k, v]) => [k === from ? to : k, v]))
++    }
++
++    const set = (key: string, value: string) => model.value = {...model.value, [key]: value}
++
++    function remove(key: string) {
++        const next = {...model.value}
++        delete next[key]
++        model.value = Object.keys(next).length ? next : undefined
++    }
++
++    function add() {
++        let n = entries.value.length + 1
++        while (`KEY_${n}` in (model.value ?? {})) n++
++        set(`KEY_${n}`, "")
++    }
++</script>
++
++<style scoped lang="scss">
++    .key-values {
++        display: flex;
++        flex-direction: column;
++        gap: var(--ks-spacing-1);
++    }
++
++    .kv-head, .kv-row {
++        display: flex;
++        flex-wrap: wrap;
++        gap: var(--ks-spacing-2);
++        align-items: center;
++    }
++
++    .kv-key {
++        width: 20rem;
++    }
++
++    .kv-value {
++        flex: 1;
++    }
++
++    .hint {
++        color: var(--ks-text-secondary);
++        font-size: var(--ks-font-size-xs);
++    }
++
++    .kv-warning {
++        width: 100%;
++        color: var(--ks-text-warning);
++        font-size: var(--ks-font-size-xs);
++    }
++</style>
+diff --git a/ui/src/components/crdesigner/PipelineEditor.vue b/ui/src/components/crdesigner/PipelineEditor.vue
+new file mode 100644
+index 0000000..2a7a551
+--- /dev/null
++++ b/ui/src/components/crdesigner/PipelineEditor.vue
+@@ -0,0 +1,55 @@
++<template>
++    <div class="pipeline-editor" data-test="pipeline-editor">
++        <p class="hint">{{ $t(`cr_designer.hook_${hook}_hint`) }}</p>
++        <KsCollapse>
++            <KsCollapseItem :title="$t('cr_designer.references')">
++                <ul class="refs">
++                    <li v-for="r in references" :key="r[0]">
++                        <code>{{ r[0] }}</code> {{ $t(`cr_designer.ref_${r[1]}`) }}
++                    </li>
++                </ul>
++            </KsCollapseItem>
++        </KsCollapse>
++        <WidgetList :list="widgets" />
++    </div>
++</template>
++
++<script setup lang="ts">
++    import {computed, provide, toRef} from "vue"
++    import WidgetList from "./WidgetList.vue"
++    import {PIPELINE} from "./pipelineWidgets"
++
++    const props = defineProps<{widgets: any[], hook: string, editable: boolean}>()
++
++    provide(PIPELINE, {editable: toRef(props, "editable"), root: toRef(props, "widgets"), hook: toRef(props, "hook")})
++
++    const references = computed(() => [
++        ["${order.NAME} ${child.NAME}", "context"],
++        ["${ciq.NAME}", "ciq"],
++        ["${activity.node_type} ${activity.sub_activity}", "activity"],
++        ...(props.hook === "node" ? [["${node}", "node"]] : [["${run.failed_nodes} ${run.succeeded_nodes}", "run"]]),
++        ["${item}", "item"],
++        ["${step.ID.NAME}", "step"],
++        ["${secret:NAME} ${WORKDIR}", "secret"],
++    ])
++</script>
++
++<style scoped lang="scss">
++    .pipeline-editor {
++        display: flex;
++        flex-direction: column;
++        gap: var(--ks-spacing-3);
++    }
++
++    .hint {
++        margin: 0;
++        color: var(--ks-text-secondary);
++        font-size: var(--ks-font-size-sm);
++    }
++
++    .refs {
++        margin: 0;
++        padding-left: var(--ks-spacing-5);
++        font-size: var(--ks-font-size-sm);
++    }
++</style>
+diff --git a/ui/src/components/crdesigner/ProcessDesigner.vue b/ui/src/components/crdesigner/ProcessDesigner.vue
+new file mode 100644
+index 0000000..7696247
+--- /dev/null
++++ b/ui/src/components/crdesigner/ProcessDesigner.vue
+@@ -0,0 +1,319 @@
++<template>
++    <div class="designer">
++        <div class="designer-top">
++            <KsSelect :modelValue="project" class="project-select" :placeholder="$t('cr_designer.project')" @update:model-value="selectProject">
++                <KsOption v-for="p in projects" :key="p.project" :label="p.project" :value="p.project" />
++            </KsSelect>
++            <VersionBar
++                class="designer-bar"
++                :versions="versions"
++                :selected="selected"
++                :admin="admin"
++                :dirty="dirty"
++                :busy="busy"
++                :error="error"
++                :message="message"
++                :problems="problems"
++                v-on="handlers"
++            />
++        </div>
++
++        <KsTabs v-if="def" v-model="view" class="designer-tabs">
++            <KsTabPane name="diagram" :label="$t('cr_designer.diagram')">
++                <div class="designer-body">
++                    <div class="canvas">
++                        <div v-if="editable" class="canvas-tools">
++                            <KsButton :icon="Plus" size="small" data-test="add-step" @click="addStep">
++                                {{ $t("cr_designer.add_step") }}
++                            </KsButton>
++                            <span class="hint">{{ $t("cr_designer.canvas_hint") }}</span>
++                        </div>
++                        <VueFlow
++                            id="cr-designer"
++                            :nodes="nodes"
++                            :edges="edges"
++                            :nodesDraggable="editable"
++                            :nodesConnectable="editable"
++                            :minZoom="MIN_ZOOM"
++                            :maxZoom="1.5"
++                            @nodeClick="({node}) => selectedId = node.id"
++                            @nodeDragStop="({node}) => def.layout[node.id] = {x: Math.round(node.position.x), y: Math.round(node.position.y)}"
++                            @connect="connect"
++                            @edgeClick="({edge}) => removeArrow(edge.source, edge.target)"
++                            @paneClick="selectedId = undefined"
++                            @nodesInitialized="fitView({padding: 0.2})"
++                        >
++                            <Background :gap="GRAPH_BACKGROUND.gap" :size="GRAPH_BACKGROUND.size" />
++                            <template #node-step="nodeProps">
++                                <StepNode :data="nodeProps.data" :selected="nodeProps.id === selectedId" :editable="editable" />
++                            </template>
++                        </VueFlow>
++                    </div>
++                    <aside class="panel">
++                        <StepEditor
++                            v-if="selectedStep"
++                            :key="selectedStep.id"
++                            :step="selectedStep"
++                            :editable="editable"
++                            :flows="flows"
++                            :fields="fields"
++                            @rename="renameStep"
++                            @delete="deleteStep"
++                            @edit-pipeline="openPipeline"
++                        />
++                        <p v-else class="hint">{{ $t("cr_designer.select_step_hint") }}</p>
++                    </aside>
++                </div>
++            </KsTabPane>
++            <KsTabPane name="json" :label="$t('cr_designer.json')">
++                <JsonView :value="def" :editable="editable" @apply="(v: any) => def = normalize(v)" />
++            </KsTabPane>
++        </KsTabs>
++        <p v-else-if="!error" class="hint">{{ $t("loading") }}</p>
++
++        <KsDrawer v-model="pipelineOpen" direction="rtl" size="85%" :title="pipelineTitle" @closed="closePipeline">
++            <PipelineEditor v-if="pipelineStep && pipelineHook" :widgets="pipelineStep.pipelines[pipelineHook]" :hook="pipelineHook" :editable="editable" />
++        </KsDrawer>
++    </div>
++</template>
++
++<script setup lang="ts">
++    import {computed, onMounted, ref} from "vue"
++    import {useRoute} from "vue-router"
++    import {useI18n} from "vue-i18n"
++    import {VueFlow, MarkerType, useVueFlow} from "@vue-flow/core"
++    import {Background} from "@vue-flow/background"
++    import {GRAPH_BACKGROUND, MIN_ZOOM} from "@kestra-io/topology"
++    import Plus from "vue-material-design-icons/Plus.vue"
++    import VersionBar from "./VersionBar.vue"
++    import StepNode from "./StepNode.vue"
++    import StepEditor from "./StepEditor.vue"
++    import JsonView from "./JsonView.vue"
++    import PipelineEditor from "./PipelineEditor.vue"
++    import {normalize as normalizeWidgets} from "./pipelineWidgets"
++    import {computeDagLayout} from "../dependencies/utils/dagLayout"
++    import {gateway, processUrl, processFlows} from "./crApi"
++    import type {Me, FlowInfo} from "./crApi"
++    import {useVersioned} from "./useVersioned"
++
++    const NODE = {width: 240, height: 110}
++
++    const props = defineProps<{me: Me}>()
++    const {t} = useI18n()
++    const route = useRoute()
++    const {fitView} = useVueFlow("cr-designer")
++
++    const projects = ref<{project: string}[]>([])
++    const project = ref("")
++    const flows = ref<FlowInfo[]>([])
++    const fields = ref<{order: string[], child: string[]}>({order: [], child: []})
++    const selectedId = ref<string>()
++    const view = ref("diagram")
++
++    const {versions, selected, loaded, content: def, busy, error, message, problems, dirty, loadVersions, leaveConfirmed, ask, handlers} = useVersioned({
++        base: () => processUrl(project.value),
++        field: "definition",
++        normalize,
++        onLoaded: async () => {
++            selectedId.value = undefined
++            flows.value = await processFlows(String(route.params.tenant ?? "main"), def.value.namespace ?? "")
++        },
++    })
++
++    const admin = computed(() => props.me.can.admin)
++    const editable = computed(() => admin.value && loaded.value?.state === "DRAFT")
++    const selectedStep = computed(() => def.value?.steps.find((s: any) => s.id === selectedId.value))
++
++    /** Every step gets the objects the editors fill in place. */
++    function normalize(d: any) {
++        const out = d ?? {}
++        out.steps = (out.steps ?? []).map((s: any) => ({...s, inputs: s.inputs ?? {}, follows: s.follows ?? []}))
++        for (const s of out.steps) {
++            for (const hook of Object.keys(s.pipelines ?? {})) normalizeWidgets(s.pipelines[hook])
++        }
++        out.layout = out.layout ?? {}
++        return out
++    }
++
++    const pipelineOpen = ref(false)
++    const pipelineHook = ref<string>()
++    const pipelineStep = computed(() => def.value?.steps.find((s: any) => s.id === selectedId.value))
++    const pipelineTitle = computed(() => pipelineHook.value
++        ? t("cr_designer.pipeline_title", {hook: t(`cr_designer.hook_${pipelineHook.value}`), step: pipelineStep.value?.label ?? ""}) : "")
++
++    function openPipeline(hook: string) {
++        const step = pipelineStep.value
++        if (!step) return
++        step.pipelines = step.pipelines ?? {}
++        step.pipelines[hook] = step.pipelines[hook] ?? []
++        pipelineHook.value = hook
++        pipelineOpen.value = true
++    }
++
++    /** An empty pipeline is no pipeline: the flow then runs its own default. */
++    function closePipeline() {
++        const step = pipelineStep.value
++        if (step?.pipelines && pipelineHook.value && !step.pipelines[pipelineHook.value]?.length) {
++            delete step.pipelines[pipelineHook.value]
++            if (!Object.keys(step.pipelines).length) delete step.pipelines
++        }
++        pipelineHook.value = undefined
++    }
++
++    async function selectProject(p: string) {
++        if (!await leaveConfirmed()) return
++        project.value = p
++        await loadVersions()
++    }
++
++    const positions = computed(() => {
++        const steps: any[] = def.value?.steps ?? []
++        const links = steps.flatMap(s => s.follows.map((f: string) => ({source: f, target: s.id})))
++        const placed: Record<string, {x: number, y: number}> = {}
++        if (links.length) {
++            const centres = computeDagLayout(steps.map(s => s.id), links, {columnGap: NODE.width + 80, rowGap: NODE.height + 40})
++            centres.forEach((c, id) => placed[id] = {x: c.x - NODE.width / 2, y: c.y - NODE.height / 2})
++        } else {
++            let order = 0, child = 0
++            steps.forEach(s => placed[s.id] = s.scope === "CHILD"
++                ? {x: (child++) * (NODE.width + 60), y: NODE.height + 120}
++                : {x: (order++) * (NODE.width + 60), y: 0})
++        }
++        return placed
++    })
++
++    const nodes = computed(() => (def.value?.steps ?? []).map((s: any) => ({
++        id: s.id,
++        type: "step",
++        position: def.value.layout[s.id] ?? positions.value[s.id] ?? {x: 0, y: 0},
++        data: s,
++    })))
++
++    const edges = computed(() => (def.value?.steps ?? []).flatMap((s: any) => s.follows.map((f: string) => ({
++        id: `${f}->${s.id}`,
++        source: f,
++        target: s.id,
++        markerEnd: MarkerType.ArrowClosed,
++    }))))
++
++    function connect({source, target}: {source: string, target: string}) {
++        const step = def.value.steps.find((s: any) => s.id === target)
++        if (step && source !== target && !step.follows.includes(source)) step.follows.push(source)
++    }
++
++    async function removeArrow(source: string, target: string) {
++        if (!editable.value || !await ask(t("cr_designer.confirm_remove_arrow", {from: source, to: target}))) return
++        const step = def.value.steps.find((s: any) => s.id === target)
++        step.follows = step.follows.filter((f: string) => f !== source)
++    }
++
++    function addStep() {
++        let n = def.value.steps.length + 1
++        while (def.value.steps.some((s: any) => s.id === `step_${n}`)) n++
++        const id = `step_${n}`
++        def.value.steps.push({id, label: t("cr_designer.new_step"), scope: "ORDER", runs: {flow: flows.value[0]?.id ?? ""}, inputs: {}, follows: []})
++        selectedId.value = id
++    }
++
++    function renameStep(newId: string) {
++        const oldId = selectedId.value
++        if (!oldId || !newId || newId === oldId) return
++        if (def.value.steps.some((s: any) => s.id === newId)) {
++            error.value = t("cr_designer.id_taken", {id: newId})
++            return
++        }
++        def.value.steps.forEach((s: any) => {
++            if (s.id === oldId) s.id = newId
++            s.follows = s.follows.map((f: string) => f === oldId ? newId : f)
++        })
++        if (def.value.layout[oldId]) {
++            def.value.layout[newId] = def.value.layout[oldId]
++            delete def.value.layout[oldId]
++        }
++        selectedId.value = newId
++    }
++
++    async function deleteStep() {
++        const id = selectedId.value
++        if (!id || !await ask(t("cr_designer.confirm_delete_step", {id}))) return
++        def.value.steps = def.value.steps.filter((s: any) => s.id !== id)
++        def.value.steps.forEach((s: any) => s.follows = s.follows.filter((f: string) => f !== id))
++        delete def.value.layout[id]
++        selectedId.value = undefined
++    }
++
++    onMounted(async () => {
++        try {
++            const [list, ctx] = await Promise.all([
++                gateway<{processes: {project: string}[]}>("/cr/api/processes"),
++                gateway<{order: string[], child: string[]}>("/cr/api/context-fields"),
++            ])
++            projects.value = list.processes
++            fields.value = ctx
++            project.value = list.processes[0]?.project ?? ""
++            if (project.value) await loadVersions()
++        } catch (e: any) {
++            error.value = e?.message ?? String(e)
++        }
++    })
++</script>
++
++<style scoped lang="scss">
++    .designer {
++        display: flex;
++        flex-direction: column;
++        gap: var(--ks-spacing-3);
++    }
++
++    .designer-top {
++        display: flex;
++        gap: var(--ks-spacing-3);
++        align-items: flex-start;
++    }
++
++    .project-select {
++        width: 14rem;
++    }
++
++    .designer-bar {
++        flex: 1;
++    }
++
++    .designer-body {
++        display: flex;
++        gap: var(--ks-spacing-3);
++        height: 70vh;
++    }
++
++    .canvas {
++        position: relative;
++        flex: 1;
++        border: 1px solid var(--ks-border-default);
++        border-radius: var(--ks-spacing-2);
++        background: var(--ks-bg-base);
++    }
++
++    .canvas-tools {
++        position: absolute;
++        z-index: 5;
++        top: var(--ks-spacing-2);
++        left: var(--ks-spacing-2);
++        display: flex;
++        gap: var(--ks-spacing-2);
++        align-items: center;
++    }
++
++    .panel {
++        width: 26rem;
++        overflow-y: auto;
++        padding: var(--ks-spacing-3);
++        border: 1px solid var(--ks-border-default);
++        border-radius: var(--ks-spacing-2);
++        background: var(--ks-bg-surface);
++    }
++
++    .hint {
++        color: var(--ks-text-secondary);
++        font-size: var(--ks-font-size-sm);
++    }
++</style>
+diff --git a/ui/src/components/crdesigner/StepEditor.vue b/ui/src/components/crdesigner/StepEditor.vue
+new file mode 100644
+index 0000000..62d5d76
+--- /dev/null
++++ b/ui/src/components/crdesigner/StepEditor.vue
+@@ -0,0 +1,279 @@
++<template>
++    <div class="step-editor" data-test="step-editor">
++        <div class="editor-head">
++            <h4>{{ step.label || step.id }}</h4>
++            <KsButton v-if="editable" :icon="Delete" size="small" @click="emit('delete')">
++                {{ $t("delete") }}
++            </KsButton>
++        </div>
++
++        <label class="field">
++            <span>{{ $t("cr_designer.step_id") }}</span>
++            <KsInput :modelValue="step.id" :disabled="!editable" @change="(v: string | number) => emit('rename', String(v))" />
++        </label>
++        <label class="field">
++            <span>{{ $t("cr_designer.label") }}</span>
++            <KsInput v-model="step.label" :disabled="!editable" />
++        </label>
++        <label class="field">
++            <span>{{ $t("description") }}</span>
++            <KsInput v-model="step.description" type="textarea" :rows="2" :disabled="!editable" />
++        </label>
++        <div class="field-row">
++            <label class="field">
++                <span>{{ $t("cr_designer.scope") }}</span>
++                <KsSelect v-model="step.scope" :disabled="!editable">
++                    <KsOption label="ORDER" value="ORDER" />
++                    <KsOption label="CHILD" value="CHILD" />
++                </KsSelect>
++            </label>
++            <KsCheckbox v-model="step.starts_order" :disabled="!editable || step.scope !== 'ORDER'">
++                {{ $t("cr_designer.starts_order") }}
++            </KsCheckbox>
++        </div>
++        <label class="field">
++            <span>{{ $t("cr_designer.flow") }}</span>
++            <KsSelect :modelValue="step.runs?.flow" :disabled="!editable" @update:model-value="(f: string) => step.runs = {flow: f}">
++                <KsOption v-for="f in flows" :key="f.id" :label="f.id" :value="f.id" />
++            </KsSelect>
++        </label>
++
++        <h5>{{ $t("cr_designer.offered_when") }}</h5>
++        <p v-if="!conditionRows.length" class="hint">{{ $t("cr_designer.always_offered") }}</p>
++        <div v-for="row in conditionRows" :key="row.path" class="condition-row">
++            <KsSelect
++                :modelValue="row.path"
++                filterable
++                allowCreate
++                :disabled="!editable"
++                @update:model-value="(p: string) => renameCondition(row.path, p)"
++            >
++                <KsOption v-for="p in paths" :key="p" :label="p" :value="p" />
++            </KsSelect>
++            <KsSelect :modelValue="row.op" :disabled="!editable" @update:model-value="(o: string) => setCondition(row.path, o, row.operand)">
++                <KsOption v-for="o in OPERATORS" :key="o" :label="o" :value="o" />
++            </KsSelect>
++            <KsInput
++                v-if="row.op === 'in' || row.op === 'not_in' || row.op === 'equals'"
++                :modelValue="Array.isArray(row.operand) ? row.operand.join(',') : String(row.operand ?? '')"
++                :placeholder="row.op === 'equals' ? '' : 'A,B'"
++                :disabled="!editable"
++                @change="(v: string | number) => setCondition(row.path, row.op, row.op === 'equals' ? String(v) : String(v).split(',').map(s => s.trim()).filter(Boolean))"
++            />
++            <KsButton v-if="editable" :icon="Close" size="small" :aria-label="$t('delete')" @click="removeCondition(row.path)" />
++        </div>
++        <KsButton v-if="editable" :icon="Plus" size="small" @click="addCondition">
++            {{ $t("cr_designer.add_condition") }}
++        </KsButton>
++
++        <template v-if="flow?.hooks.length">
++            <h5>{{ $t("cr_designer.pipelines") }}</h5>
++            <p class="hint">{{ $t("cr_designer.pipelines_hint") }}</p>
++            <div v-for="h in flow.hooks" :key="h" class="field-row" :data-test="`pipeline-${h}`">
++                <span>{{ $t(`cr_designer.hook_${h}`) }}</span>
++                <span class="hint">{{ $t("cr_designer.widget_count", {count: widgetCount(h)}) }}</span>
++                <KsButton size="small" @click="emit('edit-pipeline', h)">
++                    {{ editable ? $t("cr_designer.edit_pipeline") : $t("cr_designer.view_pipeline") }}
++                </KsButton>
++            </div>
++        </template>
++
++        <h5>{{ $t("cr_designer.inputs") }}</h5>
++        <p class="hint">{{ $t("cr_designer.inputs_hint", {flow: step.runs?.flow ?? "?"}) }}</p>
++        <div v-for="name in inputNames" :key="name" class="input-row">
++            <div class="input-head">
++                <code>{{ name }}</code>
++                <span class="hint">{{ flowInputType(name) }}</span>
++                <KsSelect :modelValue="sourceOf(name)" :disabled="!editable" class="source-select" @update:model-value="(s: string) => setSource(name, s)">
++                    <KsOption v-for="s in SOURCES" :key="s" :label="$t(`cr_designer.source_${s || 'none'}`)" :value="s" />
++                </KsSelect>
++            </div>
++            <template v-if="sourceOf(name) === 'value'">
++                <KsInput v-model="inputs[name].value" :disabled="!editable" />
++            </template>
++            <template v-else-if="sourceOf(name) === 'order' || sourceOf(name) === 'child'">
++                <KsSelect
++                    :modelValue="inputs[name].from"
++                    filterable
++                    allowCreate
++                    :disabled="!editable"
++                    @update:model-value="(p: string) => inputs[name].from = p"
++                >
++                    <KsOption v-for="p in paths.filter(x => x.startsWith(sourceOf(name) + '.'))" :key="p" :label="p" :value="p" />
++                </KsSelect>
++            </template>
++            <template v-else-if="sourceOf(name) === 'user'">
++                <div class="field-row">
++                    <KsSelect v-model="inputs[name].type" :disabled="!editable">
++                        <KsOption v-for="t in USER_TYPES" :key="t" :label="t" :value="t" />
++                    </KsSelect>
++                    <KsCheckbox v-model="inputs[name].required" :disabled="!editable">
++                        {{ $t("cr_designer.required") }}
++                    </KsCheckbox>
++                </div>
++                <KsInput v-model="inputs[name].label" :placeholder="$t('cr_designer.label')" :disabled="!editable" />
++                <KsInput
++                    v-if="inputs[name].type !== 'FILE'"
++                    :modelValue="defaultText(inputs[name])"
++                    :placeholder="$t('cr_designer.default')"
++                    :disabled="!editable"
++                    @change="(v: string | number) => setDefault(inputs[name], String(v))"
++                />
++                <template v-if="inputs[name].type === 'SELECT' || inputs[name].type === 'MULTISELECT'">
++                    <KsSelect
++                        :modelValue="inputs[name].options_from"
++                        filterable
++                        allowCreate
++                        :placeholder="$t('cr_designer.options_from')"
++                        :disabled="!editable"
++                        @update:model-value="(p: string) => inputs[name].options_from = p"
++                    >
++                        <KsOption v-for="p in paths" :key="p" :label="p" :value="p" />
++                    </KsSelect>
++                    <KsInput
++                        v-if="inputs[name].type === 'MULTISELECT'"
++                        v-model="inputs[name].all_value"
++                        :placeholder="$t('cr_designer.all_value')"
++                        :disabled="!editable"
++                    />
++                </template>
++            </template>
++        </div>
++    </div>
++</template>
++
++<script setup lang="ts">
++    import {computed} from "vue"
++    import Delete from "vue-material-design-icons/Delete.vue"
++    import Close from "vue-material-design-icons/Close.vue"
++    import Plus from "vue-material-design-icons/Plus.vue"
++    import type {FlowInfo} from "./crApi"
++    import {flatten as flattenWidgets} from "./pipelineWidgets"
++
++    const OPERATORS = ["in", "not_in", "equals", "non_empty", "empty"]
++    const SOURCES = ["", "value", "order", "child", "user"]
++    const USER_TYPES = ["STRING", "BOOL", "SELECT", "MULTISELECT", "FILE"]
++
++    const step = defineModel<any>("step", {required: true})
++    const props = defineProps<{editable: boolean, flows: FlowInfo[], fields: {order: string[], child: string[]}}>()
++    const emit = defineEmits<{rename: [newId: string], delete: [], "edit-pipeline": [hook: string]}>()
++
++    const paths = computed(() => [
++        ...props.fields.order.map(f => `order.${f}`),
++        ...(step.value.scope === "CHILD" ? props.fields.child.map(f => `child.${f}`) : []),
++    ])
++
++    const flow = computed(() => props.flows.find(f => f.id === step.value.runs?.flow))
++    // ProcessDesigner gives every step an inputs object when it loads or creates it
++    const inputs = computed<Record<string, any>>(() => step.value.inputs)
++    /** Every input the flow declares, plus any the step maps that the flow no longer declares. */
++    const inputNames = computed(() => [...new Set([...(flow.value?.inputs ?? []).map(i => i.id), ...Object.keys(inputs.value)])])
++    const widgetCount = (hook: string) => flattenWidgets(step.value.pipelines?.[hook] ?? []).length
++    const flowInputType = (name: string) => flow.value?.inputs.find(i => i.id === name)?.type ?? "?"
++
++    function sourceOf(name: string): string {
++        const spec = inputs.value[name]
++        if (!spec) return ""
++        if ("value" in spec) return "value"
++        if (spec.from === "user") return "user"
++        return String(spec.from ?? "").startsWith("child.") ? "child" : "order"
++    }
++
++    function setSource(name: string, source: string) {
++        const userType: Record<string, string> = {BOOL: "BOOL", SELECT: "SELECT", MULTISELECT: "MULTISELECT", FILE: "FILE"}
++        if (source === "") delete inputs.value[name]
++        else if (source === "value") inputs.value[name] = {value: ""}
++        else if (source === "order") inputs.value[name] = {from: "order.value"}
++        else if (source === "child") inputs.value[name] = {from: "child.child_id"}
++        else inputs.value[name] = {from: "user", type: userType[flowInputType(name)] ?? "STRING", label: name, required: false}
++    }
++
++    const defaultText = (spec: any) => Array.isArray(spec.default) ? spec.default.join(",") : String(spec.default ?? "")
++
++    function setDefault(spec: any, text: string) {
++        if (text === "") delete spec.default
++        else if (spec.type === "MULTISELECT") spec.default = text.split(",").map(s => s.trim()).filter(Boolean)
++        else if (spec.type === "BOOL") spec.default = text === "true"
++        else spec.default = text
++    }
++
++    const conditionRows = computed(() => Object.entries(step.value.available_when ?? {}).map(([path, op]: [string, any]) => {
++        const [operator, operand] = Object.entries(op ?? {})[0] ?? ["non_empty", true]
++        return {path, op: operator, operand}
++    }))
++
++    function setCondition(path: string, op: string, operand: any) {
++        const value = op === "non_empty" || op === "empty" ? true
++            : op === "equals" ? (Array.isArray(operand) ? operand.join(",") : operand ?? "")
++                : Array.isArray(operand) ? operand : String(operand ?? "").split(",").filter(Boolean)
++        step.value.available_when = {...(step.value.available_when ?? {}), [path]: {[op]: value}}
++    }
++
++    function renameCondition(from: string, to: string) {
++        if (!to || from === to) return
++        const entries = Object.entries(step.value.available_when ?? {}).map(([p, v]) => [p === from ? to : p, v])
++        step.value.available_when = Object.fromEntries(entries)
++    }
++
++    function removeCondition(path: string) {
++        const next = {...(step.value.available_when ?? {})}
++        delete next[path]
++        step.value.available_when = Object.keys(next).length ? next : undefined
++    }
++
++    function addCondition() {
++        const path = paths.value.find(p => !(p in (step.value.available_when ?? {}))) ?? "order.stage"
++        setCondition(path, "non_empty", true)
++    }
++</script>
++
++<style scoped lang="scss">
++    .step-editor {
++        display: flex;
++        flex-direction: column;
++        gap: var(--ks-spacing-2);
++    }
++
++    .editor-head, .input-head, .field-row, .condition-row {
++        display: flex;
++        gap: var(--ks-spacing-2);
++        align-items: center;
++    }
++
++    .editor-head {
++        justify-content: space-between;
++    }
++
++    h4, h5 {
++        margin: var(--ks-spacing-2) 0 0;
++    }
++
++    .field {
++        display: flex;
++        flex: 1;
++        flex-direction: column;
++        gap: var(--ks-spacing-1);
++        font-size: var(--ks-font-size-sm);
++        color: var(--ks-text-secondary);
++    }
++
++    .hint {
++        margin: 0;
++        color: var(--ks-text-secondary);
++        font-size: var(--ks-font-size-xs);
++    }
++
++    .input-row {
++        display: flex;
++        flex-direction: column;
++        gap: var(--ks-spacing-1);
++        padding: var(--ks-spacing-2);
++        border: 1px solid var(--ks-border-subtle);
++        border-radius: var(--ks-spacing-1);
++    }
++
++    .source-select {
++        margin-left: auto;
++        width: 10rem;
++    }
++</style>
+diff --git a/ui/src/components/crdesigner/StepNode.vue b/ui/src/components/crdesigner/StepNode.vue
+new file mode 100644
+index 0000000..ba11bf2
+--- /dev/null
++++ b/ui/src/components/crdesigner/StepNode.vue
+@@ -0,0 +1,70 @@
++<template>
++    <div class="step-node" :class="{selected, 'starts-order': data.starts_order}" :data-test="`step-node-${data.id}`">
++        <Handle type="target" :position="Position.Left" :connectable="editable" />
++        <div class="step-head">
++            <KsTag size="small" :type="data.scope === 'CHILD' ? 'warning' : 'primary'">
++                {{ data.scope }}
++            </KsTag>
++            <KsTag v-if="data.starts_order" size="small" type="success">
++                {{ $t("cr_designer.starts_order") }}
++            </KsTag>
++        </div>
++        <div class="step-label">{{ data.label }}</div>
++        <div class="step-meta">{{ data.id }} → {{ data.runs?.flow ?? "?" }}</div>
++        <div v-if="conditions" class="step-meta">{{ $t("cr_designer.when") }} {{ conditions }}</div>
++        <div v-if="hooks" class="step-meta">{{ $t("cr_designer.pipelines") }}: {{ hooks }}</div>
++        <Handle type="source" :position="Position.Right" :connectable="editable" />
++    </div>
++</template>
++
++<script setup lang="ts">
++    import {computed} from "vue"
++    import {Handle, Position} from "@vue-flow/core"
++
++    const props = defineProps<{data: any, selected: boolean, editable: boolean}>()
++
++    const hooks = computed(() => Object.keys(props.data.pipelines ?? {}).join(", "))
++
++    const conditions = computed(() => Object.entries(props.data.available_when ?? {})
++        .map(([path, op]: [string, any]) => {
++            const [operator, operand] = Object.entries(op ?? {})[0] ?? ["?", ""]
++            return `${path} ${operator}${Array.isArray(operand) ? " " + operand.join(",") : ""}`
++        })
++        .join(" · "))
++</script>
++
++<style scoped lang="scss">
++    .step-node {
++        width: 15rem;
++        padding: var(--ks-spacing-2) var(--ks-spacing-3);
++        border: 1px solid var(--ks-border-default);
++        border-radius: var(--ks-spacing-2);
++        background: var(--ks-bg-surface);
++        color: var(--ks-text-primary);
++        font-size: var(--ks-font-size-sm);
++    }
++
++    .step-node.selected {
++        border-color: var(--ks-border-focus);
++    }
++
++    .step-node.starts-order {
++        border-style: dashed;
++    }
++
++    .step-head {
++        display: flex;
++        gap: var(--ks-spacing-1);
++        margin-bottom: var(--ks-spacing-1);
++    }
++
++    .step-label {
++        font-weight: 600;
++    }
++
++    .step-meta {
++        color: var(--ks-text-secondary);
++        font-size: var(--ks-font-size-xs);
++        word-break: break-word;
++    }
++</style>
+diff --git a/ui/src/components/crdesigner/VersionBar.vue b/ui/src/components/crdesigner/VersionBar.vue
+new file mode 100644
+index 0000000..4d9d491
+--- /dev/null
++++ b/ui/src/components/crdesigner/VersionBar.vue
+@@ -0,0 +1,123 @@
++<template>
++    <div class="version-bar">
++        <KsSelect
++            :modelValue="selected"
++            class="version-select"
++            :placeholder="$t('cr_designer.version')"
++            @update:model-value="(v: number) => emit('select', v)"
++        >
++            <KsOption
++                v-for="v in versions"
++                :key="v.version"
++                :label="`v${v.version} · ${v.state}`"
++                :value="v.version"
++            />
++        </KsSelect>
++        <KsTag v-if="current" :type="stateType(current.state)">
++            {{ current.state }}
++        </KsTag>
++        <span v-if="dirty" class="version-dirty">{{ $t("cr_designer.unsaved") }}</span>
++        <div class="version-actions">
++            <template v-if="admin">
++                <KsButton v-if="!hasDraft" :icon="Plus" :disabled="busy" @click="emit('draft')">
++                    {{ $t("cr_designer.new_draft", {from: selected ?? "-"}) }}
++                </KsButton>
++                <template v-if="current?.state === 'DRAFT'">
++                    <KsButton type="primary" :icon="ContentSave" :disabled="busy || !dirty" @click="emit('save')">
++                        {{ $t("save") }}
++                    </KsButton>
++                    <KsButton :icon="RocketLaunchOutline" :disabled="busy || dirty" @click="emit('publish')">
++                        {{ $t("cr_designer.publish") }}
++                    </KsButton>
++                    <KsButton :icon="Delete" :disabled="busy" @click="emit('discard')">
++                        {{ $t("cr_designer.discard") }}
++                    </KsButton>
++                </template>
++                <KsButton v-if="current?.state === 'PUBLISHED'" :icon="ArchiveOutline" :disabled="busy" @click="emit('retire')">
++                    {{ $t("cr_designer.retire") }}
++                </KsButton>
++            </template>
++            <span v-else class="version-hint">{{ $t("cr_designer.read_only") }}</span>
++        </div>
++    </div>
++    <KsAlert v-if="error" type="error" :closable="false" class="version-message">
++        {{ error }}
++    </KsAlert>
++    <KsAlert v-if="problems.length" type="warning" :closable="false" class="version-message">
++        <strong>{{ $t("cr_designer.problems", {count: problems.length}) }}</strong>
++        <ul class="version-problems">
++            <li v-for="(p, i) in problems" :key="i">
++                {{ p }}
++            </li>
++        </ul>
++    </KsAlert>
++    <KsAlert v-if="message" type="success" :closable="false" class="version-message">
++        {{ message }}
++    </KsAlert>
++</template>
++
++<script setup lang="ts">
++    import {computed} from "vue"
++    import Plus from "vue-material-design-icons/Plus.vue"
++    import ContentSave from "vue-material-design-icons/ContentSave.vue"
++    import RocketLaunchOutline from "vue-material-design-icons/RocketLaunchOutline.vue"
++    import Delete from "vue-material-design-icons/Delete.vue"
++    import ArchiveOutline from "vue-material-design-icons/ArchiveOutline.vue"
++    import type {VersionSummary} from "./crApi"
++
++    const props = defineProps<{
++        versions: VersionSummary[],
++        selected?: number,
++        admin: boolean,
++        dirty: boolean,
++        busy: boolean,
++        error?: string,
++        message?: string,
++        problems: string[],
++    }>()
++    const emit = defineEmits<{
++        select: [version: number],
++        draft: [],
++        save: [],
++        publish: [],
++        discard: [],
++        retire: [],
++    }>()
++
++    const current = computed(() => props.versions.find(v => v.version === props.selected))
++    const hasDraft = computed(() => props.versions.some(v => v.state === "DRAFT"))
++    const stateType = (state: string) => state === "PUBLISHED" ? "success" : state === "DRAFT" ? "warning" : "info"
++</script>
++
++<style scoped lang="scss">
++    .version-bar {
++        display: flex;
++        flex-wrap: wrap;
++        gap: var(--ks-spacing-2);
++        align-items: center;
++    }
++
++    .version-select {
++        width: 12rem;
++    }
++
++    .version-actions {
++        display: flex;
++        gap: var(--ks-spacing-2);
++        margin-left: auto;
++    }
++
++    .version-dirty, .version-hint {
++        color: var(--ks-text-secondary);
++        font-size: var(--ks-font-size-sm);
++    }
++
++    .version-message {
++        margin-top: var(--ks-spacing-2);
++    }
++
++    .version-problems {
++        margin: var(--ks-spacing-1) 0 0;
++        padding-left: var(--ks-spacing-5);
++    }
++</style>
+diff --git a/ui/src/components/crdesigner/WidgetForm.vue b/ui/src/components/crdesigner/WidgetForm.vue
+new file mode 100644
+index 0000000..90cb703
+--- /dev/null
++++ b/ui/src/components/crdesigner/WidgetForm.vue
+@@ -0,0 +1,193 @@
++<template>
++    <div class="widget-form">
++        <template v-if="w.widget === 'NEI'">
++            <div class="row">
++                <label class="field"><span>{{ $t("cr_designer.f_component") }}</span><KsInput v-model="w.component" :disabled="!editable" placeholder="clicr" /></label>
++                <label class="field"><span>{{ $t("cr_designer.f_action") }}</span><KsInput v-model="w.action" :disabled="!editable" placeholder="MOP_EXECUTION" /></label>
++                <label class="field"><span>{{ $t("cr_designer.f_step") }}</span><KsInput v-model="w.step" :disabled="!editable" :placeholder="w.action" /></label>
++            </div>
++            <label class="field"><span>{{ $t("cr_designer.f_sub_activity") }}</span>
++                <KsInput v-model="w.sub_activity" :disabled="!editable" placeholder="${activity.sub_activity}" />
++            </label>
++            <KeyValues v-model="w.params" group="params" :editable="editable" />
++        </template>
++
++        <template v-else-if="w.widget === 'MAIL'">
++            <div class="row">
++                <label class="field"><span>{{ $t("cr_designer.f_to") }}</span><KsInput v-model="w.to" :disabled="!editable" placeholder="${ciq.OWNER_EMAIL}" /></label>
++                <label class="field"><span>{{ $t("cr_designer.f_cc") }}</span><KsInput v-model="w.cc" :disabled="!editable" /></label>
++                <label class="field narrow"><span>{{ $t("cr_designer.f_mailer") }}</span><KsInput v-model="w.mailer" :disabled="!editable" placeholder="default" /></label>
++            </div>
++            <label class="field"><span>{{ $t("cr_designer.f_subject") }}</span><KsInput v-model="w.subject" :disabled="!editable" /></label>
++            <label class="field"><span>{{ $t("cr_designer.f_body") }}</span><KsInput v-model="w.body" type="textarea" :rows="3" :disabled="!editable" /></label>
++            <label class="field"><span>{{ $t("cr_designer.f_attachments") }}</span><KsInput v-model="w.attachments" :disabled="!editable" /></label>
++        </template>
++
++        <template v-else-if="w.widget === 'DECISION'">
++            <div class="row">
++                <label class="field narrow"><span>{{ $t("cr_designer.f_mode") }}</span>
++                    <KsSelect v-model="w.mode" :disabled="!editable">
++                        <KsOption value="MANUAL" :label="$t('cr_designer.mode_MANUAL')" />
++                        <KsOption value="REPLY" :label="$t('cr_designer.mode_REPLY')" />
++                    </KsSelect>
++                </label>
++                <label class="field"><span>{{ $t("cr_designer.f_question") }}</span><KsInput v-model="w.question" :disabled="!editable" /></label>
++            </div>
++            <div class="row">
++                <label class="field"><span>{{ $t("cr_designer.f_options") }}</span>
++                    <KsInput :modelValue="(w.options ?? []).join(',')" :disabled="!editable" @change="(v: string | number) => w.options = csv(String(v))" />
++                </label>
++                <label class="field narrow"><span>{{ $t("cr_designer.f_timeout") }}</span><KsInput v-model="w.timeout" :disabled="!editable" placeholder="P1D" /></label>
++                <label class="field narrow"><span>{{ $t("cr_designer.f_on_timeout") }}</span>
++                    <KsSelect v-model="w.on_timeout" :disabled="!editable" clearable>
++                        <KsOption v-for="o in [...(w.options ?? []), 'FAIL']" :key="o" :value="o" :label="o" />
++                    </KsSelect>
++                </label>
++            </div>
++            <div v-if="w.mode === 'REPLY'" class="row">
++                <label class="field"><span>{{ $t("cr_designer.f_reply_to") }}</span>
++                    <KsSelect v-model="w.reply_to" :disabled="!editable">
++                        <KsOption v-for="m in mails" :key="m" :value="m" :label="m" />
++                    </KsSelect>
++                </label>
++                <label class="field narrow"><span>{{ $t("cr_designer.f_reader") }}</span><KsInput v-model="w.reader" :disabled="!editable" placeholder="default" /></label>
++                <label class="field narrow"><span>{{ $t("cr_designer.f_interval") }}</span><KsInput v-model="w.interval" :disabled="!editable" placeholder="PT5M" /></label>
++            </div>
++        </template>
++
++        <template v-else-if="w.widget === 'IF'">
++            <span class="hint">{{ $t("cr_designer.if_hint") }}</span>
++            <div v-for="(c, i) in w.conditions" :key="i" class="condition">
++                <KsInput v-model="c.ref" class="cond-text" :disabled="!editable" placeholder="activity.sub_activity" />
++                <KsSelect v-model="c.op" :disabled="!editable" class="op">
++                    <KsOption v-for="o in OPS" :key="o" :value="o" :label="$t(`cr_designer.op_${o}`)" />
++                </KsSelect>
++                <KsInput
++                    v-if="c.op !== 'empty' && c.op !== 'non_empty'"
++                    class="cond-text"
++                    :modelValue="Array.isArray(c.value) ? c.value.join(',') : c.value"
++                    :disabled="!editable"
++                    @change="(v: string | number) => c.value = c.op === 'in' || c.op === 'not_in' ? csv(String(v)) : String(v)"
++                />
++                <KsButton v-if="editable" :icon="Close" size="small" :aria-label="$t('delete')" @click="w.conditions.splice(i, 1)" />
++            </div>
++            <KsButton v-if="editable" :icon="Plus" size="small" class="add" @click="w.conditions.push({ref: '', op: 'equals', value: ''})">
++                {{ $t("cr_designer.add_condition") }}
++            </KsButton>
++        </template>
++
++        <template v-else-if="w.widget === 'FOR_EACH'">
++            <div class="row">
++                <label class="field"><span>{{ $t("cr_designer.f_items") }}</span><KsInput v-model="w.items" :disabled="!editable" placeholder="${step.main.SUCCESS_IMSIS}" /></label>
++                <label class="field narrow"><span>{{ $t("cr_designer.f_concurrency") }}</span>
++                    <KsInputNumber v-model="w.concurrency" :min="0" :max="50" :disabled="!editable" />
++                </label>
++            </div>
++        </template>
++
++        <template v-else-if="w.widget === 'COLLECT'">
++            <div class="row">
++                <label class="field narrow"><span>{{ $t("cr_designer.f_list") }}</span><KsInput v-model="w.list" :disabled="!editable" placeholder="MMTEL_SUCCESS" /></label>
++                <label class="field"><span>{{ $t("cr_designer.f_value") }}</span><KsInput v-model="w.value" :disabled="!editable" placeholder="${item}" /></label>
++            </div>
++        </template>
++
++        <template v-else-if="w.widget === 'END'">
++            <div class="row">
++                <label class="field narrow"><span>{{ $t("cr_designer.f_status") }}</span>
++                    <KsSelect v-model="w.status" :disabled="!editable">
++                        <KsOption value="SUCCESS" label="SUCCESS" />
++                        <KsOption value="FAILED" label="FAILED" />
++                    </KsSelect>
++                </label>
++                <label class="field"><span>{{ $t("cr_designer.f_message") }}</span><KsInput v-model="w.message" :disabled="!editable" /></label>
++            </div>
++        </template>
++
++        <label v-if="w.widget === 'NEI' || w.widget === 'MAIL'" class="field short">
++            <span>{{ $t("cr_designer.f_on_failure") }}</span>
++            <KsSelect :modelValue="w.on_failure ?? 'STOP'" :disabled="!editable" @update:model-value="(v: string) => w.on_failure = v">
++                <KsOption value="STOP" :label="$t('cr_designer.on_failure_STOP')" />
++                <KsOption value="CONTINUE" :label="$t('cr_designer.on_failure_CONTINUE')" />
++            </KsSelect>
++        </label>
++    </div>
++</template>
++
++<script setup lang="ts">
++    import {computed, inject} from "vue"
++    import Close from "vue-material-design-icons/Close.vue"
++    import Plus from "vue-material-design-icons/Plus.vue"
++    import KeyValues from "./KeyValues.vue"
++    import {PIPELINE, flatten} from "./pipelineWidgets"
++
++    const OPS = ["equals", "not_equals", "in", "not_in", "empty", "non_empty"]
++
++    const props = defineProps<{widget: any}>()
++    const ctx = inject(PIPELINE)!
++    const editable = computed(() => ctx.editable.value)
++    const w = computed(() => props.widget)
++    const mails = computed(() => flatten(ctx.root.value).filter(x => x.widget === "MAIL").map(x => x.id))
++
++    const csv = (s: string) => s.split(",").map(x => x.trim()).filter(Boolean)
++</script>
++
++<style scoped lang="scss">
++    .widget-form {
++        display: flex;
++        flex-direction: column;
++        gap: var(--ks-spacing-2);
++    }
++
++    .row {
++        display: flex;
++        flex-wrap: wrap;
++        gap: var(--ks-spacing-2);
++        align-items: flex-end;
++    }
++
++    .condition {
++        display: flex;
++        gap: var(--ks-spacing-2);
++        align-items: center;
++    }
++
++    .cond-text {
++        flex: 1 1 0;
++        min-width: 0;
++    }
++
++    .field {
++        display: flex;
++        min-width: 0;
++        flex-direction: column;
++        gap: var(--ks-spacing-1);
++        color: var(--ks-text-secondary);
++        font-size: var(--ks-font-size-xs);
++    }
++
++    .row > .field {
++        flex: 1 1 14rem;
++    }
++
++    .row > .narrow {
++        flex: 0 1 10rem;
++    }
++
++    .short {
++        max-width: 16rem;
++    }
++
++    .op {
++        flex: 0 0 10rem;
++    }
++
++    .add {
++        align-self: flex-start;
++    }
++
++    .hint {
++        color: var(--ks-text-secondary);
++        font-size: var(--ks-font-size-xs);
++    }
++</style>
+diff --git a/ui/src/components/crdesigner/WidgetList.vue b/ui/src/components/crdesigner/WidgetList.vue
+new file mode 100644
+index 0000000..6f76697
+--- /dev/null
++++ b/ui/src/components/crdesigner/WidgetList.vue
+@@ -0,0 +1,148 @@
++<template>
++    <div class="widget-list">
++        <div v-for="(w, i) in list" :key="i" class="widget-card" :class="`widget-${w.widget}`" :data-test="`widget-${w.id}`">
++            <div class="widget-head">
++                <KsTag size="small" :type="TAG[w.widget] ?? 'info'">
++                    {{ $t(`cr_designer.widget_${w.widget}`) }}
++                </KsTag>
++                <KsInput
++                    :modelValue="w.id"
++                    size="small"
++                    class="widget-id"
++                    :disabled="!editable"
++                    @change="(v: string | number) => rename(w, String(v))"
++                />
++                <KsInput v-model="w.label" size="small" class="widget-label" :placeholder="$t('cr_designer.label')" :disabled="!editable" />
++                <template v-if="editable">
++                    <KsButton :icon="ArrowUp" size="small" :disabled="i === 0" :aria-label="$t('cr_designer.move_up')" @click="move(i, -1)" />
++                    <KsButton :icon="ArrowDown" size="small" :disabled="i === list.length - 1" :aria-label="$t('cr_designer.move_down')" @click="move(i, 1)" />
++                    <KsButton :icon="Delete" size="small" :aria-label="$t('delete')" @click="remove(i)" />
++                </template>
++            </div>
++            <WidgetForm :widget="w" />
++            <div v-if="w.widget === 'IF'" class="widget-branches">
++                <div class="widget-branch">
++                    <span class="branch-title">{{ $t("cr_designer.then") }}</span>
++                    <WidgetList :list="w.then" />
++                </div>
++                <div class="widget-branch">
++                    <span class="branch-title">{{ $t("cr_designer.else") }}</span>
++                    <WidgetList :list="w.else" />
++                </div>
++            </div>
++            <div v-else-if="w.widget === 'FOR_EACH'" class="widget-branch">
++                <span class="branch-title">{{ $t("cr_designer.for_each_body") }}</span>
++                <WidgetList :list="w.body" />
++            </div>
++        </div>
++        <p v-if="!list.length" class="hint">{{ $t("cr_designer.no_widgets") }}</p>
++        <KsDropdown v-if="editable" trigger="click" placement="bottom-start">
++            <KsButton :icon="Plus" size="small" data-test="add-widget">
++                {{ $t("cr_designer.add_widget") }}
++            </KsButton>
++            <template #dropdown>
++                <KsDropdownMenu>
++                    <KsDropdownItem v-for="t in WIDGETS" :key="t" @click="add(t)">
++                        {{ $t(`cr_designer.widget_${t}`) }}
++                    </KsDropdownItem>
++                </KsDropdownMenu>
++            </template>
++        </KsDropdown>
++    </div>
++</template>
++
++<script setup lang="ts">
++    import {computed, inject} from "vue"
++    import type {KsTagType} from "@kestra-io/design-system"
++    import ArrowUp from "vue-material-design-icons/ArrowUp.vue"
++    import ArrowDown from "vue-material-design-icons/ArrowDown.vue"
++    import Delete from "vue-material-design-icons/Delete.vue"
++    import Plus from "vue-material-design-icons/Plus.vue"
++    import WidgetForm from "./WidgetForm.vue"
++    import {PIPELINE, WIDGETS, blank, flatten, nextId, renameWidget} from "./pipelineWidgets"
++
++    const TAG: Record<string, KsTagType> = {NEI: "primary", MAIL: "success", DECISION: "warning", IF: "info", FOR_EACH: "info", END: "danger"}
++
++    const props = defineProps<{list: any[]}>()
++    const ctx = inject(PIPELINE)!
++    const editable = computed(() => ctx.editable.value)
++
++    function add(type: string) {
++        props.list.push(blank(type, nextId(ctx.root.value, type)))
++    }
++
++    function move(i: number, by: number) {
++        const [w] = props.list.splice(i, 1)
++        props.list.splice(i + by, 0, w)
++    }
++
++    function remove(i: number) {
++        props.list.splice(i, 1)
++    }
++
++    function rename(w: any, to: string) {
++        if (!to || to === w.id || flatten(ctx.root.value).some(x => x.id === to)) return
++        renameWidget(ctx.root.value, w.id, to)
++    }
++</script>
++
++<style scoped lang="scss">
++    .widget-list {
++        display: flex;
++        flex-direction: column;
++        gap: var(--ks-spacing-2);
++    }
++
++    .widget-card {
++        display: flex;
++        min-width: 0;
++        flex-direction: column;
++        gap: var(--ks-spacing-2);
++        padding: var(--ks-spacing-3);
++        border: 1px solid var(--ks-border-default);
++        border-radius: var(--ks-spacing-2);
++        background: var(--ks-bg-surface);
++    }
++
++    .widget-head {
++        display: flex;
++        gap: var(--ks-spacing-2);
++        align-items: center;
++    }
++
++    .widget-id {
++        width: 12rem;
++    }
++
++    .widget-label {
++        flex: 1;
++    }
++
++    .widget-branches {
++        display: flex;
++        gap: var(--ks-spacing-3);
++        align-items: flex-start;
++    }
++
++    .widget-branch {
++        display: flex;
++        flex: 1;
++        min-width: 0;
++        flex-direction: column;
++        gap: var(--ks-spacing-2);
++        padding: var(--ks-spacing-2);
++        border-left: 2px solid var(--ks-border-strong);
++    }
++
++    .branch-title {
++        color: var(--ks-text-secondary);
++        font-size: var(--ks-font-size-xs);
++        font-weight: 600;
++    }
++
++    .hint {
++        margin: 0;
++        color: var(--ks-text-secondary);
++        font-size: var(--ks-font-size-xs);
++    }
++</style>
+diff --git a/ui/src/components/crdesigner/crApi.ts b/ui/src/components/crdesigner/crApi.ts
+new file mode 100644
+index 0000000..e9587d6
+--- /dev/null
++++ b/ui/src/components/crdesigner/crApi.ts
+@@ -0,0 +1,60 @@
++/**
++ * The cr_automation gateway's API (/cr/api) and the Kestra calls the designer needs. The gateway enforces the
++ * roles; the UI only avoids offering what the role cannot do.
++ */
++
++export interface Me {username: string, role: string, can: {view: boolean, execute: boolean, admin: boolean}}
++
++export interface VersionSummary {version: number, state: "DRAFT" | "PUBLISHED" | "RETIRED", revision: number}
++
++export interface ProcessVersion extends VersionSummary {project: string, definition: any, problems: string[]}
++
++export interface ActivityVersion extends VersionSummary {node_type: string, sub_activity: string, config: any, problems: string[]}
++
++/** `hooks`: the pipelines a step may attach to the flow (its label pipeline_hooks). */
++export interface FlowInfo {id: string, inputs: {id: string, type: string}[], hooks: string[]}
++
++export class GatewayError extends Error {
++    constructor(message: string, public status: number, public problems: string[] = []) {
++        super(message)
++    }
++}
++
++export async function gateway<T = any>(path: string, init?: RequestInit & {json?: unknown}): Promise<T> {
++    const {json, ...rest} = init ?? {}
++    const response = await fetch(path, {
++        credentials: "same-origin",
++        ...rest,
++        ...(json === undefined ? {} : {body: JSON.stringify(json), headers: {"Content-Type": "application/json"}}),
++    })
++    const body = await response.json().catch(() => ({}))
++    if (!response.ok) throw new GatewayError(body?.message ?? response.statusText, response.status, body?.problems ?? [])
++    return body as T
++}
++
++export const processUrl = (project: string) => `/cr/api/processes/${encodeURIComponent(project)}`
++export const activityUrl = (nodeType: string, subActivity: string) =>
++    `/cr/api/activities/${encodeURIComponent(nodeType)}/${encodeURIComponent(subActivity)}`
++
++/** The flows of a namespace a process step may run: those labelled process: "true", with their declared inputs. */
++export async function processFlows(tenant: string, namespace: string): Promise<FlowInfo[]> {
++    const flows = await gateway<any[]>(`/api/v1/${tenant}/flows/${encodeURIComponent(namespace)}`)
++    return flows
++        .filter(f => (f.labels ?? []).some((l: any) => l.key === "process" && String(l.value) === "true"))
++        .map(f => ({
++            id: f.id,
++            inputs: (f.inputs ?? []).map((i: any) => ({id: i.id, type: i.type})),
++            hooks: String((f.labels ?? []).find((l: any) => l.key === "pipeline_hooks")?.value ?? "").split(",").map(h => h.trim()).filter(Boolean),
++        }))
++}
++
++export function clone<T>(value: T): T {
++    return JSON.parse(JSON.stringify(value ?? null))
++}
++
++/** The object with one key renamed, keeping the key order; unchanged when the new key is empty or taken. */
++export function renameKey<T>(object: Record<string, T> | undefined, from: string, to: string): Record<string, T> {
++    const entries = Object.entries(object ?? {})
++    if (!to || to === from || entries.some(([k]) => k === to)) return object ?? {}
++    return Object.fromEntries(entries.map(([k, v]) => [k === from ? to : k, v]))
++}
+diff --git a/ui/src/components/crdesigner/pipelineWidgets.ts b/ui/src/components/crdesigner/pipelineWidgets.ts
+new file mode 100644
+index 0000000..7a167c8
+--- /dev/null
++++ b/ui/src/components/crdesigner/pipelineWidgets.ts
+@@ -0,0 +1,74 @@
++import type {InjectionKey, Ref} from "vue"
++
++/** The widgets of a pipeline, as the gateway's Pipeline class accepts them. */
++export const WIDGETS = ["NEI", "MAIL", "DECISION", "IF", "FOR_EACH", "COLLECT", "END"] as const
++
++export interface PipelineContext {
++    editable: Ref<boolean>
++    root: Ref<any[]>
++    hook: Ref<string>
++}
++
++export const PIPELINE: InjectionKey<PipelineContext> = Symbol("cr-pipeline")
++
++const PREFIX: Record<string, string> = {
++    NEI: "nei", MAIL: "mail", DECISION: "decision", IF: "check", FOR_EACH: "each", COLLECT: "collect", END: "end",
++}
++
++export function blank(type: string, id: string): any {
++    switch (type) {
++    case "NEI": return {id, widget: type, component: "clicr", action: "MOP_EXECUTION", params: {}}
++    case "MAIL": return {id, widget: type, to: "", subject: ""}
++    case "DECISION": return {id, widget: type, mode: "MANUAL", question: "", options: ["APPROVED", "REJECTED"], timeout: "P1D"}
++    case "IF": return {id, widget: type, conditions: [{ref: "activity.sub_activity", op: "equals", value: ""}], then: [], else: []}
++    case "FOR_EACH": return {id, widget: type, items: "", concurrency: 1, body: []}
++    case "COLLECT": return {id, widget: type, list: "", value: ""}
++    default: return {id, widget: type, status: "FAILED", message: ""}
++    }
++}
++
++/** Every widget, nested ones included (a MAIL's body is text, only a FOR_EACH's body holds widgets). */
++export function flatten(list: any[]): any[] {
++    return (list ?? []).flatMap(w => w.widget === "IF" ? [w, ...flatten(w.then), ...flatten(w.else)]
++        : w.widget === "FOR_EACH" ? [w, ...flatten(w.body)] : [w])
++}
++
++export function nextId(root: any[], type: string): string {
++    const taken = new Set(flatten(root).map(w => w.id))
++    let n = 1
++    while (taken.has(`${PREFIX[type]}_${n}`)) n++
++    return `${PREFIX[type]}_${n}`
++}
++
++/** Gives every If / For each the lists the editor fills in place. */
++export function normalize(list: any[]): any[] {
++    for (const w of list ?? []) {
++        if (w.widget === "IF") {
++            w.then = normalize(w.then ?? [])
++            w.else = normalize(w.else ?? [])
++            w.conditions = w.conditions ?? []
++        } else if (w.widget === "FOR_EACH") {
++            w.body = normalize(w.body ?? [])
++        }
++    }
++    return list ?? []
++}
++
++/** Renames a widget and every reference to it (${step.ID.X}, conditions on step.ID.X, reply_to). */
++export function renameWidget(root: any[], from: string, to: string) {
++    const ref = new RegExp(`\\$\\{step\\.${from}\\.`, "g")
++    const rewrite = (v: any): any => typeof v === "string" ? v.replace(ref, `\${step.${to}.`)
++        : Array.isArray(v) ? v.map(rewrite)
++            : v && typeof v === "object" ? Object.fromEntries(Object.entries(v).map(([k, x]) => [k, rewrite(x)])) : v
++    for (const w of flatten(root)) {
++        if (w.id === from) w.id = to
++        if (w.reply_to === from) w.reply_to = to
++        for (const c of w.conditions ?? []) {
++            if (typeof c.ref === "string" && c.ref.startsWith(`step.${from}.`)) c.ref = `step.${to}.` + c.ref.slice(from.length + 6)
++        }
++        for (const key of ["to", "cc", "subject", "body", "attachments", "question", "items", "value", "message", "sub_activity"]) {
++            if (typeof w[key] === "string") w[key] = rewrite(w[key])
++        }
++        if (w.params) w.params = rewrite(w.params)
++    }
++}
+diff --git a/ui/src/components/crdesigner/useVersioned.ts b/ui/src/components/crdesigner/useVersioned.ts
+new file mode 100644
+index 0000000..c3aeddf
+--- /dev/null
++++ b/ui/src/components/crdesigner/useVersioned.ts
+@@ -0,0 +1,103 @@
++import {computed, ref} from "vue"
++import {onBeforeRouteLeave} from "vue-router"
++import {useI18n} from "vue-i18n"
++import {useToast} from "../../utils/toast"
++import {gateway, clone} from "./crApi"
++import type {VersionSummary} from "./crApi"
++
++/**
++ * The versions of one process or activity as the gateway keeps them (DRAFT / PUBLISHED / RETIRED), the loaded
++ * version's content as an editable copy, and the VersionBar actions. The gateway checks the role and the revision.
++ */
++export function useVersioned(options: {
++    base: () => string,
++    field: "definition" | "config",
++    normalize: (content: any) => any,
++    onLoaded?: () => Promise<void> | void,
++}) {
++    const {t} = useI18n()
++    const toast = useToast()
++
++    const versions = ref<VersionSummary[]>([])
++    const selected = ref<number>()
++    const loaded = ref<VersionSummary & {problems?: string[]}>()
++    const content = ref<any>()
++    const snapshot = ref("")
++    const busy = ref(false)
++    const error = ref("")
++    const message = ref("")
++    const problems = ref<string[]>([])
++
++    const dirty = computed(() => content.value !== undefined && JSON.stringify(content.value) !== snapshot.value)
++
++    async function loadVersions(prefer?: "draft" | "published") {
++        const res = await gateway<{versions: VersionSummary[]}>(`${options.base()}/versions`)
++        versions.value = res.versions
++        const pick = prefer === "published"
++            ? res.versions.find(v => v.state === "PUBLISHED")
++            : res.versions.find(v => v.state === "DRAFT") ?? res.versions.find(v => v.state === "PUBLISHED")
++        await loadVersion((pick ?? res.versions[0])?.version)
++    }
++
++    async function loadVersion(v?: number) {
++        if (v === undefined) return
++        const res = await gateway<any>(`${options.base()}/versions/${v}`)
++        selected.value = v
++        loaded.value = res
++        content.value = options.normalize(clone(res[options.field]))
++        snapshot.value = JSON.stringify(content.value)
++        problems.value = res.problems ?? []
++        await options.onLoaded?.()
++    }
++
++    /** Runs a version action, reloads what it changed and shows its outcome. */
++    async function act(action: () => Promise<any>, after?: "draft" | "published" | "keep") {
++        busy.value = true
++        error.value = ""
++        message.value = ""
++        try {
++            const res = await action()
++            if (after === "keep") await loadVersion(selected.value)
++            else await loadVersions(after)
++            if (res?.message) message.value = res.message
++            if (res?.problems) problems.value = res.problems
++        } catch (e: any) {
++            error.value = e?.message ?? String(e)
++            if (e?.problems?.length) problems.value = e.problems
++        } finally {
++            busy.value = false
++        }
++    }
++
++    async function ask(message: string): Promise<boolean> {
++        let ok = false
++        await toast.confirm(message, async () => ok = true)
++        return ok
++    }
++
++    const leaveConfirmed = async () => !dirty.value || await ask(t("cr_designer.confirm_leave"))
++    const versionUrl = () => `${options.base()}/versions/${selected.value}`
++    const confirmThen = async (key: string, run: () => Promise<void>) => {
++        if (await ask(t(key, {version: selected.value}))) await run()
++    }
++
++    const handlers = {
++        select: async (v: number) => {
++            if (await leaveConfirmed()) await act(() => loadVersion(v), "keep")
++        },
++        draft: () => act(() => gateway(`${options.base()}/versions`, {method: "POST", json: {from_version: selected.value}}), "draft"),
++        save: () => act(async () => {
++            const res = await gateway<{problems: string[]}>(versionUrl(), {
++                method: "PUT", json: {[options.field]: content.value, revision: loaded.value?.revision},
++            })
++            return {...res, message: t(res.problems.length ? "cr_designer.saved_with_problems" : "cr_designer.saved")}
++        }, "keep"),
++        publish: () => confirmThen("cr_designer.confirm_publish", () => act(() => gateway(`${versionUrl()}/publish`, {method: "POST"}))),
++        discard: () => confirmThen("cr_designer.confirm_discard", () => act(() => gateway(versionUrl(), {method: "DELETE"}), "published")),
++        retire: () => confirmThen("cr_designer.confirm_retire", () => act(() => gateway(`${versionUrl()}/retire`, {method: "POST"}))),
++    }
++
++    onBeforeRouteLeave(leaveConfirmed)
++
++    return {versions, selected, loaded, content, busy, error, message, problems, dirty, loadVersions, leaveConfirmed, ask, handlers}
++}
 diff --git a/ui/src/components/executions/Executions.vue b/ui/src/components/executions/Executions.vue
 index dd7664b..9952d27 100644
 --- a/ui/src/components/executions/Executions.vue
@@ -328,10 +2342,10 @@ index 0000000..454826b
 +</style>
 diff --git a/ui/src/components/executions/OrderPanel.vue b/ui/src/components/executions/OrderPanel.vue
 new file mode 100644
-index 0000000..f398049
+index 0000000..3fbe32d
 --- /dev/null
 +++ b/ui/src/components/executions/OrderPanel.vue
-@@ -0,0 +1,374 @@
+@@ -0,0 +1,446 @@
 +<template>
 +    <div class="order">
 +        <div v-if="!orderId" class="order-empty">
@@ -353,6 +2367,15 @@ index 0000000..f398049
 +                    <dd>{{ order.order_dir }}</dd>
 +                    <dt>CRs</dt>
 +                    <dd>{{ (order.cr_list ?? []).join(", ") || "-" }}</dd>
++                    <template v-if="next?.process">
++                        <dt>{{ $t("cr_order.process") }}</dt>
++                        <dd>{{ next.process.project }} v{{ next.process.version }} ({{ next.process.state }})</dd>
++                        <dt>{{ $t("cr_order.activity_config") }}</dt>
++                        <dd v-if="next.activity">
++                            {{ next.activity.node_type }}/{{ next.activity.sub_activity }} v{{ next.activity.version }} ({{ next.activity.state }})
++                        </dd>
++                        <dd v-else>{{ $t("cr_order.no_activity_config") }}</dd>
++                    </template>
 +                </dl>
 +                <table class="order-table">
 +                    <thead>
@@ -368,7 +2391,7 @@ index 0000000..f398049
 +                            <tr v-for="run in runs" :key="run.child_id">
 +                                <td>
 +                                    {{ $t("cr_order.child") }} {{ run.child_id }} ({{ cr }})
-+                                    <a v-if="run.execution_id" href="#" @click.prevent="open(run.execution_id, CHILD_FLOW)">{{ $t("cr_order.open") }}</a>
++                                    <a v-if="run.execution_id" href="#" @click.prevent="open(run.execution_id)">{{ $t("cr_order.open") }}</a>
 +                                </td>
 +                                <td>
 +                                    {{ run.state }}
@@ -383,90 +2406,85 @@ index 0000000..f398049
 +                </table>
 +            </section>
 +
-+            <section v-if="!continuable" class="order-card">
-+                <h3>{{ $t("cr_order.continue") }}</h3>
-+                <p class="order-hint">{{ $t("cr_order.not_continuable", {order: orderId}) }}</p>
-+            </section>
-+
-+            <section v-else-if="childId" class="order-card">
-+                <h3>{{ $t("cr_order.child_continue", {child: childId, cr: child?.cr_name ?? ""}) }}</h3>
-+
-+                <div v-if="childNodes.length" class="order-action">
-+                    <h4>{{ $t("cr_order.exec_title") }}</h4>
-+                    <p class="order-hint">{{ $t("cr_order.exec_hint") }}</p>
-+                    <label class="order-check">
-+                        <input v-model="allNodes" type="checkbox">
-+                        {{ $t("cr_order.exec_all", {count: childNodes.length}) }}
-+                    </label>
-+                    <label v-for="o in childNodes" :key="o.value" class="order-check order-node-choice">
-+                        <input v-model="chosenNodes" type="checkbox" :value="o.value" :disabled="allNodes || isRunning(o.value)">
-+                        {{ o.label }}
-+                    </label>
-+                    <button type="button" class="order-run" :disabled="!nodesToRun.length || busy" @click="runExecutionStep">
-+                        {{ $t("cr_order.exec_run") }}
-+                    </button>
-+                </div>
-+                <p v-else class="order-hint">{{ $t("cr_order.exec_no_mop") }}</p>
-+
-+                <div v-if="childRollbackOptions.length" class="order-action">
-+                    <h4>{{ $t("cr_order.rollback_title") }}</h4>
-+                    <p class="order-hint">{{ $t("cr_order.rollback_hint") }}</p>
-+                    <select v-model="rollbackTarget" class="order-select">
-+                        <option v-for="o in childRollbackOptions" :key="o.value" :value="o.value">
-+                            {{ o.label }}
-+                        </option>
-+                    </select>
-+                    <button type="button" class="order-run" :disabled="!rollbackTarget || busy" @click="runRollback">
-+                        {{ $t("cr_order.rollback_run") }}
-+                    </button>
-+                </div>
-+
++            <section class="order-card">
++                <h3>
++                    {{ childId ? $t("cr_order.child_continue", {child: childId, cr: child?.cr_name ?? ""}) : $t("cr_order.continue") }}
++                </h3>
++                <p v-if="!next" class="order-hint">{{ $t("loading") }}</p>
++                <p v-else-if="!next.continuable" class="order-hint">{{ next.reason }}</p>
++                <p v-else-if="!next.can_execute" class="order-hint">{{ $t("cr_order.view_only", {role: role}) }}</p>
++                <p v-else-if="!next.steps.length" class="order-hint">{{ $t("cr_order.no_step_now") }}</p>
++                <template v-else>
++                    <div v-for="step in next.steps" :key="step.id" class="order-action">
++                        <h4>{{ step.label }}</h4>
++                        <p v-if="step.description" class="order-hint">{{ step.description }}</p>
++                        <div v-for="input in step.inputs" :key="input.name" class="order-input">
++                            <template v-if="input.type === 'BOOL'">
++                                <label class="order-check">
++                                    <input v-model="form[step.id].values[input.name]" type="checkbox">
++                                    {{ input.label }}
++                                </label>
++                            </template>
++                            <template v-else>
++                                <span class="order-label">{{ input.label }}{{ input.required ? " *" : "" }}</span>
++                                <input v-if="input.type === 'STRING'" v-model="form[step.id].values[input.name]" type="text" class="order-select">
++                                <select v-else-if="input.type === 'SELECT'" v-model="form[step.id].values[input.name]" class="order-select">
++                                    <option v-for="o in input.options" :key="o.value" :value="o.value">
++                                        {{ o.label }}
++                                    </option>
++                                </select>
++                                <template v-else-if="input.type === 'MULTISELECT'">
++                                    <label v-if="input.all_value" class="order-check">
++                                        <input v-model="form[step.id].all[input.name]" type="checkbox">
++                                        {{ $t("cr_order.all_values", {count: input.options.length}) }}
++                                    </label>
++                                    <label v-for="o in input.options" :key="o.value" class="order-check order-node-choice">
++                                        <input
++                                            v-model="form[step.id].values[input.name]"
++                                            type="checkbox"
++                                            :value="o.value"
++                                            :disabled="form[step.id].all[input.name]"
++                                        >
++                                        {{ o.label }}
++                                    </label>
++                                </template>
++                                <input
++                                    v-else-if="input.type === 'FILE'"
++                                    type="file"
++                                    @change="form[step.id].files[input.name] = ($event.target as HTMLInputElement).files?.[0]"
++                                >
++                            </template>
++                        </div>
++                        <button type="button" class="order-run" :disabled="busy" @click="runStep(step)">
++                            {{ $t("cr_order.run_step") }}
++                        </button>
++                    </div>
++                </template>
 +                <p v-if="actionError" class="order-error">{{ actionError }}</p>
 +            </section>
 +
-+            <section v-else class="order-card">
-+                <h3>{{ $t("cr_order.continue") }}</h3>
-+
-+                <div class="order-action">
-+                    <h4>{{ $t("cr_order.validate_title") }}</h4>
-+                    <p class="order-hint">{{ $t("cr_order.validate_hint") }}</p>
-+                    <input type="file" accept=".xlsx" @change="ciqFile = ($event.target as HTMLInputElement).files?.[0]">
-+                    <button type="button" class="order-run" :disabled="busy" @click="runValidation">
-+                        {{ $t("cr_order.validate_run") }}
-+                    </button>
++            <section v-if="next?.decisions?.length" class="order-card" data-test="order-decisions">
++                <h3>
++                    {{ $t("cr_order.decisions") }}
++                    <button type="button" class="order-link" @click="load">{{ $t("cr_order.refresh") }}</button>
++                </h3>
++                <div v-for="d in next.decisions" :key="d.decision_id" class="order-action" :data-test="`decision-${d.decision_id}`">
++                    <h4>{{ d.question }}</h4>
++                    <p class="order-hint">
++                        {{ $t("cr_order.decision_about", {child: d.child_id, node: d.node ?? "-", item: d.item ?? "-", since: d.waiting_since}) }}
++                    </p>
++                    <p v-if="d.mode === 'REPLY'" class="order-hint">{{ $t("cr_order.waiting_reply") }}</p>
++                    <template v-else-if="d.can_decide && next.can_execute">
++                        <input v-model="comments[d.decision_id]" type="text" class="order-select" :placeholder="$t('cr_order.comment')">
++                        <div class="order-options">
++                            <button v-for="o in d.options" :key="o" type="button" class="order-run" :disabled="busy" @click="decide(d, o)">
++                                {{ o }}
++                            </button>
++                        </div>
++                    </template>
++                    <p v-else class="order-hint">{{ $t("cr_order.decision_view_only") }}</p>
 +                </div>
-+
-+                <div v-if="order.stage === 'VALIDATED'" class="order-action">
-+                    <h4>{{ $t("cr_order.child_title") }}</h4>
-+                    <select v-model="crName" class="order-select">
-+                        <option v-for="o in order.cr_options ?? []" :key="o.value" :value="o.value">
-+                            {{ o.label }}
-+                        </option>
-+                    </select>
-+                    <label class="order-check">
-+                        <input v-model="runExecution" type="checkbox">
-+                        {{ $t("cr_order.run_execution") }}
-+                    </label>
-+                    <button type="button" class="order-run" :disabled="!crName || busy" @click="runChild">
-+                        {{ $t("cr_order.child_run") }}
-+                    </button>
-+                </div>
-+                <p v-else class="order-hint">{{ $t("cr_order.child_after_validation") }}</p>
-+
-+                <div v-if="(order.rollback_options ?? []).length" class="order-action">
-+                    <h4>{{ $t("cr_order.rollback_title") }}</h4>
-+                    <p class="order-hint">{{ $t("cr_order.rollback_hint") }}</p>
-+                    <select v-model="rollbackTarget" class="order-select">
-+                        <option v-for="o in order.rollback_options" :key="o.value" :value="o.value">
-+                            {{ o.label }}
-+                        </option>
-+                    </select>
-+                    <button type="button" class="order-run" :disabled="!rollbackTarget || busy" @click="runRollback">
-+                        {{ $t("cr_order.rollback_run") }}
-+                    </button>
-+                </div>
-+
-+                <p v-if="actionError" class="order-error">{{ actionError }}</p>
++                <p v-if="decisionError" class="order-error">{{ decisionError }}</p>
 +            </section>
 +        </template>
 +    </div>
@@ -474,23 +2492,27 @@ index 0000000..f398049
 +
 +<script setup lang="ts">
 +    /**
-+     * "Order" tab (cr_automation): the order this execution belongs to (label order_id), as the flows publish it
-+     * from the request store (namespace KV ORDER_<id>, written by bin/store.sh registry), and the next steps,
-+     * like FlowOne's order actions. On an order: validate a (corrected) CIQ, start a child order for one of its CRs,
-+     * roll back a node. On a child order: only execute its MOP on some or all of its nodes, or roll back one of its
-+     * nodes. Each starts a normal execution of ciq_validation / cr_child_order / cr_mop_execution / cr_node_rollback.
++     * "Order" tab (cr_automation): the order this execution belongs to (label order_id) as the flows publish it
++     * (namespace KV ORDER_<id>), and the steps it can take now. The steps come from the gateway
++     * (/cr/api/orders/<id>/next): the process version the order is pinned to decides what is offered and which
++     * flow runs it - nothing about the process is known here. An execution of a child order (label req_id other
++     * than order_id) gets the child's steps.
 +     */
-+    import {computed, ref, watch} from "vue"
++    import {computed, reactive, ref, watch} from "vue"
 +    import {useRouter, useRoute} from "vue-router"
 +    import {useClient} from "@kestra-io/kestra-sdk"
 +    import {apiUrl} from "override/utils/route"
 +    import {useExecutionsStore} from "../../stores/executions"
 +
-+    const VALIDATION_FLOW = "ciq_validation"
-+    const CHILD_FLOW = "cr_child_order"
-+    const EXECUTION_FLOW = "cr_mop_execution"
-+    const ROLLBACK_FLOW = "cr_node_rollback"
-+    const ALL_NODES = "*"
++    interface StepInput {name: string, type: string, label: string, required: boolean, default: any,
++                         options?: {value: string, label: string}[], all_value?: string}
++    interface Step {id: string, label: string, description?: string, inputs: StepInput[]}
++    interface Decision {decision_id: number, child_id: string, node?: string, item?: string, mode: string, question: string,
++                        options: string[], waiting_since: string, can_decide: boolean}
++    interface Next {continuable: boolean, reason?: string, can_execute: boolean, steps: Step[], decisions?: Decision[],
++                    process?: {project: string, version: number, state: string},
++                    activity?: {node_type: string, sub_activity: string, version: number, state: string}}
++    interface StepForm {values: Record<string, any>, all: Record<string, boolean>, files: Record<string, File | undefined>}
 +
 +    const executionsStore = useExecutionsStore()
 +    const router = useRouter()
@@ -506,79 +2528,132 @@ index 0000000..f398049
 +        return reqId && reqId !== orderId.value ? reqId : undefined
 +    })
 +    const order = ref<any>()
-+    // the orders the flows' forms accept (KV ORDERS, published from the request store); an order missing there
-+    // (e.g. one created before the store) is shown, but offering its next steps would only end in a rejected form
-+    const continuable = ref(false)
++    const child = computed(() => childId.value ? order.value?.children_by_id?.[childId.value] : undefined)
++    const next = ref<Next>()
++    const role = ref("")
++    const form = reactive<Record<string, StepForm>>({})
 +    const loadError = ref("")
-+    const ciqFile = ref<File | undefined>()
-+    const crName = ref("")
-+    const runExecution = ref(false)
-+    const rollbackTarget = ref("")
 +    const busy = ref(false)
 +    const actionError = ref("")
++    const decisionError = ref("")
++    const comments = reactive<Record<number, string>>({})
 +
-+    const child = computed(() => childId.value ? order.value?.children_by_id?.[childId.value] : undefined)
-+    const childNodes = computed(() => (child.value?.node_options ?? []).filter((o: any) => o.value !== ALL_NODES))
-+    const childRollbackOptions = computed(() =>
-+        (order.value?.rollback_options ?? []).filter((o: any) => String(o.value).startsWith(childId.value + ":")))
-+    const allNodes = ref(true)
-+    const chosenNodes = ref<string[]>([])
-+    const isRunning = (node: string) => child.value?.nodes?.some((n: any) => n.node === node && n.status === "RUNNING")
-+    const nodesToRun = computed(() => allNodes.value ? [ALL_NODES] : chosenNodes.value)
++    async function gateway(path: string, init?: RequestInit) {
++        const response = await fetch(path, {credentials: "same-origin", ...init})
++        const body = await response.json().catch(() => ({}))
++        if (!response.ok) throw new Error(body?.message ?? response.statusText)
++        return body
++    }
 +
 +    async function load() {
 +        if (!orderId.value || !execution.value) return
 +        try {
 +            const kv = `${apiUrl()}/namespaces/${execution.value.namespace}/kv`
-+            const [response, orders] = await Promise.all([http.get(`${kv}/ORDER_${orderId.value}`), http.get(`${kv}/ORDERS`)])
++            const query = childId.value ? `?child=${encodeURIComponent(childId.value)}` : ""
++            const [response, steps, me] = await Promise.all([
++                http.get(`${kv}/ORDER_${orderId.value}`),
++                gateway(`/cr/api/orders/${encodeURIComponent(orderId.value)}/next${query}`),
++                gateway("/cr/api/me"),
++            ])
 +            order.value = response.data?.value ?? response.data
-+            const list = orders.data?.value ?? orders.data
-+            continuable.value = Array.isArray(list) && list.some((o: any) => String(o.value) === String(orderId.value))
++            role.value = me.role
++            next.value = steps
++            for (const step of (steps as Next).steps) {
++                form[step.id] = form[step.id] ?? initialForm(step)
++            }
 +            loadError.value = ""
-+            if (!crName.value && order.value?.cr_list?.length) crName.value = order.value.cr_list[0]
-+        } catch (e) {
-+            loadError.value = "Order " + orderId.value + " is not in the order registry (" + e + ")"
++        } catch (e: any) {
++            loadError.value = "Order " + orderId.value + ": " + (e?.message ?? e)
 +        }
 +    }
 +
-+    function open(executionId: string, flowId?: string) {
++    function initialForm(step: Step): StepForm {
++        const f: StepForm = {values: {}, all: {}, files: {}}
++        for (const input of step.inputs) {
++            const def = input.default
++            if (input.type === "MULTISELECT") {
++                const list = Array.isArray(def) ? def.map(String) : []
++                f.all[input.name] = !!input.all_value && (list.length === 0 || list.includes(input.all_value))
++                f.values[input.name] = list.filter(v => v !== input.all_value)
++            } else if (input.type === "BOOL") {
++                f.values[input.name] = def === true || def === "true"
++            } else if (input.type === "SELECT") {
++                f.values[input.name] = def ?? input.options?.[0]?.value ?? ""
++            } else if (input.type !== "FILE") {
++                f.values[input.name] = def ?? ""
++            }
++        }
++        return f
++    }
++
++    async function open(executionId: string) {
++        const e: any = (await http.get(`${apiUrl()}/executions/${executionId}`)).data
 +        router.push({
 +            name: "executions/update",
-+            params: {tenant: route.params.tenant, namespace: execution.value?.namespace, flowId: flowId ?? flowOf(executionId), id: executionId},
++            params: {tenant: route.params.tenant, namespace: e.namespace, flowId: e.flowId, id: executionId},
 +        })
 +    }
 +
-+    // the order's own steps: GENERATE_TEMPLATE (generate_ciq_template) or CIQ_VALIDATION (ciq_validation)
-+    function flowOf(executionId: string) {
-+        const step = order.value?.steps?.find((s: any) => s.execution_id === executionId)
-+        return String(step?.stage ?? "").startsWith("GENERATE_TEMPLATE") ? "generate_ciq_template" : VALIDATION_FLOW
++    function readBase64(file: File): Promise<string> {
++        return new Promise((resolve, reject) => {
++            const reader = new FileReader()
++            reader.onload = () => resolve(String(reader.result).split(",", 2)[1] ?? "")
++            reader.onerror = () => reject(reader.error)
++            reader.readAsDataURL(file)
++        })
 +    }
 +
-+    async function start(flowId: string, formData: Record<string, any>) {
++    async function runStep(step: Step) {
 +        busy.value = true
 +        actionError.value = ""
 +        try {
-+            const created: any = await executionsStore.triggerExecution({
-+                namespace: execution.value!.namespace!, id: flowId, formData, kind: "NORMAL",
++            const f = form[step.id]
++            const inputs: Record<string, any> = {}
++            const files: Record<string, {filename: string, base64: string}> = {}
++            for (const input of step.inputs) {
++                if (input.type === "FILE") {
++                    const file = f.files[input.name]
++                    if (file) files[input.name] = {filename: file.name, base64: await readBase64(file)}
++                } else if (input.type === "MULTISELECT") {
++                    inputs[input.name] = f.all[input.name] && input.all_value ? [input.all_value] : f.values[input.name]
++                } else {
++                    inputs[input.name] = f.values[input.name]
++                }
++            }
++            const query = childId.value ? `?child=${encodeURIComponent(childId.value)}` : ""
++            const started = await gateway(`/cr/api/orders/${encodeURIComponent(orderId.value!)}/steps/${step.id}${query}`, {
++                method: "POST",
++                headers: {"Content-Type": "application/json"},
++                body: JSON.stringify({inputs, files, request_key: crypto.randomUUID()}),
 +            })
-+            open(created.id, flowId)
++            router.push({
++                name: "executions/update",
++                params: {tenant: route.params.tenant, namespace: started.namespace, flowId: started.flow_id, id: started.execution_id},
++            })
 +        } catch (e: any) {
-+            actionError.value = e?.response?.data?.message ?? String(e)
++            actionError.value = e?.message ?? String(e)
 +        } finally {
 +            busy.value = false
 +        }
 +    }
 +
-+    // no file chosen: the flow validates the CIQ already placed in the order folder
-+    const runValidation = () => start(VALIDATION_FLOW, {
-+        order_type: "EXISTING", order_id: orderId.value, ...(ciqFile.value ? {ciq: ciqFile.value} : {}),
-+    })
-+    const runChild = () => start(CHILD_FLOW, {order_id: orderId.value, cr_name: crName.value, run_execution: runExecution.value})
-+    const runRollback = () => start(ROLLBACK_FLOW, {order_id: orderId.value, node: rollbackTarget.value})
-+    // MULTISELECT inputs go to the API as a JSON array, as Kestra's own execute form sends them
-+    const runExecutionStep = () => start(EXECUTION_FLOW, {
-+        order_id: orderId.value, child_id: childId.value, nodes: JSON.stringify(nodesToRun.value),
-+    })
++    async function decide(d: Decision, option: string) {
++        busy.value = true
++        decisionError.value = ""
++        try {
++            await gateway(`/cr/api/orders/${encodeURIComponent(orderId.value!)}/decisions/${d.decision_id}`, {
++                method: "POST",
++                headers: {"Content-Type": "application/json"},
++                body: JSON.stringify({decision: option, comment: comments[d.decision_id] ?? ""}),
++            })
++            await load()
++        } catch (e: any) {
++            decisionError.value = e?.message ?? String(e)
++            await load()
++        } finally {
++            busy.value = false
++        }
++    }
 +
 +    watch(() => [execution.value?.id, execution.value?.state?.current, orderId.value], load, {immediate: true})
 +</script>
@@ -661,6 +2736,17 @@ index 0000000..f398049
 +        gap: 0.5rem;
 +        padding: 0.75rem 0;
 +        border-bottom: 1px solid var(--ks-border-default);
++    }
++
++    .order-input {
++        display: flex;
++        flex-direction: column;
++        gap: 0.25rem;
++    }
++
++    .order-label {
++        font-size: var(--ks-font-size-sm);
++        color: var(--ks-text-secondary);
 +    }
 +
 +    .order-select {
@@ -759,11 +2845,54 @@ index e805817..501b87c 100644
      {
          name: `${EXECUTION_PARENT_ROUTE}/outputs`,
          path: "outputs",
+diff --git a/ui/src/override/components/useLeftMenu.ts b/ui/src/override/components/useLeftMenu.ts
+index 0afc065..f4294cd 100644
+--- a/ui/src/override/components/useLeftMenu.ts
++++ b/ui/src/override/components/useLeftMenu.ts
+@@ -15,6 +15,7 @@ import ChartLineVariant from "vue-material-design-icons/ChartLineVariant.vue"
+ import FileTreeOutline from "vue-material-design-icons/FileTreeOutline.vue"
+ import LayersTripleOutline from "vue-material-design-icons/LayersTripleOutline.vue"
+ import PlayOutline from "vue-material-design-icons/PlayOutline.vue"
++import SitemapOutline from "vue-material-design-icons/SitemapOutline.vue"
+ import FileDocumentOutline from "vue-material-design-icons/FileDocumentOutline.vue"
+ import FlaskOutline from "vue-material-design-icons/FlaskOutline.vue"
+ import PackageVariantClosed from "vue-material-design-icons/PackageVariantClosed.vue"
+@@ -140,6 +141,17 @@ export function useLeftMenu() {
+                             element: PlayOutline,
+                         },
+                     },
++                    {
++                        id: "cr-designer",
++                        title: t("cr_designer.title"),
++                        routes: routeStartWith("cr/designer"),
++                        href: {
++                            name: "cr/designer",
++                        },
++                        icon: {
++                            element: SitemapOutline,
++                        },
++                    },
+                     {
+                         id: "logs",
+                         title: t("logs"),
+diff --git a/ui/src/routes/routes.ts b/ui/src/routes/routes.ts
+index e243b34..98af7e7 100644
+--- a/ui/src/routes/routes.ts
++++ b/ui/src/routes/routes.ts
+@@ -41,6 +41,8 @@ const routes: KestraRouteRecord[] = [
+     },
+     EXECUTION_ROUTE,
+ 
++    {name: "cr/designer", path: "/:tenant?/cr-designer/:tab?", component: () => import("../components/crdesigner/CrDesigner.vue")},
++
+     //KV
+     {name: "kv/list", path: "/:tenant?/kv", component: () => import("../components/kv/KVs.vue")},
+ 
 diff --git a/ui/src/translations/en.json b/ui/src/translations/en.json
-index f4a164d..c295420 100644
+index f4a164d..66c1ff3 100644
 --- a/ui/src/translations/en.json
 +++ b/ui/src/translations/en.json
-@@ -199,6 +199,43 @@
+@@ -199,6 +199,185 @@
      "details": "Details",
      "overview": "Overview",
      "gantt": "Gantt",
@@ -780,24 +2909,166 @@ index f4a164d..c295420 100644
 +      "child": "Child order",
 +      "open": "open",
 +      "continue": "Continue this order",
-+      "validate_title": "Validate a CIQ for this order",
-+      "validate_hint": "Optional: choose the filled (or corrected) CIQ - it replaces the CIQ in the order folder. Without a file, the CIQ already placed in the order folder is validated.",
-+      "validate_run": "Run CIQ validation",
-+      "child_title": "Start a child order",
-+      "run_execution": "Also execute the MOP on all its nodes right after generating it (unticked: generate the MOP only)",
-+      "child_run": "Start child order",
-+      "child_after_validation": "Child orders can be started once the order is VALIDATED.",
 +      "rolled_back": "rolled back",
-+      "rollback_title": "Roll back a node",
-+      "rollback_hint": "Nodes whose execution ended with ROLLBACK_ENABLED=TRUE, for activities that allow rollback. Runs MOP_EXECUTION with ROLLBACK_ONLY=true for that node, then the rollback report.",
-+      "rollback_run": "Run rollback",
 +      "child_continue": "Continue child order {child} ({cr})",
-+      "exec_title": "Execute the MOP",
-+      "exec_hint": "Choose all nodes or some of them - the chosen nodes run in parallel. A node that is running now cannot be chosen.",
-+      "exec_all": "All nodes ({count})",
-+      "exec_run": "Execute on the chosen nodes",
-+      "exec_no_mop": "This child has no generated MOP yet - nothing to execute.",
-+      "not_continuable": "Order {order} is not in the request store (it was created before the store existed), so it cannot be continued. Start a new order: generate_ciq_template, or ciq_validation as a NEW order."
++      "process": "Process",
++      "activity_config": "Activity configuration",
++      "no_activity_config": "none (the flows' own values)",
++      "all_values": "All ({count})",
++      "run_step": "Run",
++      "no_step_now": "No step of the process is available here right now.",
++      "view_only": "Your role {role} can follow this order but not continue it. Order executors and admins can.",
++      "decisions": "Decisions waiting",
++      "refresh": "refresh",
++      "decision_about": "Child {child}, node {node}, item {item} - waiting since {since}",
++      "waiting_reply": "Decided by the reply to the mail - nothing to do here.",
++      "comment": "Comment (optional)",
++      "decision_view_only": "Order executors and admins take this decision."
++    },
++    "cr_designer": {
++      "title": "Process designer",
++      "processes": "Processes",
++      "activities": "Activities",
++      "gateway_missing": "The process designer needs the cr_automation gateway: {error}",
++      "project": "Project",
++      "version": "Version",
++      "draft": "draft",
++      "unsaved": "Unsaved changes",
++      "new_draft": "New draft from v{from}",
++      "publish": "Publish",
++      "discard": "Discard draft",
++      "retire": "Retire",
++      "read_only": "Read only: only an admin changes definitions.",
++      "problems": "{count} problem(s) to fix before publishing",
++      "saved": "Draft saved.",
++      "saved_with_problems": "Draft saved; fix the problems below before publishing.",
++      "confirm_publish": "Publish version {version}? New orders use it; running orders keep the version they started with.",
++      "confirm_discard": "Discard draft version {version}? Its changes are lost.",
++      "confirm_retire": "Retire version {version}? New orders can no longer use it.",
++      "confirm_leave": "You have unsaved changes. Leave and lose them?",
++      "diagram": "Diagram",
++      "json": "JSON",
++      "form": "Form",
++      "apply_json": "Apply JSON",
++      "json_invalid": "The JSON is not valid: {error}",
++      "add_step": "Add step",
++      "new_step": "New step",
++      "canvas_hint": "Drag from a step's right handle to another step to draw an arrow; click an arrow to remove it.",
++      "select_step_hint": "Select a step in the diagram to see and edit it.",
++      "confirm_remove_arrow": "Remove the arrow from {from} to {to}?",
++      "confirm_delete_step": "Delete step {id}? Arrows to and from it are removed too.",
++      "id_taken": "Another step already has the id {id}.",
++      "step_id": "Step id",
++      "label": "Label",
++      "scope": "Runs on",
++      "starts_order": "Starts an order",
++      "flow": "Flow it runs",
++      "when": "when",
++      "offered_when": "Offered when",
++      "always_offered": "Always offered.",
++      "add_condition": "Add condition",
++      "inputs": "Inputs",
++      "inputs_hint": "Where each input of {flow} gets its value.",
++      "source_none": "Flow default",
++      "source_value": "Fixed value",
++      "source_order": "From the order",
++      "source_child": "From the child order",
++      "source_user": "Asked from the user",
++      "required": "Required",
++      "default": "Default",
++      "options_from": "Options from",
++      "all_value": "Value meaning all",
++      "activity": "Activity (node type / sub-activity)",
++      "declare": "Declare activity",
++      "node_type": "Node type",
++      "sub_activity": "Sub-activity",
++      "no_activities": "No activity is declared yet.",
++      "activity_hint": "Values sent to the components for this node type and sub-activity, per step. Node overrides apply on top for the nodes whose name matches the pattern.",
++      "for_step": "For step",
++      "every_step": "Every step (*)",
++      "add_section": "Add step section",
++      "confirm_delete_section": "Delete the section for {step}?",
++      "node_overrides": "Node overrides",
++      "node_overrides_hint": "A pattern such as NORTH* or PGW_RDS_?1 picks the nodes; their values replace the step's.",
++      "node_pattern": "Nodes matching",
++      "add_node_override": "Add node override",
++      "group_params": "Request parameters",
++      "group_params_hint": "Sent with the request. Use ${'{'}order.X{'}'}, ${'{'}child.X{'}'}, ${'{'}node{'}'}, ${'{'}ciq.X{'}'}, ${'{'}WORKDIR{'}'}.",
++      "group_login": "Login",
++      "group_login_hint": "Replaces values of the component's login.",
++      "group_grc": "GRC",
++      "group_grc_hint": "Replaces values of the generated rc file.",
++      "add_key": "Add value",
++      "secret_hint": "This looks like a secret: write it as ${'{'}secret:NAME{'}'} (a Kestra secret), never as its value.",
++      "pipelines": "Pipelines",
++      "pipelines_hint": "Widgets that run inside this step's flow, per node or after all nodes. If / else on the activity is how one node type or sub-activity gets its own path.",
++      "hook_node": "Per node",
++      "hook_after_nodes": "After all nodes",
++      "hook_node_hint": "Runs for each chosen node instead of the flow's own MOP execution. Use If / else on the activity to give one node type or sub-activity its own path; End FAILED stops the node.",
++      "hook_after_nodes_hint": "Runs once, after all chosen nodes and the summary report, e.g. a post-completion over values the nodes collected.",
++      "widget_count": "{count} widget(s)",
++      "edit_pipeline": "Edit pipeline",
++      "view_pipeline": "View pipeline",
++      "pipeline_title": "{hook} pipeline of {step}",
++      "references": "References you can use in texts",
++      "ref_context": "a field of the order or the child (also lists collected by COLLECT)",
++      "ref_ciq": "a result of the order's CIQ validation, e.g. an owner's e-mail",
++      "ref_activity": "the order's node type and sub-activity",
++      "ref_node": "the node this pipeline runs for",
++      "ref_run": "the nodes of this run that failed / succeeded",
++      "ref_item": "the current item, inside For each",
++      "ref_step": "a result of an earlier widget (NEI results, MESSAGE_ID of a mail, decision of a decision)",
++      "ref_secret": "a Kestra secret and the step's folder - NEI parameters and mail fields only",
++      "add_widget": "Add widget",
++      "no_widgets": "No widget yet.",
++      "move_up": "Move up",
++      "move_down": "Move down",
++      "then": "Then",
++      "else": "Else",
++      "for_each_body": "For each item",
++      "if_hint": "All conditions must hold. A reference such as activity.sub_activity, node or step.ID.NAME, compared as text.",
++      "widget_NEI": "NEI call",
++      "widget_MAIL": "Mail",
++      "widget_DECISION": "Decision",
++      "widget_IF": "If / else",
++      "widget_FOR_EACH": "For each",
++      "widget_COLLECT": "Collect",
++      "widget_END": "End",
++      "op_equals": "equals",
++      "op_not_equals": "does not equal",
++      "op_in": "is one of",
++      "op_not_in": "is none of",
++      "op_empty": "is empty",
++      "op_non_empty": "is not empty",
++      "mode_MANUAL": "Manual (Order tab)",
++      "mode_REPLY": "From a mail reply",
++      "on_failure_STOP": "Stop",
++      "on_failure_CONTINUE": "Continue",
++      "f_component": "NEI package",
++      "f_action": "Action",
++      "f_step": "Recorded as step",
++      "f_sub_activity": "Sub-activity (selects the template)",
++      "f_to": "To",
++      "f_cc": "Cc",
++      "f_mailer": "Mail program",
++      "f_subject": "Subject",
++      "f_body": "Body",
++      "f_attachments": "Attachments (paths, comma-separated)",
++      "f_on_failure": "When it fails",
++      "f_mode": "Decided",
++      "f_question": "Question",
++      "f_options": "Options (comma-separated)",
++      "f_timeout": "Wait at most",
++      "f_on_timeout": "After the wait",
++      "f_reply_to": "Reply to the mail",
++      "f_reader": "Reply reader",
++      "f_interval": "Check every",
++      "f_items": "Items (comma-separated)",
++      "f_concurrency": "At once (0 = all)",
++      "f_list": "List",
++      "f_value": "Value",
++      "f_status": "Status",
++      "f_message": "Message"
 +    },
 +    "io_mml_logs": {
 +      "title": "IO / MML",

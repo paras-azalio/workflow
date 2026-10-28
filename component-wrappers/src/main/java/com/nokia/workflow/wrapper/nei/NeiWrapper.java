@@ -58,6 +58,9 @@ import java.util.regex.Pattern;
 public final class NeiWrapper implements ComponentWrapper {
 
     static final Pattern NEW_LINE = Pattern.compile("^\\d+ NEW (\\S+)(?: (.*))?$");
+    /** Request keys {@code login.KEY} change this call's login arglist, {@code grc.KEY} its GRC section; neither reaches the task. */
+    static final String LOGIN_PREFIX = "login.";
+    static final String GRC_PREFIX = "grc.";
     private static final String MS = "com.comptel.mds.sas.java_macroserver.";
 
     @Override
@@ -88,7 +91,16 @@ public final class NeiWrapper implements ComponentWrapper {
             return WrapperResult.failed("NEI class " + macroName + " not on the classpath (add its jar and lib/ to the step)");
         }
 
-        File rc = rcFile(ctx, neType, macroName);
+        Map<String, String> loginOverrides = prefixed(req.asMap(), LOGIN_PREFIX);
+        Map<String, String> grcOverrides = prefixed(req.asMap(), GRC_PREFIX);
+        if (!grcOverrides.isEmpty() && cfg(ctx, neType, "rcfile") != null) {
+            return WrapperResult.failed("GRC overrides " + grcOverrides.keySet() + " need the GRC in the project config (nei."
+                    + neType + ".grc.*), not an existing rcfile");
+        }
+        if (!loginOverrides.isEmpty() || !grcOverrides.isEmpty()) {
+            ctx.log("NEI overrides from the request: login " + loginOverrides.keySet() + ", GRC " + grcOverrides.keySet());
+        }
+        File rc = rcFile(ctx, neType, macroName, grcOverrides);
         if (rc == null) {
             return WrapperResult.failed("No GRC config for " + neType + ": set nei." + neType + ".rcfile or nei."
                     + neType + ".grc.* in the project config");
@@ -111,11 +123,18 @@ public final class NeiWrapper implements ComponentWrapper {
         try {
             macro = macroClass.newInstance();
             invoke(macroClass, macro, "init", newArglist(new LinkedHashMap<String, String>()));
-            Object login = invoke(macroClass, macro, "login", newArglist(loginParams(ctx, neType)));
-            if (failed(login)) {
-                status = login;
+            Map<String, String> login = loginParams(ctx, neType);
+            login.putAll(loginOverrides);
+            Object loginStatus = invoke(macroClass, macro, "login", newArglist(login));
+            if (failed(loginStatus)) {
+                status = loginStatus;
             } else {
-                Map<String, String> task = new LinkedHashMap<String, String>(req.asMap());
+                Map<String, String> task = new LinkedHashMap<String, String>();
+                for (Map.Entry<String, String> e : req.asMap().entrySet()) {
+                    if (!e.getKey().startsWith(LOGIN_PREFIX) && !e.getKey().startsWith(GRC_PREFIX)) {
+                        task.put(e.getKey(), e.getValue());
+                    }
+                }
                 putIfAbsent(task, "task_type", taskType);
                 putIfAbsent(task, "product_name", product);
                 putIfAbsent(task, "product_version", version);
@@ -271,6 +290,11 @@ public final class NeiWrapper implements ComponentWrapper {
 
     /** The configured mds.rc, or one written from {@code nei.<ne>.grc.*}; null when neither is configured. */
     static File rcFile(WrapperContext ctx, String neType, String macroName) throws Exception {
+        return rcFile(ctx, neType, macroName, new LinkedHashMap<String, String>());
+    }
+
+    /** ... with {@code overrides} (request keys {@code grc.KEY}, e.g. from the activity configuration) applied last. */
+    static File rcFile(WrapperContext ctx, String neType, String macroName, Map<String, String> overrides) throws Exception {
         String existing = cfg(ctx, neType, "rcfile");
         if (existing != null) {
             return ctx.resolve(existing);
@@ -280,6 +304,7 @@ public final class NeiWrapper implements ComponentWrapper {
             return null;
         }
         grc.putAll(env("NEI_GRC_"));   // secrets (e.g. REPO_PASSWORD) stay out of the config file
+        grc.putAll(overrides);
         StringBuilder sb = new StringBuilder("# written by the NEI component wrapper from the project config\n");
         sb.append("program: ").append(macroName).append('\n');
         for (Map.Entry<String, String> e : grc.entrySet()) {
@@ -301,6 +326,17 @@ public final class NeiWrapper implements ComponentWrapper {
         Map<String, String> login = section(ctx, neType, "login");
         login.putAll(env("NEI_LOGIN_"));
         return login;
+    }
+
+    /** The entries whose key starts with {@code prefix}, without it. */
+    static Map<String, String> prefixed(Map<String, String> values, String prefix) {
+        Map<String, String> out = new LinkedHashMap<String, String>();
+        for (Map.Entry<String, String> e : values.entrySet()) {
+            if (e.getKey().startsWith(prefix) && e.getKey().length() > prefix.length()) {
+                out.put(e.getKey().substring(prefix.length()), e.getValue());
+            }
+        }
+        return out;
     }
 
     /** Environment variables {@code <prefix><KEY>} as KEY -> value. */

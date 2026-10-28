@@ -20,6 +20,9 @@ CLICR_PKG="${CLICR_PKG:-$NOKIA/JAVA_NOKIA_CLICR_AUTOMATION/target}"         # ma
 # Templates come only from the two NEI repositories (every activity), never from version/<uc>/ work folders.
 FILECR_RES="${FILECR_RES:-$NOKIA/NOKIA_FILE_CR_V1/src/main/resources/templates}"   # yaml/ (rules), jsonTemplate/, html/, application.properties
 CLICR_RES="${CLICR_RES:-$NOKIA/JAVA_NOKIA_CLICR_AUTOMATION/src/main/resources/templates}"   # yaml/ (workflows), jsonTemplate/, html/
+# scripts the CLICR workflow YAMLs run on the worker (an activity points ACTIVITY_PYTHON_SCRIPT_PATH at
+# ${WORKDIR}/nei/clicr/script/python through its configuration)
+CLICR_SCRIPTS="${CLICR_SCRIPTS:-$NOKIA/JAVA_NOKIA_CLICR_AUTOMATION/src/main/resources/script}"
 PG_JAR="${PG_JAR:-$HOME/.m2/repository/org/postgresql/postgresql/42.7.4/postgresql-42.7.4.jar}"   # JDBC driver (Java 8+)
 
 NS=namespace-files/cr_automation
@@ -48,6 +51,10 @@ cp "$CLICR_PKG"/config/*_codes.txt "$NS/nei/clicr/config/"
 cp "$CLICR_RES"/yaml/*.yaml "$NS/templates/clicr/yaml/"
 cp "$CLICR_RES"/jsonTemplate/*_json-output.yaml "$NS/templates/clicr/jsonTemplate/"
 cp "$CLICR_RES"/html/mop_summary_report_template*.html "$NS/templates/clicr/html/"
+mkdir -p "$NS/nei/clicr/script"
+(cd "$CLICR_SCRIPTS" && find . -type f -not -path '*/__pycache__/*' -not -name '*.pyc' | while read -r f; do
+  mkdir -p "$OLDPWD/$NS/nei/clicr/script/$(dirname "$f")" && cp "$f" "$OLDPWD/$NS/nei/clicr/script/$f"
+done)
 
 echo "namespace files for cr_automation:"
 (cd "$NS" && find . -type f | sort | sed 's#^\./#  #')

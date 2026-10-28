@@ -10,6 +10,10 @@ description: |
   The nodes come from the child's own MOP generation (ACTIVITY_CR_NODE_NAMES in the request store) - nothing here
   is specific to an activity. A node runs under the child's request id (CHILD_REQ_ID, label req_id).
 
+  Pipelines: when the order's process version attaches pipelines to this flow (process designer, step's
+  "pipelines"), a node runs its "node" pipeline (a flow compiled at publish) instead of the MOP_EXECUTION below,
+  and the "after_nodes" pipeline runs once after the summary report. Without pipelines nothing changes.
+
   Concurrency: the chosen nodes are claimed in the request store first (all or none). A node another execution is
   running is refused, so a node never runs twice at the same time; other nodes of the same child can run in
   parallel executions. The summary report is written under a database lock per child. The locks are released
@@ -22,8 +26,10 @@ description: |
 
 labels:
   project: CR_AUTOMATION
+  process: "true"   # a step of the order process: executors may start it (gateway rule)
   order_type: CHILD
   action: MOP_EXECUTION
+  pipeline_hooks: "node,after_nodes"   # the pipelines a process step may attach to this flow
 
 inputs:
   - id: order_id
@@ -76,6 +82,20 @@ tasks:
         sh bin/store.sh claim-nodes --req-id "{{ inputs.child_id }}" --nodes "{{ inputs.nodes | join(',') }}"
         --execution "{{ execution.id }}"
 
+  - id: pipelines
+    type: io.kestra.plugin.scripts.shell.Commands
+    description: The pipeline flows the order's process version attaches to this flow ("" = none)
+    taskRunner:
+      type: io.kestra.plugin.core.runner.Process
+    namespaceFiles:
+      enabled: true
+      include: [bin/**, wrappers/**, lib/**, config/**]
+    env:
+      SHARED_DATA_DIR: "{{ kv('SHARED_DATA_DIR') }}"
+      STORE_JDBC_PASSWORD: "{{ secret('CR_DB_PASSWORD') }}"
+    commands:
+      - sh bin/store.sh pipelines --req-id "{{ inputs.child_id }}" --flow "{{ flow.id }}"
+
   - id: set_cr_label
     type: io.kestra.plugin.core.execution.Labels
     labels:
@@ -107,9 +127,27 @@ tasks:
     values: "{{ outputs.claim.vars.nodes | toJson }}"
     concurrencyLimit: 0
     tasks:
+      - id: node_pipeline
+        type: io.kestra.plugin.core.flow.Subflow
+        description: The node's pipeline from the process designer, instead of the MOP_EXECUTION below
+        runIf: "{{ outputs.pipelines.vars.node is not empty }}"
+        namespace: "{{ flow.namespace }}"
+        flowId: "{{ outputs.pipelines.vars.node }}"
+        inputs:
+          order_id: "{{ inputs.order_id }}"
+          child_id: "{{ inputs.child_id }}"
+          node: "{{ item.value | trim }}"
+        labels:
+          order_id: "{{ inputs.order_id }}"
+          req_id: "{{ inputs.child_id }}"
+          node: "{{ item.value | trim }}"
+        wait: true
+        transmitFailed: false
+
       - id: mop_execution
         type: io.kestra.plugin.scripts.shell.Commands
-        description: CLICR NEI, ACTION=MOP_EXECUTION, NODE_NAME=<node>
+        description: CLICR NEI, ACTION=MOP_EXECUTION, NODE_NAME=<node> (when the node has no pipeline)
+        runIf: "{{ outputs.pipelines.vars.node is empty }}"
         taskRunner:
           type: io.kestra.plugin.core.runner.Process
         namespaceFiles:
@@ -151,7 +189,9 @@ tasks:
       - id: failure_report
         type: io.kestra.plugin.scripts.shell.Commands
         description: Failed node only - FileCR NEI, ACTION=GENERATE_REPORT, NODE_FAILURE_REPORT=TRUE
-        runIf: "{{ outputs.mop_execution.vars.status != 0 }}"
+        runIf: >-
+          {{ outputs.pipelines.vars.node is empty ? outputs.mop_execution.vars.status != 0
+          : outputs.node_pipeline.state != 'SUCCESS' }}
         taskRunner:
           type: io.kestra.plugin.core.runner.Process
         namespaceFiles:
@@ -214,6 +254,22 @@ tasks:
         --param "PARENT_REQ_ID={{ inputs.order_id }}"
         --param "CHILD_REQ_ID={{ inputs.child_id }}"
         --param "REQ_ID={{ inputs.child_id }}"
+
+  - id: after_nodes_pipeline
+    type: io.kestra.plugin.core.flow.Subflow
+    description: The pipeline from the process designer that runs once after all nodes (e.g. a post-completion)
+    runIf: "{{ outputs.pipelines.vars.after_nodes is not empty }}"
+    namespace: "{{ flow.namespace }}"
+    flowId: "{{ outputs.pipelines.vars.after_nodes }}"
+    inputs:
+      order_id: "{{ inputs.order_id }}"
+      child_id: "{{ inputs.child_id }}"
+      nodes: "{{ outputs.claim.vars.nodes | join(',') }}"
+    labels:
+      order_id: "{{ inputs.order_id }}"
+      req_id: "{{ inputs.child_id }}"
+    wait: true
+    transmitFailed: true
 
   - id: run_result
     type: io.kestra.plugin.scripts.shell.Commands
