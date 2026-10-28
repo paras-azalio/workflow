@@ -1,0 +1,171 @@
+id: cr_node_rollback
+namespace: cr_automation
+description: |
+  Rolls back ONE node of a child order (on demand): CLICR MOP_EXECUTION with ROLLBACK_ONLY=true for that node - the
+  workflow then skips every forward phase and runs only its rollback phase - followed by the rollback report
+  (FileCR GENERATE_REPORT, ROLLBACK_REPORT=true).
+
+  Offered ("node" input, or the "Order" tab) only for nodes whose last MOP execution ended with ROLLBACK_ENABLED=TRUE
+  (the change was applied) and not rolled back yet, and only when the activity allows rollback
+  (config rollback.<NODE_TYPE>_<ACTIVITY>=true) - PGW 1051 does not.
+
+  It runs under the child's own request id (CHILD_REQ_ID, label req_id): the rollback needs what the execution left in
+  /mnt/shared_data/<child id>/<node>/ (backup, precheck). Its own engine logs and report go to LOGS_ROLLBACK/ and
+  ROLLBACK_REPORT/ of the child folder, so the execution's are kept. Recorded in the request store as ROLLBACK and
+  ROLLBACK_REPORT steps of the child.
+
+labels:
+  project: CR_AUTOMATION
+  order_type: CHILD
+  action: ROLLBACK
+
+inputs:
+  - id: order_id
+    type: SELECT
+    expression: >-
+      {{ (kv('ORDERS', errorOnMissing=false) ?? []) | jq('[.[] | select(.stage == "VALIDATED")]') | first }}
+    description: Order whose node to roll back
+  - id: node
+    type: SELECT
+    dependsOn:
+      inputs: [order_id]
+    expression: "{{ kv('ORDER_' ~ inputs.order_id).rollback_options }}"
+    description: Child order and node to roll back (only nodes that can be rolled back are listed)
+
+variables:
+  child_id: "{{ (inputs.node | split(':'))[0] }}"
+  node_name: "{{ (inputs.node | split(':'))[1] }}"
+  cr_name: "{{ (inputs.node | split(':'))[2] }}"
+  order_dir: "{{ kv('SHARED_DATA_DIR') }}/{{ (inputs.node | split(':'))[0] }}"
+  json_file: "{{ kv('ORDER_' ~ inputs.order_id).json_file }}"
+  node_type: "{{ kv('ORDER_' ~ inputs.order_id).node_type }}"
+  activity: "{{ kv('ORDER_' ~ inputs.order_id).activity }}"
+  node_version: "{{ kv('ORDER_' ~ inputs.order_id).node_version }}"
+
+tasks:
+  - id: set_labels
+    type: io.kestra.plugin.core.execution.Labels
+    labels:
+      req_id: "{{ render(vars.child_id) }}"
+      order_id: "{{ inputs.order_id }}"
+      cr_name: "{{ render(vars.cr_name) }}"
+      node: "{{ render(vars.node_name) }}"
+
+  - id: rollback
+    type: io.kestra.plugin.scripts.shell.Commands
+    description: CLICR NEI, ACTION=MOP_EXECUTION, ROLLBACK_ONLY=true, NODE_NAME=<node>
+    taskRunner:
+      type: io.kestra.plugin.core.runner.Process
+    namespaceFiles:
+      enabled: true
+      include: [bin/**, wrappers/**, lib/**, nei/clicr/**, templates/clicr/**, config/**]
+    outputFiles:
+      - out/**
+    env:
+      ORDER_DIR: "{{ render(vars.order_dir) }}"
+      NODE: "{{ render(vars.node_name) }}"
+      NEI_GRC_REPO_PASSWORD: "{{ secret('CLICR_REPO_PASSWORD') }}"
+      NEI_LOGIN_M2MPASSWORD1: "{{ secret('CLICR_M2MPASSWORD1') }}"
+      SHARED_DATA_DIR: "{{ kv('SHARED_DATA_DIR') }}"
+      STORE_JDBC_PASSWORD: "{{ secret('CR_DB_PASSWORD') }}"
+      STORE_REQ_ID: "{{ render(vars.child_id) }}"
+      STORE_STEP: ROLLBACK
+      STORE_NODE: "{{ render(vars.node_name) }}"
+      EXECUTION_ID: "{{ execution.id }}"
+    commands:
+      - >-
+        sh bin/nei.sh clicr "mop_rollback_$NODE"
+        --param REQ_TYPE=1
+        --param ACTION=MOP_EXECUTION
+        --param ROLLBACK_ONLY=true
+        --param "INPUT_JSON_FILE_NAME={{ render(vars.json_file) }}"
+        --param "OUTPUT_LOGS_FILE_LOCATION=$ORDER_DIR/LOGS_ROLLBACK"
+        --param "OUTPUT_JSON_REPORT_LOCATION=$ORDER_DIR/ROLLBACK_REPORT"
+        --param "CR_NAME={{ render(vars.cr_name) }}"
+        --param "NODE_NAME=$NODE"
+        --param "NODE_TYPE={{ render(vars.node_type) }}"
+        --param "SUB_ACTIVITY_NAME={{ render(vars.activity) }}"
+        --param "NODE_VERSION={{ render(vars.node_version) }}"
+        --param "IL_TASK_GROUP=ACTIVITY_EXECUTION_$NODE"
+        --param "ORDER_NO={{ inputs.order_id }}"
+        --param "PARENT_REQ_ID={{ inputs.order_id }}"
+        --param "CHILD_REQ_ID={{ render(vars.child_id) }}"
+        --param "REQ_ID={{ render(vars.child_id) }}"
+
+  - id: rollback_report
+    type: io.kestra.plugin.scripts.shell.Commands
+    description: FileCR NEI, ACTION=GENERATE_REPORT, ROLLBACK_REPORT=true
+    taskRunner:
+      type: io.kestra.plugin.core.runner.Process
+    namespaceFiles:
+      enabled: true
+      include: [bin/**, wrappers/**, lib/**, nei/filecr/**, templates/**, config/**]
+    outputFiles:
+      - out/**
+    env:
+      ORDER_DIR: "{{ render(vars.order_dir) }}"
+      SHARED_DATA_DIR: "{{ kv('SHARED_DATA_DIR') }}"
+      STORE_JDBC_PASSWORD: "{{ secret('CR_DB_PASSWORD') }}"
+      STORE_REQ_ID: "{{ render(vars.child_id) }}"
+      STORE_STEP: ROLLBACK_REPORT
+      STORE_NODE: "{{ render(vars.node_name) }}"
+      EXECUTION_ID: "{{ execution.id }}"
+    commands:
+      - >-
+        sh bin/nei.sh filecr "rollback_report_{{ render(vars.node_name) }}"
+        --param REQ_TYPE=1
+        --param ACTION=GENERATE_REPORT
+        --param ROLLBACK_REPORT=true
+        --param "CR_NAME={{ render(vars.cr_name) }}"
+        --param "NODE_TYPE={{ render(vars.node_type) }}"
+        --param "ACTIVITY_NAME={{ render(vars.activity) }}"
+        --param "SUB_ACTIVITY_NAME={{ render(vars.activity) }}"
+        --param "OUTPUT_REPORT_LOCATION=$ORDER_DIR/ROLLBACK_REPORT"
+        --param "PARENT_REQ_ID={{ inputs.order_id }}"
+        --param "CHILD_REQ_ID={{ render(vars.child_id) }}"
+        --param "REQ_ID={{ render(vars.child_id) }}"
+
+  - id: register
+    type: io.kestra.plugin.scripts.shell.Commands
+    description: The order as the forms see it (the node is no longer offered once rolled back)
+    taskRunner:
+      type: io.kestra.plugin.core.runner.Process
+    namespaceFiles:
+      enabled: true
+      include: [bin/**, wrappers/**, lib/**, config/**]
+    env:
+      SHARED_DATA_DIR: "{{ kv('SHARED_DATA_DIR') }}"
+      STORE_JDBC_PASSWORD: "{{ secret('CR_DB_PASSWORD') }}"
+    commands:
+      - sh bin/store.sh registry --order "{{ inputs.order_id }}"
+
+  - id: save_order
+    type: io.kestra.plugin.core.kv.Set
+    key: "ORDER_{{ inputs.order_id }}"
+    kvType: JSON
+    value: "{{ outputs.register.vars.order | toJson }}"
+
+  - id: rollback_failed
+    type: io.kestra.plugin.core.execution.Fail
+    runIf: "{{ outputs.rollback.vars.status != 0 }}"
+    errorMessage: >-
+      Rollback failed on node {{ render(vars.node_name) }} (child {{ render(vars.child_id) }}, {{ render(vars.cr_name) }}):
+      {{ outputs.rollback.vars.message }} - see LOGS_ROLLBACK/ and ROLLBACK_REPORT/ in {{ render(vars.order_dir) }}/
+
+finally:
+  - id: collect_logs
+    type: io.kestra.plugin.scripts.shell.Commands
+    description: The child's IO and MML logs, the rollback engine log and report (the "IO / MML" tab)
+    taskRunner:
+      type: io.kestra.plugin.core.runner.Process
+    outputFiles:
+      - logs/**
+      - LOGS_ROLLBACK/**
+      - ROLLBACK_REPORT/**
+    env:
+      ORDER_DIR: "{{ render(vars.order_dir) }}"
+    commands:
+      - mkdir -p logs LOGS_ROLLBACK ROLLBACK_REPORT
+      - cp "$ORDER_DIR"/logs/* logs/ 2>/dev/null || true
+      - cp -r "$ORDER_DIR"/LOGS_ROLLBACK/* LOGS_ROLLBACK/ 2>/dev/null || true
+      - cp -r "$ORDER_DIR"/ROLLBACK_REPORT/* ROLLBACK_REPORT/ 2>/dev/null || true

@@ -1,0 +1,7 @@
+.env
+# built / copied by assemble-namespace-files.sh
+namespace-files/*/wrappers/
+namespace-files/*/nei/
+namespace-files/*/templates/
+namespace-files/*/lib/
+ui-overlay/

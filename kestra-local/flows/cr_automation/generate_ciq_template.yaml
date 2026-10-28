@@ -1,0 +1,170 @@
+id: generate_ciq_template
+namespace: cr_automation
+description: |
+  Starts an ORDER (on demand, no trigger) with the blank CIQ template: FileCR NEI (macro_FILECR_ANY_V1.jar,
+  unchanged), the same task InstantLink sends today: ne_type=FILECR, REQ_TYPE=1, ACTION=GENERATE_CR_CIQ_TEMPLATE.
+
+  The order gets a request id - a whole number: the order number if one is given (it must be free), otherwise
+  the next number (request store, bin/store.sh: tables request / request_step, every step recorded with its IO). It is REQ_ID / PARENT_REQ_ID and ORDER_NO, the label req_id, and the order
+  folder <SHARED_DATA_DIR>/<request id>/, like /mnt/shared_data/<request id>/ in BST. The order is recorded in the
+  order registry (stage TEMPLATE).
+
+  Continue the order: fill the template (task output file, or the order folder), then run ciq_validation and pick
+  this order in "order_id" (or use the "Order" tab of this execution). After a valid CIQ, run cr_child_order once
+  per CR you want to execute.
+
+  IO and MML logs: <order folder>/logs/ (also this execution's output files and the "IO / MML" tab).
+
+labels:
+  project: CR_AUTOMATION
+  ne_type: FILECR
+  action: GENERATE_CR_CIQ_TEMPLATE
+
+inputs:
+  - id: node_type
+    type: STRING
+    defaults: PGW_RDS
+  - id: activity
+    type: STRING
+    defaults: 1051_SUBSCRIBER_PROFILE_CONFIGURATION
+  - id: node_version
+    type: STRING
+    defaults: ALL
+  - id: order_no
+    type: STRING
+    required: false
+    validator: "^[1-9][0-9]*$"
+    description: Order number = request id of the new order (a whole number, must be free); empty = the next number
+  - id: order_no_check
+    type: SELECT
+    required: false
+    autoSelectFirst: true
+    dependsOn:
+      inputs: [order_no]
+    description: Checked while you fill in the form - a taken order number is refused before the order is created
+    expression: >-
+      {{ inputs.order_no is empty ? ['the next free number will be used']
+         : ((kv('REQ_IDS_TAKEN', errorOnMissing=false) ?? []) contains inputs.order_no)
+           ? kv('ORDER_NUMBER_' ~ inputs.order_no ~ '_IS_ALREADY_TAKEN')
+           : ['order number ' ~ inputs.order_no ~ ' is free'] }}
+
+variables:
+  order_id: "{{ outputs.allocate.vars.req_id ?? '' }}"
+  order_dir: "{{ kv('SHARED_DATA_DIR') }}/{{ outputs.allocate.vars.req_id ?? '' }}"
+
+tasks:
+  - id: allocate
+    type: io.kestra.plugin.scripts.shell.Commands
+    description: The new order in the request store - its request id (the order number, or the next number) and folder
+    taskRunner:
+      type: io.kestra.plugin.core.runner.Process
+    namespaceFiles:
+      enabled: true
+      include: [bin/**, wrappers/**, lib/**, config/**]
+    env:
+      SHARED_DATA_DIR: "{{ kv('SHARED_DATA_DIR') }}"
+      STORE_JDBC_PASSWORD: "{{ secret('CR_DB_PASSWORD') }}"
+    commands:
+      - >-
+        sh bin/store.sh new-request --kind ORDER --wanted "{{ inputs.order_no ?? '' }}"
+        --node-type "{{ inputs.node_type }}" --activity "{{ inputs.activity }}"
+        --node-version "{{ inputs.node_version }}" --execution "{{ execution.id }}"
+
+  - id: save_taken_ids
+    type: io.kestra.plugin.core.kv.Set
+    description: Request ids in use - what the order number check of the forms reads
+    key: REQ_IDS_TAKEN
+    kvType: JSON
+    value: "{{ outputs.allocate.vars.taken | toJson }}"
+
+  - id: set_labels
+    type: io.kestra.plugin.core.execution.Labels
+    labels:
+      req_id: "{{ render(vars.order_id) }}"
+      order_id: "{{ render(vars.order_id) }}"
+
+  - id: generate_template
+    type: io.kestra.plugin.scripts.shell.Commands
+    description: FileCR NEI, ACTION=GENERATE_CR_CIQ_TEMPLATE, through the NEI component wrapper (bin/nei.sh)
+    taskRunner:
+      type: io.kestra.plugin.core.runner.Process
+    namespaceFiles:
+      enabled: true
+      include: [bin/**, wrappers/**, lib/**, nei/filecr/**, templates/**, config/**]
+    outputFiles:
+      - out/**
+    env:
+      ORDER_DIR: "{{ render(vars.order_dir) }}"
+      SHARED_DATA_DIR: "{{ kv('SHARED_DATA_DIR') }}"
+      STORE_JDBC_PASSWORD: "{{ secret('CR_DB_PASSWORD') }}"
+      STORE_REQ_ID: "{{ render(vars.order_id) }}"
+      STORE_STEP: GENERATE_TEMPLATE
+      EXECUTION_ID: "{{ execution.id }}"
+    commands:
+      - >-
+        sh bin/nei.sh filecr generate_template
+        --param REQ_TYPE=1
+        --param ACTION=GENERATE_CR_CIQ_TEMPLATE
+        --param "NODE_TYPE={{ inputs.node_type }}"
+        --param "ACTIVITY_NAME={{ inputs.activity }}"
+        --param "SUB_ACTIVITY_NAME={{ inputs.activity }}"
+        --param "NODE_VERSION={{ inputs.node_version }}"
+        --param "CIQ_FILE_LOCATION=$ORDER_DIR/"
+        --param "ORDER_NO={{ render(vars.order_id) }}"
+        --param "REQ_ID={{ render(vars.order_id) }}"
+      - cp "$ORDER_DIR"/*.xlsx out/ 2>/dev/null || true
+
+  # ---- the order's stage, and the order list the forms / Order tab read (KV, refreshed from the store) ----
+  - id: register
+    type: io.kestra.plugin.scripts.shell.Commands
+    taskRunner:
+      type: io.kestra.plugin.core.runner.Process
+    namespaceFiles:
+      enabled: true
+      include: [bin/**, wrappers/**, lib/**, config/**]
+    env:
+      SHARED_DATA_DIR: "{{ kv('SHARED_DATA_DIR') }}"
+      STORE_JDBC_PASSWORD: "{{ secret('CR_DB_PASSWORD') }}"
+    commands:
+      - >-
+        sh bin/store.sh set-stage --req-id "{{ render(vars.order_id) }}"
+        --stage "{{ outputs.generate_template.vars.status == 0 ? 'TEMPLATE' : 'TEMPLATE_FAILED' }}" > /dev/null
+      - sh bin/store.sh registry --order "{{ render(vars.order_id) }}"
+
+  - id: save_order
+    type: io.kestra.plugin.core.kv.Set
+    key: "ORDER_{{ render(vars.order_id) }}"
+    kvType: JSON
+    value: "{{ outputs.register.vars.order | toJson }}"
+
+  - id: save_orders
+    type: io.kestra.plugin.core.kv.Set
+    key: ORDERS
+    kvType: JSON
+    value: "{{ outputs.register.vars.orders | toJson }}"
+
+  - id: template_failed
+    type: io.kestra.plugin.core.execution.Fail
+    runIf: "{{ outputs.generate_template.vars.status != 0 }}"
+    errorMessage: "CIQ template generation failed: {{ outputs.generate_template.vars.message }}"
+
+  - id: template_ready
+    type: io.kestra.plugin.core.log.Log
+    message: >-
+      Order {{ render(vars.order_id) }} started: CIQ template in {{ render(vars.order_dir) }}/ (also in
+      generate_template's output files). Next: fill it and run ciq_validation for order {{ render(vars.order_id) }}
+      (or use the "Order" tab of this execution).
+
+finally:
+  - id: collect_logs
+    type: io.kestra.plugin.scripts.shell.Commands
+    description: The order's IO and MML logs as output files of this execution (shown in the "IO / MML" tab)
+    runIf: "{{ render(vars.order_id) is not empty }}"
+    taskRunner:
+      type: io.kestra.plugin.core.runner.Process
+    outputFiles:
+      - logs/**
+    env:
+      ORDER_DIR: "{{ render(vars.order_dir) }}"
+    commands:
+      - mkdir -p logs && cp "$ORDER_DIR"/logs/* logs/ 2>/dev/null || true

@@ -1,0 +1,247 @@
+id: ciq_validation
+namespace: cr_automation
+description: |
+  Validates a filled CIQ (on demand, no trigger) with the FileCR NEI (macro_FILECR_ANY_V1.jar, unchanged) - the
+  same task InstantLink sends today: ne_type=FILECR, REQ_TYPE=1, ACTION=CR_CIQ_PROCESSOR.
+
+  "order_type" picks what to do:
+    EXISTING - continue an order (started with generate_ciq_template, or one to validate again); pick it in
+               "order_id" (or use the order's "Order" tab / "Continue order" in the Executions list).
+    NEW      - start a new order with this CIQ; its request id is the order number if one is given (it must be
+               free), otherwise the next number. No old order is asked for.
+  The CIQ: if one is uploaded, it first REPLACES the order's CIQ <order folder>/<NODE_TYPE>_<ACTIVITY>_CIQ.xlsx;
+  if none is uploaded (existing orders), the .xlsx placed in the order folder last is validated (copied to that
+  name if it has another one). A new order needs an uploaded CIQ. The validation report and the activity JSON go
+  to the order folder <SHARED_DATA_DIR>/<request id>/. Each validation logs as ciq_validation_<attempt> (1, 2, ...).
+
+  Valid CIQ: the order becomes VALIDATED with its CR_LIST; continue with cr_child_order (pick the order and a CR).
+  Invalid CIQ: the order becomes INVALID and this execution fails; correct the CIQ and validate the same order.
+
+  IO and MML logs: <order folder>/logs/ (also this execution's output files and the "IO / MML" tab).
+
+labels:
+  project: CR_AUTOMATION
+  ne_type: FILECR
+  action: CR_CIQ_PROCESSOR
+
+inputs:
+  - id: order_type
+    type: SELECT
+    values:
+      - {value: EXISTING, label: Existing order - continue it}
+      - {value: NEW, label: New order - start one with this CIQ}
+    defaults: EXISTING
+    description: Continue an existing order, or start a new order
+  - id: order_id
+    type: SELECT
+    allowCustomValue: true
+    dependsOn:
+      inputs: [order_type]
+      condition: "{{ inputs.order_type == 'EXISTING' }}"
+    expression: "{{ kv('ORDERS', errorOnMissing=false) ?? [] }}"
+    description: Order to continue
+  - id: ciq
+    type: FILE
+    required: false
+    description: >-
+      Filled CIQ (.xlsx). Existing order - optional: an uploaded CIQ replaces the one in the order folder; left
+      empty, the CIQ already placed in the order folder is validated. New order - required.
+  - id: node_type
+    type: STRING
+    defaults: PGW_RDS
+    dependsOn:
+      inputs: [order_type]
+      condition: "{{ inputs.order_type == 'NEW' }}"
+  - id: activity
+    type: STRING
+    defaults: 1051_SUBSCRIBER_PROFILE_CONFIGURATION
+    dependsOn:
+      inputs: [order_type]
+      condition: "{{ inputs.order_type == 'NEW' }}"
+  - id: node_version
+    type: STRING
+    defaults: ALL
+    dependsOn:
+      inputs: [order_type]
+      condition: "{{ inputs.order_type == 'NEW' }}"
+  - id: order_no
+    type: STRING
+    required: false
+    validator: "^[1-9][0-9]*$"
+    dependsOn:
+      inputs: [order_type]
+      condition: "{{ inputs.order_type == 'NEW' }}"
+    description: Order number = request id of the new order (a whole number, must be free); empty = the next number
+  - id: order_no_check
+    type: SELECT
+    required: false
+    autoSelectFirst: true
+    dependsOn:
+      inputs: [order_type, order_no]
+      condition: "{{ inputs.order_type == 'NEW' }}"
+    description: Checked while you fill in the form - a taken order number is refused before the order is created
+    expression: >-
+      {{ inputs.order_no is empty ? ['the next free number will be used']
+         : ((kv('REQ_IDS_TAKEN', errorOnMissing=false) ?? []) contains inputs.order_no)
+           ? kv('ORDER_NUMBER_' ~ inputs.order_no ~ '_IS_ALREADY_TAKEN')
+           : ['order number ' ~ inputs.order_no ~ ' is free'] }}
+  - id: report_type
+    type: STRING
+    description: Validation report format(s), e.g. HTML or JSON,HTML,MSEXCEL
+    defaults: HTML
+
+variables:
+  order_id: "{{ inputs.order_type == 'NEW' ? (outputs.allocate.vars.req_id ?? '') : inputs.order_id }}"
+  node_type: "{{ inputs.order_type == 'NEW' ? inputs.node_type : kv('ORDER_' ~ inputs.order_id).node_type }}"
+  activity: "{{ inputs.order_type == 'NEW' ? inputs.activity : kv('ORDER_' ~ inputs.order_id).activity }}"
+  node_version: "{{ inputs.order_type == 'NEW' ? inputs.node_version : kv('ORDER_' ~ inputs.order_id).node_version }}"
+  order_dir: "{{ kv('SHARED_DATA_DIR') }}/{{ render(vars.order_id) }}"
+  ciq_name: "{{ render(vars.node_type) }}_{{ render(vars.activity) }}_CIQ.xlsx"
+
+tasks:
+  - id: new_order_needs_ciq
+    type: io.kestra.plugin.core.execution.Fail
+    runIf: "{{ inputs.order_type == 'NEW' and inputs.ciq is empty }}"
+    errorMessage: A new order needs a CIQ - upload the filled CIQ (no order number was taken)
+
+  - id: allocate
+    type: io.kestra.plugin.scripts.shell.Commands
+    description: New order only - its request id (the order number, or the next number) and its folder
+    runIf: "{{ inputs.order_type == 'NEW' }}"
+    taskRunner:
+      type: io.kestra.plugin.core.runner.Process
+    namespaceFiles:
+      enabled: true
+      include: [bin/**, wrappers/**, lib/**, config/**]
+    env:
+      SHARED_DATA_DIR: "{{ kv('SHARED_DATA_DIR') }}"
+      STORE_JDBC_PASSWORD: "{{ secret('CR_DB_PASSWORD') }}"
+    commands:
+      - >-
+        sh bin/store.sh new-request --kind ORDER --wanted "{{ inputs.order_no ?? '' }}"
+        --node-type "{{ inputs.node_type }}" --activity "{{ inputs.activity }}"
+        --node-version "{{ inputs.node_version }}" --execution "{{ execution.id }}"
+
+  - id: save_taken_ids
+    type: io.kestra.plugin.core.kv.Set
+    description: Request ids in use (from the folders) - what the order number check of the forms reads
+    runIf: "{{ inputs.order_type == 'NEW' }}"
+    key: REQ_IDS_TAKEN
+    kvType: JSON
+    value: "{{ outputs.allocate.vars.taken | toJson }}"
+
+  - id: set_labels
+    type: io.kestra.plugin.core.execution.Labels
+    labels:
+      req_id: "{{ render(vars.order_id) }}"
+      order_id: "{{ render(vars.order_id) }}"
+
+  - id: ciq_validation
+    type: io.kestra.plugin.scripts.shell.Commands
+    description: FileCR NEI, ACTION=CR_CIQ_PROCESSOR, through the NEI component wrapper (bin/nei.sh)
+    taskRunner:
+      type: io.kestra.plugin.core.runner.Process
+    namespaceFiles:
+      enabled: true
+      include: [bin/**, wrappers/**, lib/**, nei/filecr/**, templates/**, config/**]
+    inputFiles:
+      uploaded.xlsx: "{{ inputs.ciq ?? '' }}"
+    outputFiles:
+      - out/**
+    env:
+      ORDER_DIR: "{{ render(vars.order_dir) }}"
+      SHARED_DATA_DIR: "{{ kv('SHARED_DATA_DIR') }}"
+      STORE_JDBC_PASSWORD: "{{ secret('CR_DB_PASSWORD') }}"
+      STORE_REQ_ID: "{{ render(vars.order_id) }}"
+      STORE_STEP: CIQ_VALIDATION
+      EXECUTION_ID: "{{ execution.id }}"
+    commands:
+      - mkdir -p "$ORDER_DIR"
+      # the CIQ to validate: an uploaded one replaces the order's CIQ; otherwise the .xlsx put in the order folder
+      # last - by ctime (when the file arrived there): a copy keeps the source's mtime, so mtime would pick the template
+      - >-
+        CIQ="$ORDER_DIR/{{ render(vars.ciq_name) }}";
+        if [ -s uploaded.xlsx ]; then cp uploaded.xlsx "$CIQ" && echo "CIQ uploaded - replaced $CIQ";
+        else NEWEST=$(ls -tc "$ORDER_DIR"/*.xlsx 2>/dev/null | head -1);
+          if [ -z "$NEWEST" ]; then echo "No CIQ: upload one, or place it in $ORDER_DIR/ as {{ render(vars.ciq_name) }}" >&2; exit 1; fi;
+          [ "$NEWEST" = "$CIQ" ] || cp "$NEWEST" "$CIQ";
+          echo "No CIQ uploaded - validating $NEWEST from the order folder"; fi
+      - n=$(ls "$ORDER_DIR"/logs/ciq_validation_*.io.log 2>/dev/null | wc -l); echo "ciq_validation_$((n + 1))" > attempt
+      - >-
+        sh bin/nei.sh filecr "$(cat attempt)"
+        --param REQ_TYPE=1
+        --param ACTION=CR_CIQ_PROCESSOR
+        --param "CIQ_FILE_NAME=$ORDER_DIR/{{ render(vars.ciq_name) }}"
+        --param "NODE_TYPE={{ render(vars.node_type) }}"
+        --param "ACTIVITY_NAME={{ render(vars.activity) }}"
+        --param "SUB_ACTIVITY_NAME={{ render(vars.activity) }}"
+        --param "NODE_VERSION={{ render(vars.node_version) }}"
+        --param "OUTPUT_FILE_LOCATION=$ORDER_DIR/"
+        --param "REPORT_TYPE={{ inputs.report_type }}"
+        --param HEADER_ROW_NO=1
+        --param "ORDER_NO={{ render(vars.order_id) }}"
+        --param "REQ_ID={{ render(vars.order_id) }}"
+      - cp "$ORDER_DIR"/*.html "$ORDER_DIR"/*.json out/ 2>/dev/null || true
+
+  # ---- record the result on the order (VALIDATED with its CRs, or INVALID) ----
+  - id: register
+    type: io.kestra.plugin.scripts.shell.Commands
+    description: The order's stage (VALIDATED with its CRs, or INVALID) and the order list the forms read
+    taskRunner:
+      type: io.kestra.plugin.core.runner.Process
+    namespaceFiles:
+      enabled: true
+      include: [bin/**, wrappers/**, lib/**, config/**]
+    env:
+      SHARED_DATA_DIR: "{{ kv('SHARED_DATA_DIR') }}"
+      STORE_JDBC_PASSWORD: "{{ secret('CR_DB_PASSWORD') }}"
+    commands:
+      - >-
+        sh bin/store.sh set-stage --req-id "{{ render(vars.order_id) }}"
+        --stage "{{ outputs.ciq_validation.vars.status == 0 ? 'VALIDATED' : 'INVALID' }}"
+        --cr-list "{{ outputs.ciq_validation.vars.results.CR_LIST ?? '' }}"
+        --json-file "{{ outputs.ciq_validation.vars.results.JSON_FILE_NAME is defined
+           ? render(vars.order_dir) ~ '/' ~ outputs.ciq_validation.vars.results.JSON_FILE_NAME : '' }}" > /dev/null
+      - sh bin/store.sh registry --order "{{ render(vars.order_id) }}"
+
+  - id: save_order
+    type: io.kestra.plugin.core.kv.Set
+    key: "ORDER_{{ render(vars.order_id) }}"
+    kvType: JSON
+    value: "{{ outputs.register.vars.order | toJson }}"
+
+  - id: save_orders
+    type: io.kestra.plugin.core.kv.Set
+    key: ORDERS
+    kvType: JSON
+    value: "{{ outputs.register.vars.orders | toJson }}"
+
+  - id: ciq_invalid
+    type: io.kestra.plugin.core.execution.Fail
+    runIf: "{{ outputs.ciq_validation.vars.status != 0 }}"
+    errorMessage: >-
+      CIQ validation failed with {{ outputs.ciq_validation.vars.results.TOTAL_ERRORS ?? '?' }} error(s)
+      ({{ outputs.ciq_validation.vars.message }}) - see
+      {{ outputs.ciq_validation.vars.results.REPORT_FILENAME_HTML ?? 'the validation report' }}
+      in {{ render(vars.order_dir) }}/. Correct the CIQ and validate order {{ render(vars.order_id) }} again.
+
+  - id: ciq_valid
+    type: io.kestra.plugin.core.log.Log
+    message: >-
+      Order {{ render(vars.order_id) }} VALIDATED: CR_LIST={{ outputs.ciq_validation.vars.results.CR_LIST }}
+      (CR_COUNT={{ outputs.ciq_validation.vars.results.CR_COUNT }}). Next: run cr_child_order with this order and
+      the CR to execute.
+
+finally:
+  - id: collect_logs
+    type: io.kestra.plugin.scripts.shell.Commands
+    description: The order's IO and MML logs as output files of this execution (shown in the "IO / MML" tab)
+    runIf: "{{ render(vars.order_id) is not empty }}"
+    taskRunner:
+      type: io.kestra.plugin.core.runner.Process
+    outputFiles:
+      - logs/**
+    env:
+      ORDER_DIR: "{{ render(vars.order_dir) }}"
+    commands:
+      - mkdir -p logs && cp "$ORDER_DIR"/logs/* logs/ 2>/dev/null || true
