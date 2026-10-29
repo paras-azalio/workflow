@@ -16,7 +16,8 @@ import java.util.concurrent.ConcurrentHashMap;
  * step: the step must be available NOW (checked again on the server), every user value is checked against the
  * step's definition, then the step's flow is started in Kestra with the mapped inputs, labelled with who did it.
  *
- * <p>The order's data comes from the order registry the flows publish (namespace KV ORDER_&lt;id&gt; / ORDERS).
+ * <p>The order's data comes from the order registry its project's flows publish (KV ORDER_&lt;id&gt; / ORDERS of the
+ * project's namespace; the project is the one of the process version the order is pinned to).
  */
 final class Steps {
 
@@ -35,21 +36,20 @@ final class Steps {
     private final ProcessStore processes;
     private final ActivityStore activities;
     private final UserStore users;
-    private final String namespace;
-    private final String project;
+    private final String defaultNamespace;
     private final AutoStarter autoStarter;
     private final Map<String, Started> recent = new ConcurrentHashMap<>();
     private final Map<String, Object> inFlight = new ConcurrentHashMap<>();
 
-    Steps(Kestra kestra, ProcessStore processes, ActivityStore activities, UserStore users, String namespace, String project,
+    /** @param defaultNamespace where the registry of orders that are not pinned to a process version is */
+    Steps(Kestra kestra, ProcessStore processes, ActivityStore activities, UserStore users, String defaultNamespace,
           AutoStarter autoStarter) {
         this.kestra = kestra;
         this.autoStarter = autoStarter;
         this.processes = processes;
         this.activities = activities;
         this.users = users;
-        this.namespace = namespace;
-        this.project = project;
+        this.defaultNamespace = defaultNamespace;
     }
 
     // ------------------------------------------------------------------ next steps
@@ -59,7 +59,12 @@ final class Steps {
         if (orderId == null || !orderId.matches("[1-9][0-9]{0,17}")) {
             throw new UserStore.Rejected(400, "The order id must be a whole number.");
         }
-        Object o = kestra.kv(namespace, "ORDER_" + orderId);
+        ProcessStore.Version v = processes.pinnedVersion(Long.parseLong(orderId));
+        String ns = v == null ? null : processes.namespace(v.project());
+        if (ns == null) {
+            ns = defaultNamespace;
+        }
+        Object o = kestra.kv(ns, "ORDER_" + orderId);
         if (!(o instanceof Map<?, ?> om)) {
             throw new UserStore.Rejected(404, "Order %s is not in the order registry.".formatted(orderId));
         }
@@ -73,14 +78,13 @@ final class Steps {
             child = (Map<String, Object>) cm;
         }
         boolean listed = false;
-        if (kestra.kv(namespace, "ORDERS") instanceof List<?> orders) {
+        if (kestra.kv(ns, "ORDERS") instanceof List<?> orders) {
             listed = orders.stream().anyMatch(x -> x instanceof Map<?, ?> m && orderId.equals(String.valueOf(m.get("value"))));
         }
         if (!listed) {
             return new Context(order, child, null, null, false,
                     "Order %s is not in the request store (created before it), so it cannot be continued.".formatted(orderId));
         }
-        ProcessStore.Version v = processes.pinnedVersion(Long.parseLong(orderId));
         if (v == null) {
             return new Context(order, child, null, null, false,
                     "Order %s is not pinned to a process version.".formatted(orderId));
@@ -114,7 +118,7 @@ final class Steps {
     }
 
     /** The steps that start a new order, from the project's latest published process version. */
-    Map<String, Object> startSteps(Role role) throws Exception {
+    Map<String, Object> startSteps(String project, Role role) throws Exception {
         ProcessStore.Version v = processes.latestPublished(project);
         if (v == null) {
             throw new UserStore.Rejected(404, "Project %s has no published process.".formatted(project));
@@ -191,7 +195,11 @@ final class Steps {
      * (else the newest order): what a step's {@code order.} / {@code child.} paths can name - for the designer.
      */
     @SuppressWarnings("unchecked")
-    Map<String, Object> contextFields() throws Exception {
+    Map<String, Object> contextFields(String project) throws Exception {
+        String namespace = processes.namespace(project);
+        if (namespace == null) {
+            throw new UserStore.Rejected(404, "There is no project %s.".formatted(project));
+        }
         java.util.TreeSet<String> orderFields = new java.util.TreeSet<>();
         java.util.TreeSet<String> childFields = new java.util.TreeSet<>();
         String sample = null;
@@ -283,12 +291,12 @@ final class Steps {
                 "automatic start, order " + ctx.order().get("value"), ctx.version());
     }
 
-    Map<String, Object> startOrder(String stepId, Map<String, Object> body, UserStore.User user, String ip) throws Exception {
+    Map<String, Object> startOrder(String project, String stepId, Map<String, Object> body, UserStore.User user, String ip) throws Exception {
         requireExecutor(user);
-        return once(dedupKey(user, body, "new/" + stepId), () -> startOrderNow(stepId, body, user, ip));
+        return once(dedupKey(user, body, "new/" + project + "/" + stepId), () -> startOrderNow(project, stepId, body, user, ip));
     }
 
-    private Map<String, Object> startOrderNow(String stepId, Map<String, Object> body, UserStore.User user, String ip) throws Exception {
+    private Map<String, Object> startOrderNow(String project, String stepId, Map<String, Object> body, UserStore.User user, String ip) throws Exception {
         ProcessStore.Version v = processes.latestPublished(project);
         if (v == null) {
             throw new UserStore.Rejected(404, "Project %s has no published process.".formatted(project));

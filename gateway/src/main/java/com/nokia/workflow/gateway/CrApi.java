@@ -25,7 +25,11 @@ import java.util.Map;
  *   POST   /cr/api/orders/{order}/decisions/{id}           take a decision: {decision, comment}        EXECUTOR
  *   POST   /cr/api/orders/{order}/stop?child=C             stop the child: kill what runs for it now     EXECUTOR
  *                                                           (the child becomes STOPPED, no summary report)
- *   GET    /cr/api/processes                               projects with published / draft version     any role
+ *   GET    /cr/api/processes                               projects (with their namespace) and versions any role
+ *   POST   /cr/api/processes                               new project: {project, name, namespace,     ADMIN
+ *                                                           from_project?} - its process starts as a draft
+ *   /cr/api/projects/{p}/activities[/...]                   as /cr/api/activities, for project p (the plain
+ *   GET /cr/api/projects/{p}/context-fields                 routes are the gateway's default project)
  *   GET    /cr/api/processes/{p}/start                     steps that start an order                   any role
  *   POST   /cr/api/processes/{p}/start/{step}              start an order: {inputs, files, request_key} EXECUTOR
  *   GET    /cr/api/processes/{p}/versions[/{v}]            versions / one version with its definition  any role
@@ -60,12 +64,11 @@ final class CrApi {
     private final Decisions decisions;
     private final OrderSearch search;
     private final Kestra kestra;
-    private final String processNamespace;
-    private final String project;
+    private final String defaultProject;
     private final Runnable onUserChange;
 
     CrApi(UserStore users, ProcessStore processes, ActivityStore activities, Steps steps, Decisions decisions, OrderSearch search,
-          Kestra kestra, String processNamespace, String project, Runnable onUserChange) {
+          Kestra kestra, String defaultProject, Runnable onUserChange) {
         this.search = search;
         this.users = users;
         this.processes = processes;
@@ -73,8 +76,7 @@ final class CrApi {
         this.steps = steps;
         this.decisions = decisions;
         this.kestra = kestra;
-        this.processNamespace = processNamespace;
-        this.project = project;
+        this.defaultProject = defaultProject;
         this.onUserChange = onUserChange;
     }
 
@@ -90,12 +92,27 @@ final class CrApi {
                 }
                 case "orders" -> orders(ex, method, s, who);
                 case "processes" -> processes(ex, method, s, who, path);
-                case "activities" -> activities(ex, method, s, who, path);
+                case "activities" -> activities(ex, method, s, who, path, defaultProject);
                 case "context-fields" -> {
                     if (s.length != 1 || !"GET".equals(method)) {
                         notFound(method, path);
                     }
-                    Gateway.json(ex, 200, steps.contextFields());
+                    Gateway.json(ex, 200, steps.contextFields(defaultProject));
+                }
+                case "projects" -> {
+                    if (s.length < 3) {
+                        notFound(method, path);
+                    }
+                    String p = Paths.decode(s[1]);
+                    requireProject(p);
+                    String[] rest = java.util.Arrays.copyOfRange(s, 2, s.length);
+                    if ("activities".equals(rest[0])) {
+                        activities(ex, method, rest, who, path, p);
+                    } else if ("context-fields".equals(rest[0]) && rest.length == 1 && "GET".equals(method)) {
+                        Gateway.json(ex, 200, steps.contextFields(p));
+                    } else {
+                        notFound(method, path);
+                    }
                 }
                 default -> notFound(method, path);
             }
@@ -179,7 +196,9 @@ final class CrApi {
                 throw new UserStore.Rejected(400, "Search by an order or child order id (a whole number).");
             }
             Long n = id == null || id.isBlank() ? null : Long.valueOf(id.trim());
-            Gateway.json(ex, 200, Map.of("orders", search.find(n, "true".equals(query(ex, "waiting")))));
+            String project = query(ex, "project");
+            Gateway.json(ex, 200, Map.of("orders", search.find(n, "true".equals(query(ex, "waiting")),
+                    project == null || project.isBlank() ? null : project)));
         } else if (s.length == 3 && "next".equals(s[2]) && "GET".equals(method)) {
             Map<String, Object> next = new LinkedHashMap<>(steps.next(s[1], child, who.user().role()));
             next.put("decisions", decisions.open(Long.parseLong(s[1]), child == null ? null : Long.valueOf(child)));
@@ -222,17 +241,28 @@ final class CrApi {
     private void processes(HttpExchange ex, String method, String[] s, Gateway.Caller who, String path) throws Exception {
         UserStore.User me = who.user();
         if (s.length == 1 && "GET".equals(method)) {
-            Gateway.json(ex, 200, Map.of("processes", processes.processes()));
+            Gateway.json(ex, 200, Map.of("processes", processes.processes(), "default_project", defaultProject));
+            return;
+        }
+        if (s.length == 1 && "POST".equals(method)) {
+            requireRole(me, Role.ADMIN, method, path, who);
+            Map<String, Object> b = Gateway.readJson(ex);
+            String fromProject = Gateway.str(b.get("from_project"));
+            if (fromProject != null && !fromProject.isBlank()) {
+                requireProject(fromProject);
+            }
+            Gateway.json(ex, 201, processes.createProject(Gateway.str(b.get("project")), Gateway.str(b.get("name")),
+                    Gateway.str(b.get("namespace")), fromProject, me.username()));
             return;
         }
         String p = s.length > 1 ? Paths.decode(s[1]) : null;
         if (s.length == 3 && "start".equals(s[2]) && "GET".equals(method)) {
             requireProject(p);
-            Gateway.json(ex, 200, steps.startSteps(me.role()));
+            Gateway.json(ex, 200, steps.startSteps(p, me.role()));
         } else if (s.length == 4 && "start".equals(s[2]) && "POST".equals(method)) {
             requireProject(p);
             Map<String, Object> body = Gateway.readJson(ex, MAX_STEP_BODY);
-            Gateway.json(ex, 201, steps.startOrder(s[3], body, me, who.ip()));
+            Gateway.json(ex, 201, steps.startOrder(p, s[3], body, me, who.ip()));
         } else if (s.length == 3 && "versions".equals(s[2]) && "GET".equals(method)) {
             Gateway.json(ex, 200, Map.of("project", p, "versions", processes.versions(p)));
         } else if (s.length == 4 && "versions".equals(s[2]) && "GET".equals(method)) {
@@ -297,16 +327,18 @@ final class CrApi {
 
     // ------------------------------------------------------------------ activities
 
-    private void activities(HttpExchange ex, String method, String[] s, Gateway.Caller who, String path) throws Exception {
+    private void activities(HttpExchange ex, String method, String[] s, Gateway.Caller who, String path, String project) throws Exception {
         UserStore.User me = who.user();
+        ActivityStore activities = this.activities.of(project);
         if (s.length == 1 && "GET".equals(method)) {
             Gateway.json(ex, 200, Map.of("project", project, "activities", activities.list(),
                     "known_steps", new ArrayList<>(activities.knownSteps())));
             return;
         }
         if (s.length == 2 && "parameters".equals(s[1]) && "GET".equals(method)) {
+            String namespace = processes.namespace(project);
             Gateway.json(ex, 200, Map.of("steps", activities.stepParameters(), "components",
-                    ActivityStore.projectDefaults(kestra.namespaceFile(processNamespace, "/config/" + processNamespace + ".properties"))));
+                    ActivityStore.projectDefaults(namespace == null ? null : kestra.projectConfig(namespace))));
             return;
         }
         if (s.length == 1 && "POST".equals(method)) {
@@ -415,8 +447,9 @@ final class CrApi {
     private List<String> publishProblems(String project, int version, ProcessDefinition def,
                                          Map<String, Map<String, String>> deployed) throws Exception {
         List<String> problems = new ArrayList<>();
-        if (!processNamespace.equals(def.namespace)) {
-            problems.add("namespace must be '%s' (the namespace executors may run), not '%s'.".formatted(processNamespace, def.namespace));
+        String namespace = processes.namespace(project);
+        if (namespace == null || !namespace.equals(def.namespace)) {
+            problems.add("namespace must be '%s' (the namespace of project %s), not '%s'.".formatted(namespace, project, def.namespace));
             return problems;
         }
         for (ProcessDefinition.Step step : def.steps) {
@@ -440,9 +473,9 @@ final class CrApi {
         }
     }
 
-    private void requireProject(String p) {
-        if (!project.equals(p)) {
-            throw new UserStore.Rejected(404, "There is no process for project %s here.".formatted(p));
+    private void requireProject(String p) throws java.sql.SQLException {
+        if (p == null || !processes.exists(p)) {
+            throw new UserStore.Rejected(404, "There is no project %s.".formatted(p));
         }
     }
 

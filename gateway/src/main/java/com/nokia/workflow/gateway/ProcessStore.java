@@ -8,8 +8,9 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Process definitions with versions, one process per project (table {@code process}); the version lifecycle is
- * {@link VersionedStore}'s (table {@code process_version}, content column {@code definition}).
+ * Process definitions with versions, one process per project (table {@code process}, with the Kestra namespace of
+ * the project's flows - one project per namespace); the version lifecycle is {@link VersionedStore}'s (table
+ * {@code process_version}, content column {@code definition}).
  */
 final class ProcessStore {
 
@@ -22,13 +23,21 @@ final class ProcessStore {
         List<String> problems(ProcessDefinition definition) throws Exception;
     }
 
+    private static final java.util.regex.Pattern PROJECT = java.util.regex.Pattern.compile("[A-Z][A-Z0-9_]{1,63}");
+    private static final java.util.regex.Pattern NAMESPACE = java.util.regex.Pattern.compile("[a-z][a-z0-9_.-]{0,99}");
+    private static final long NAMESPACE_CACHE_MILLIS = 30_000;
+
     private final Db db;
     private final String schema;
     private final VersionedStore versions;
+    private final UserStore audit;
+    private volatile java.util.Set<String> namespaces = java.util.Set.of();
+    private volatile long namespacesAt;
 
     ProcessStore(Db db, String schema, UserStore audit) {
         this.db = db;
         this.schema = schema;
+        this.audit = audit;
         this.versions = new VersionedStore(db, schema, new VersionedStore.Spec("PROCESS", "process", "process_id",
                 "process_version", "definition"), audit, ProcessStore::problems);
     }
@@ -45,6 +54,11 @@ final class ProcessStore {
                         + " created_at TIMESTAMPTZ NOT NULL DEFAULT now())");
                 versions.ensureVersionTable(st);
                 st.execute("ALTER TABLE " + t("process_version") + " ADD COLUMN IF NOT EXISTS compiled JSONB");
+                st.execute("ALTER TABLE " + t("process") + " ADD COLUMN IF NOT EXISTS namespace VARCHAR(128)");
+                // processes from before the column: the namespace their latest version's definition names
+                st.execute("UPDATE " + t("process") + " p SET namespace = (SELECT v.definition ->> 'namespace' FROM "
+                        + t("process_version") + " v WHERE v.process_id = p.process_id ORDER BY v.version DESC LIMIT 1)"
+                        + " WHERE p.namespace IS NULL");
             }
             return null;
         });
@@ -63,8 +77,9 @@ final class ProcessStore {
             if (VersionedStore.one(c, "SELECT process_id FROM " + t("process") + " WHERE project = ?", project) != null) {
                 return false;
             }
-            long id = ((Number) VersionedStore.one(c, "INSERT INTO " + t("process") + " (project, name) VALUES (?,?) RETURNING process_id",
-                    project, name).get("process_id")).longValue();
+            Object namespace = SimpleJson.parse(definitionJson) instanceof Map<?, ?> m ? m.get("namespace") : null;
+            long id = ((Number) VersionedStore.one(c, "INSERT INTO " + t("process") + " (project, name, namespace) VALUES (?,?,?)"
+                    + " RETURNING process_id", project, name, namespace == null ? null : String.valueOf(namespace)).get("process_id")).longValue();
             versions.insertFirst(c, id, "PUBLISHED", definitionJson, "seed");
             if (Boolean.TRUE.equals(VersionedStore.one(c, "SELECT to_regclass('" + schema + ".request') IS NOT NULL AS ok").get("ok"))) {
                 VersionedStore.update(c, "ALTER TABLE " + t("request") + " ADD COLUMN IF NOT EXISTS process_id BIGINT");
@@ -107,8 +122,80 @@ final class ProcessStore {
         return id == null ? null : wrap(project, versions.version(id, version));
     }
 
+    /**
+     * A new project: its process starts as a draft (version 1) - a copy of {@code fromProject}'s latest published
+     * definition with this project's namespace, or an empty one to fill in the designer.
+     */
+    @SuppressWarnings("unchecked")
+    Map<String, Object> createProject(String project, String name, String namespace, String fromProject, String actor) throws SQLException {
+        if (project == null || !PROJECT.matcher(project).matches()) {
+            throw new UserStore.Rejected(400, "The project id must be 2-64 upper-case letters, digits and _ (starting with a letter), e.g. CR_AUTOMATIONS.");
+        }
+        if (namespace == null || !NAMESPACE.matcher(namespace).matches()) {
+            throw new UserStore.Rejected(400, "The Kestra namespace must be lower-case letters, digits and _ . - (starting with a letter), e.g. cr_automations.");
+        }
+        Map<String, Object> definition = new java.util.LinkedHashMap<>();
+        if (fromProject != null && !fromProject.isBlank()) {
+            Version from = latestPublished(fromProject);
+            if (from == null) {
+                throw new UserStore.Rejected(404, "Project %s has no published process to copy.".formatted(fromProject));
+            }
+            definition.putAll((Map<String, Object>) SimpleJson.parse(SimpleJson.writeCompact(from.definition())));
+        } else {
+            definition.put("steps", List.of());
+        }
+        definition.put("namespace", namespace);
+        String json = SimpleJson.writeCompact(definition);
+        db.transaction(c -> {
+            try (Statement st = c.createStatement()) {
+                st.execute("LOCK TABLE " + t("process") + " IN EXCLUSIVE MODE");
+            }
+            if (VersionedStore.one(c, "SELECT 1 FROM " + t("process") + " WHERE project = ?", project) != null) {
+                throw new UserStore.Rejected(409, "Project %s already exists.".formatted(project));
+            }
+            Map<String, Object> other = VersionedStore.one(c, "SELECT project FROM " + t("process") + " WHERE namespace = ?", namespace);
+            if (other != null) {
+                throw new UserStore.Rejected(409, "Namespace %s already belongs to project %s.".formatted(namespace, other.get("project")));
+            }
+            long id = ((Number) VersionedStore.one(c, "INSERT INTO " + t("process") + " (project, name, namespace) VALUES (?,?,?)"
+                    + " RETURNING process_id", project, name == null || name.isBlank() ? project : name, namespace).get("process_id")).longValue();
+            versions.insertFirst(c, id, "DRAFT", json, actor);
+            return null;
+        });
+        namespacesAt = 0;
+        audit.audit(actor, Role.ADMIN, "PROJECT_CREATE", null, null, null, null,
+                "project %s, namespace %s%s".formatted(project, namespace, fromProject == null || fromProject.isBlank() ? "" : ", copied from " + fromProject));
+        return Map.of("project", project, "namespace", namespace, "version", 1, "state", "DRAFT");
+    }
+
+    /** The Kestra namespace of the project's flows, or null for an unknown project. */
+    String namespace(String project) throws SQLException {
+        Map<String, Object> r = db.with(c -> VersionedStore.one(c, "SELECT namespace FROM " + t("process") + " WHERE project = ?", project));
+        return r == null ? null : (String) r.get("namespace");
+    }
+
+    boolean exists(String project) throws SQLException {
+        return id(project) != null;
+    }
+
+    /** Every project's namespace (refreshed every 30 s, and at once after a project is created). */
+    java.util.Set<String> namespaces() throws SQLException {
+        if (System.currentTimeMillis() - namespacesAt > NAMESPACE_CACHE_MILLIS) {
+            java.util.Set<String> out = new java.util.HashSet<>();
+            db.with(c -> {
+                for (Map<String, Object> r : VersionedStore.all(c, "SELECT namespace FROM " + t("process") + " WHERE namespace IS NOT NULL")) {
+                    out.add(String.valueOf(r.get("namespace")));
+                }
+                return null;
+            });
+            namespaces = java.util.Set.copyOf(out);
+            namespacesAt = System.currentTimeMillis();
+        }
+        return namespaces;
+    }
+
     List<Map<String, Object>> processes() throws SQLException {
-        return db.with(c -> VersionedStore.all(c, "SELECT p.project, p.name, p.description,"
+        return db.with(c -> VersionedStore.all(c, "SELECT p.project, p.name, p.namespace, p.description,"
                 + " (SELECT max(version) FROM " + t("process_version") + " v WHERE v.process_id = p.process_id AND v.state = 'PUBLISHED') AS published_version,"
                 + " (SELECT max(version) FROM " + t("process_version") + " v WHERE v.process_id = p.process_id AND v.state = 'DRAFT') AS draft_version"
                 + " FROM " + t("process") + " p ORDER BY p.project"));

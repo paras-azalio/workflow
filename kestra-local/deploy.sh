@@ -1,5 +1,8 @@
 #!/usr/bin/env bash
-# Deploys the cr_automation namespace to a running Kestra through its REST API (Kestra 2.0 OSS, tenant "main"):
+# Deploys one project's namespace (default cr_automation) to a running Kestra through its REST API (Kestra 2.0 OSS,
+# tenant "main"): namespace-files/<ns>/ and flows/<ns>/*.yaml, whose flows must say "namespace: <ns>".
+#   ./deploy.sh [namespace]
+#
 #   PUT  /api/v1/main/namespaces/{ns}/kv/{key}           text body (JSON/Ion value) - SHARED_DATA_DIR
 #   POST /api/v1/main/namespaces/{ns}/files?path=/...    multipart field "fileContent" - namespace files
 #   POST /api/v1/main/flows                              application/x-yaml - create a flow
@@ -14,7 +17,11 @@ ENV_FILE="${ENV_FILE:-.env}"
 [ -f "$ENV_FILE" ] && set -a && . "$ENV_FILE" && set +a
 URL="${KESTRA_URL:-http://localhost:8080}"
 AUTH=(-u "${KESTRA_USER:?set KESTRA_USER in .env}:${KESTRA_PASSWORD:?set KESTRA_PASSWORD in .env}")
-NS=cr_automation
+NS="${1:-cr_automation}"
+[ -d "namespace-files/$NS" ] && [ -d "flows/$NS" ] || { echo "namespace-files/$NS and flows/$NS are both needed" >&2; exit 1; }
+if grep -L "^namespace: $NS[[:space:]]*$" flows/$NS/*.yaml | grep -q .; then
+  echo "these flows do not say 'namespace: $NS':" >&2; grep -L "^namespace: $NS[[:space:]]*$" flows/$NS/*.yaml >&2; exit 1
+fi
 
 echo "== KV $NS.SHARED_DATA_DIR = ${SHARED_DATA_DIR:=/mnt/shared_data}"
 curl -sS -f "${AUTH[@]}" -X PUT "$URL/api/v1/main/namespaces/$NS/kv/SHARED_DATA_DIR" \

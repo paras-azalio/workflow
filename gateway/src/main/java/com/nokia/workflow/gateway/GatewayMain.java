@@ -24,8 +24,10 @@ import java.util.concurrent.Executors;
  *   GATEWAY_ADMIN_USER / GATEWAY_ADMIN_PASSWORD   the first admin, used only while no user exists
  *   GATEWAY_SESSION_IDLE_HOURS   8      GATEWAY_SESSION_MAX_HOURS 24
  *   GATEWAY_MAX_FAILED_LOGINS    5      GATEWAY_LOCK_MINUTES      15
- *   GATEWAY_PROCESS_NAMESPACE    cr_automation               where executors may run process flows
- *   GATEWAY_PROJECT              CR_AUTOMATION               the project of the process and the activities
+ *   GATEWAY_PROCESS_NAMESPACE    cr_automation               the default project's namespace (its seed)
+ *   GATEWAY_PROJECT              CR_AUTOMATION               the default project, seeded from process/&lt;project&gt;.json;
+ *                                                            more projects are created in the designer, each
+ *                                                            with its own namespace
  *   GATEWAY_KNOWN_STEPS          NEI step names an activity configuration may name before any flow recorded them
  *   GATEWAY_AUTO_START_SECONDS   15     how often automatic steps (auto_start) are looked for; 0 = never
  *   GATEWAY_AUTO_START_WINDOW_MINUTES 60   orders changed within this time are looked at
@@ -64,16 +66,23 @@ public final class GatewayMain {
                 require(env, "KESTRA_USER"), require(env, "KESTRA_PASSWORD"), "main");
         AutoStarter autoStarter = new AutoStarter(db, schema, kestra, processes, users);
         autoStarter.ensureSchema();
-        Steps steps = new Steps(kestra, processes, activities, users, namespace, project, autoStarter);
+        Steps steps = new Steps(kestra, processes, activities, users, namespace, autoStarter);
         int autoSeconds = Integer.parseInt(env.getOrDefault("GATEWAY_AUTO_START_SECONDS", "15"));
         if (autoSeconds > 0) {
             autoStarter.start(steps, autoSeconds, Integer.parseInt(env.getOrDefault("GATEWAY_AUTO_START_WINDOW_MINUTES", "60")));
         }
 
+        java.util.function.Predicate<String> isProjectNamespace = ns -> {
+            try {
+                return processes.namespaces().contains(ns);
+            } catch (SQLException e) {
+                throw new IllegalStateException("The project namespaces could not be read.", e);
+            }
+        };
         HttpServer server = HttpServer.create(new InetSocketAddress(port), 256);
         Decisions decisions = new Decisions(db, schema, kestra, users);
         server.createContext("/", new Gateway(users, processes, activities, steps, decisions,
-                new OrderSearch(db, schema), kestra, new Rules(namespace), namespace, project));
+                new OrderSearch(db, schema), kestra, new Rules(isProjectNamespace), isProjectNamespace, project));
         server.setExecutor(Executors.newVirtualThreadPerTaskExecutor());
         server.start();
         System.out.println("gateway: listening on " + port + ", Kestra at " + env.getOrDefault("KESTRA_INTERNAL_URL", "http://kestra:8080"));

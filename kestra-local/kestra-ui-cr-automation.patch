@@ -1,12 +1,15 @@
 diff --git a/ui/src/components/crdesigner/ActivityDesigner.vue b/ui/src/components/crdesigner/ActivityDesigner.vue
 new file mode 100644
-index 0000000..4b0c617
+index 0000000..85e80ed
 --- /dev/null
 +++ b/ui/src/components/crdesigner/ActivityDesigner.vue
-@@ -0,0 +1,379 @@
+@@ -0,0 +1,403 @@
 +<template>
 +    <div class="designer">
 +        <div class="designer-top">
++            <KsSelect :modelValue="project" class="project-select" :placeholder="$t('cr_designer.project')" data-test="activity-project-select" @update:model-value="selectProject">
++                <KsOption v-for="p in projectList" :key="p.project" :label="p.project" :value="p.project" />
++            </KsSelect>
 +            <KsSelect
 +                :modelValue="activityKey"
 +                filterable
@@ -175,8 +178,9 @@ index 0000000..4b0c617
 +    import VersionBar from "./VersionBar.vue"
 +    import KeyValues from "./KeyValues.vue"
 +    import JsonView from "./JsonView.vue"
-+    import {gateway, activityUrl, renameKey} from "./crApi"
-+    import type {Me} from "./crApi"
++    import {gateway, activityUrl, renameKey, projectUrl, projects} from "./crApi"
++    import type {Me, ProjectInfo} from "./crApi"
++    import {useRoute, useRouter} from "vue-router"
 +    import {useVersioned} from "./useVersioned"
 +    import {useDiscardGuard} from "../../composables/useDiscardGuard"
 +
@@ -191,6 +195,10 @@ index 0000000..4b0c617
 +    interface Parameters {steps: Record<string, {component: string, params: Record<string, string>}>,
 +                          components: Record<string, {login: Record<string, string>, grc: Record<string, string>}>}
 +
++    const route = useRoute()
++    const router = useRouter()
++    const projectList = ref<ProjectInfo[]>([])
++    const project = ref("")
 +    const activities = ref<Activity[]>([])
 +    const parameters = ref<Parameters>({steps: {}, components: {}})
 +    const knownSteps = ref<string[]>([])
@@ -207,7 +215,7 @@ index 0000000..4b0c617
 +    const activityKey = computed(() => activity.value ? keyOf(activity.value) : "")
 +
 +    const {versions, selected, loaded, content: config, busy, error, message, problems, dirty, loadVersions, leaveConfirmed, ask, handlers} = useVersioned({
-+        base: () => activityUrl(activity.value!.node_type, activity.value!.sub_activity),
++        base: () => activityUrl(project.value, activity.value!.node_type, activity.value!.sub_activity),
 +        field: "config",
 +        normalize,
 +        onLoaded: () => refreshList(),
@@ -223,9 +231,21 @@ index 0000000..4b0c617
 +    }
 +
 +    async function refreshList() {
-+        const res = await gateway<{activities: Activity[], known_steps: string[]}>("/cr/api/activities")
++        const res = await gateway<{activities: Activity[], known_steps: string[]}>(`${projectUrl(project.value)}/activities`)
 +        activities.value = res.activities
 +        knownSteps.value = res.known_steps
++    }
++
++    /** Another project: its own declarations, step parameters and config values. */
++    async function selectProject(p: string) {
++        if (!await leaveConfirmed()) return
++        project.value = p
++        router.replace({query: {...route.query, project: p}})
++        activity.value = undefined
++        config.value = undefined
++        await refreshList()
++        parameters.value = await gateway<Parameters>(`${projectUrl(p)}/activities/parameters`).catch(() => ({steps: {}, components: {}}))
++        if (activities.value.length) await selectActivity(keyOf(activities.value[0]))
 +    }
 +
 +    async function selectActivity(key: string) {
@@ -303,7 +323,7 @@ index 0000000..4b0c617
 +    async function declare() {
 +        if (!draft.value.node_type || !draft.value.sub_activity) return
 +        try {
-+            const created = await gateway<Activity>("/cr/api/activities", {method: "POST", json: draft.value})
++            const created = await gateway<Activity>(`${projectUrl(project.value)}/activities`, {method: "POST", json: draft.value})
 +            closeDeclare()
 +            await refreshList()
 +            await selectActivity(keyOf(created))
@@ -314,9 +334,9 @@ index 0000000..4b0c617
 +
 +    onMounted(async () => {
 +        try {
-+            await refreshList()
-+            parameters.value = await gateway<Parameters>("/cr/api/activities/parameters").catch(() => parameters.value)
-+            if (activities.value.length) await selectActivity(keyOf(activities.value[0]))
++            const {list, first} = await projects(route.query.project)
++            projectList.value = list
++            if (first) await selectProject(first)
 +        } catch (e: any) {
 +            listError.value = e?.message ?? String(e)
 +        }
@@ -335,6 +355,10 @@ index 0000000..4b0c617
 +        flex-wrap: wrap;
 +        gap: var(--ks-spacing-2);
 +        align-items: center;
++    }
++
++    .project-select {
++        width: 14rem;
 +    }
 +
 +    .activity-select {
@@ -1339,16 +1363,22 @@ index 0000000..fad5af0
 +</style>
 diff --git a/ui/src/components/crdesigner/ProcessDesigner.vue b/ui/src/components/crdesigner/ProcessDesigner.vue
 new file mode 100644
-index 0000000..ced33a4
+index 0000000..d3c921f
 --- /dev/null
 +++ b/ui/src/components/crdesigner/ProcessDesigner.vue
-@@ -0,0 +1,423 @@
+@@ -0,0 +1,493 @@
 +<template>
 +    <div class="designer">
 +        <div class="designer-top">
-+            <KsSelect :modelValue="project" class="project-select" :placeholder="$t('cr_designer.project')" @update:model-value="selectProject">
-+                <KsOption v-for="p in projects" :key="p.project" :label="p.project" :value="p.project" />
++            <KsSelect :modelValue="project" class="project-select" :placeholder="$t('cr_designer.project')" data-test="project-select" @update:model-value="selectProject">
++                <KsOption v-for="p in projectList" :key="p.project" :label="p.project" :value="p.project">
++                    <span>{{ p.project }}</span>
++                    <span class="hint"> {{ p.namespace }}</span>
++                </KsOption>
 +            </KsSelect>
++            <KsButton v-if="admin" :icon="Plus" data-test="new-project" @click="openCreate">
++                {{ $t("cr_designer.new_project") }}
++            </KsButton>
 +            <VersionBar
 +                class="designer-bar"
 +                :versions="versions"
@@ -1448,6 +1478,38 @@ index 0000000..ced33a4
 +        </KsTabs>
 +        <p v-else-if="!error" class="hint">{{ $t("loading") }}</p>
 +
++        <KsDialog v-model="creating" :title="$t('cr_designer.new_project')" :beforeClose="beforeCloseProject" width="34rem">
++            <KsForm labelPosition="top" @submit.prevent="createProject">
++                <KsFormItem :label="$t('cr_designer.project_id')" required>
++                    <KsInput v-model="newProject.project" placeholder="CR_AUTOMATIONS" data-test="new-project-id" />
++                </KsFormItem>
++                <KsFormItem :label="$t('cr_designer.project_name')">
++                    <KsInput v-model="newProject.name" />
++                </KsFormItem>
++                <KsFormItem :label="$t('cr_designer.project_namespace')" required>
++                    <KsInput v-model="newProject.namespace" placeholder="cr_automations" data-test="new-project-namespace" />
++                </KsFormItem>
++                <KsFormItem :label="$t('cr_designer.project_from')">
++                    <KsSelect v-model="newProject.from_project" :placeholder="$t('cr_designer.project_empty')" data-test="new-project-from">
++                        <KsOption :label="$t('cr_designer.project_empty')" value="" />
++                        <KsOption v-for="p in projectList" :key="p.project" :label="$t('cr_designer.project_copy', {project: p.project})" :value="p.project" />
++                    </KsSelect>
++                </KsFormItem>
++                <p class="hint">{{ $t("cr_designer.new_project_hint") }}</p>
++            </KsForm>
++            <KsAlert v-if="createError" type="error" :closable="false">
++                {{ createError }}
++            </KsAlert>
++            <template #footer>
++                <KsButton @click="closeCreate">
++                    {{ $t("cancel") }}
++                </KsButton>
++                <KsButton type="primary" :disabled="!newProject.project || !newProject.namespace" data-test="new-project-create" @click="createProject">
++                    {{ $t("cr_designer.create_project") }}
++                </KsButton>
++            </template>
++        </KsDialog>
++
 +        <KsDrawer v-model="pipelineOpen" direction="rtl" size="85%" :title="pipelineTitle" @closed="closePipeline">
 +            <PipelineEditor v-if="pipelineStep && pipelineHook" :widgets="pipelineStep.pipelines[pipelineHook]" :hook="pipelineHook" :editable="editable" />
 +        </KsDrawer>
@@ -1456,7 +1518,7 @@ index 0000000..ced33a4
 +
 +<script setup lang="ts">
 +    import {computed, onMounted, ref} from "vue"
-+    import {useRoute} from "vue-router"
++    import {useRoute, useRouter} from "vue-router"
 +    import {useI18n} from "vue-i18n"
 +    import {VueFlow, MarkerType, useVueFlow} from "@vue-flow/core"
 +    import {Background} from "@vue-flow/background"
@@ -1473,8 +1535,9 @@ index 0000000..ced33a4
 +    import PipelineEditor from "./PipelineEditor.vue"
 +    import {insertWidget, normalize as normalizeWidgets, routes} from "./pipelineWidgets"
 +    import {computeDagLayout} from "../dependencies/utils/dagLayout"
-+    import {gateway, processUrl, processFlows} from "./crApi"
-+    import type {Me, FlowInfo} from "./crApi"
++    import {gateway, processUrl, processFlows, projectUrl, projects} from "./crApi"
++    import type {Me, FlowInfo, ProjectInfo} from "./crApi"
++    import {useDiscardGuard} from "../../composables/useDiscardGuard"
 +    import {useVersioned} from "./useVersioned"
 +
 +    const NODE = {width: 240, height: 110}
@@ -1483,9 +1546,10 @@ index 0000000..ced33a4
 +    const props = defineProps<{me: Me}>()
 +    const {t} = useI18n()
 +    const route = useRoute()
++    const router = useRouter()
 +    const {fitView} = useVueFlow("cr-designer")
 +
-+    const projects = ref<{project: string}[]>([])
++    const projectList = ref<ProjectInfo[]>([])
 +    const project = ref("")
 +    const flows = ref<FlowInfo[]>([])
 +    const fields = ref<{order: string[], child: string[]}>({order: [], child: []})
@@ -1567,7 +1631,42 @@ index 0000000..ced33a4
 +    async function selectProject(p: string) {
 +        if (!await leaveConfirmed()) return
 +        project.value = p
++        router.replace({query: {...route.query, project: p}})
++        fields.value = await gateway<{order: string[], child: string[]}>(`${projectUrl(p)}/context-fields`).catch(() => ({order: [], child: []}))
 +        await loadVersions()
++    }
++
++    const creating = ref(false)
++    const newProject = ref({project: "", name: "", namespace: "", from_project: ""})
++    const createError = ref("")
++    const {guardedClose} = useDiscardGuard(() => !!(newProject.value.project || newProject.value.name || newProject.value.namespace))
++    const beforeCloseProject = (done: () => void) => guardedClose(() => {
++        closeCreate()
++        done()
++    })
++
++    function openCreate() {
++        newProject.value = {project: "", name: "", namespace: "", from_project: project.value}
++        creating.value = true
++    }
++
++    function closeCreate() {
++        creating.value = false
++        newProject.value = {project: "", name: "", namespace: "", from_project: ""}
++        createError.value = ""
++    }
++
++    /** A new project starts as a draft (a copy of another project's process, or empty) in its own namespace. */
++    async function createProject() {
++        if (!newProject.value.project || !newProject.value.namespace) return
++        try {
++            const made = await gateway<{project: string}>("/cr/api/processes", {method: "POST", json: newProject.value})
++            closeCreate()
++            projectList.value = (await projects()).list
++            await selectProject(made.project)
++        } catch (e: any) {
++            createError.value = e?.message ?? String(e)
++        }
 +    }
 +
 +    const positions = computed(() => {
@@ -1689,14 +1788,9 @@ index 0000000..ced33a4
 +
 +    onMounted(async () => {
 +        try {
-+            const [list, ctx] = await Promise.all([
-+                gateway<{processes: {project: string}[]}>("/cr/api/processes"),
-+                gateway<{order: string[], child: string[]}>("/cr/api/context-fields"),
-+            ])
-+            projects.value = list.processes
-+            fields.value = ctx
-+            project.value = list.processes[0]?.project ?? ""
-+            if (project.value) await loadVersions()
++            const {list, first} = await projects(route.query.project)
++            projectList.value = list
++            if (first) await selectProject(first)
 +        } catch (e: any) {
 +            error.value = e?.message ?? String(e)
 +        }
@@ -2694,10 +2788,10 @@ index 0000000..6f76697
 +</style>
 diff --git a/ui/src/components/crdesigner/crApi.ts b/ui/src/components/crdesigner/crApi.ts
 new file mode 100644
-index 0000000..18942f2
+index 0000000..8a5d721
 --- /dev/null
 +++ b/ui/src/components/crdesigner/crApi.ts
-@@ -0,0 +1,61 @@
+@@ -0,0 +1,75 @@
 +/**
 + * The cr_automation gateway's API (/cr/api) and the Kestra calls the designer needs. The gateway enforces the
 + * roles; the UI only avoids offering what the role cannot do.
@@ -2733,8 +2827,22 @@ index 0000000..18942f2
 +}
 +
 +export const processUrl = (project: string) => `/cr/api/processes/${encodeURIComponent(project)}`
-+export const activityUrl = (nodeType: string, subActivity: string) =>
-+    `/cr/api/activities/${encodeURIComponent(nodeType)}/${encodeURIComponent(subActivity)}`
++/** A project's own API routes (its activities, its designer field names). */
++export const projectUrl = (project: string) => `/cr/api/projects/${encodeURIComponent(project)}`
++
++export const activityUrl = (project: string, nodeType: string, subActivity: string) =>
++    `${projectUrl(project)}/activities/${encodeURIComponent(nodeType)}/${encodeURIComponent(subActivity)}`
++
++export interface ProjectInfo {project: string, name?: string, namespace?: string}
++
++/** The projects, and the one to show first: the route's ?project=, else the gateway's default one. */
++export async function projects(wanted?: unknown): Promise<{list: ProjectInfo[], first: string}> {
++    const res = await gateway<{processes: ProjectInfo[], default_project?: string}>("/cr/api/processes")
++    const names = res.processes.map(p => p.project)
++    const first = typeof wanted === "string" && names.includes(wanted) ? wanted
++        : res.default_project && names.includes(res.default_project) ? res.default_project : names[0] ?? ""
++    return {list: res.processes, first}
++}
 +
 +/** The flows of a namespace a process step may run: those labelled process: "true", with their declared inputs. */
 +export async function processFlows(tenant: string, namespace: string): Promise<FlowInfo[]> {
@@ -3447,10 +3555,10 @@ index 0000000..c3aeddf
 +}
 diff --git a/ui/src/components/crorders/CrOrders.vue b/ui/src/components/crorders/CrOrders.vue
 new file mode 100644
-index 0000000..2f30ae3
+index 0000000..adeb25a
 --- /dev/null
 +++ b/ui/src/components/crorders/CrOrders.vue
-@@ -0,0 +1,131 @@
+@@ -0,0 +1,149 @@
 +<template>
 +    <TopNavBar :title="routeInfo.title" />
 +    <section class="container cr-orders" data-test="cr-orders">
@@ -3463,6 +3571,9 @@ index 0000000..2f30ae3
 +                @keyup.enter="load"
 +                @clear="load"
 +            />
++            <KsSelect v-model="project" clearable class="project-filter" :placeholder="$t('cr_orders.all_projects')" data-test="cr-orders-project" @change="load">
++                <KsOption v-for="p in projectList" :key="p.project" :label="p.project" :value="p.project" />
++            </KsSelect>
 +            <KsCheckbox v-model="waiting" data-test="cr-orders-waiting" @change="load">
 +                {{ $t("cr_orders.waiting_only") }}
 +            </KsCheckbox>
@@ -3483,6 +3594,7 @@ index 0000000..2f30ae3
 +                    {{ row.kind === "CHILD" ? $t("cr_orders.child_of", {order: row.parent_req_id}) : $t("cr_orders.order") }}
 +                </template>
 +            </KsTableColumn>
++            <KsTableColumn prop="project" :label="$t('cr_orders.project')" width="170" />
 +            <KsTableColumn prop="cr_name" :label="$t('cr_orders.cr')" width="110" />
 +            <KsTableColumn :label="$t('cr_orders.activity')">
 +                <template #default="{row}">
@@ -3517,9 +3629,10 @@ index 0000000..2f30ae3
 +    import {apiUrl} from "override/utils/route"
 +    import useRouteContext from "../../composables/useRouteContext"
 +    import TopNavBar from "../layout/TopNavBar.vue"
-+    import {gateway} from "../crdesigner/crApi"
++    import {gateway, projects} from "../crdesigner/crApi"
++    import type {ProjectInfo} from "../crdesigner/crApi"
 +
-+    interface OrderRow {req_id: number, parent_req_id?: number, kind: string, cr_name?: string, stage: string,
++    interface OrderRow {req_id: number, parent_req_id?: number, kind: string, project?: string, cr_name?: string, stage: string,
 +                        node_type?: string, activity?: string, execution_id?: string, updated_at: string, waiting: boolean}
 +
 +    const {t} = useI18n()
@@ -3532,6 +3645,8 @@ index 0000000..2f30ae3
 +
 +    const id = ref(String(route.query.id ?? ""))
 +    const waiting = ref(route.query.waiting === "true")
++    const project = ref(typeof route.query.project === "string" ? route.query.project : "")
++    const projectList = ref<ProjectInfo[]>([])
 +    const rows = ref<OrderRow[]>([])
 +    const loading = ref(false)
 +    const error = ref("")
@@ -3539,9 +3654,13 @@ index 0000000..2f30ae3
 +    async function load() {
 +        loading.value = true
 +        error.value = ""
-+        router.replace({query: {...(id.value.trim() ? {id: id.value.trim()} : {}), ...(waiting.value ? {waiting: "true"} : {})}})
++        const filters: Record<string, string> = {}
++        if (id.value.trim()) filters.id = id.value.trim()
++        if (waiting.value) filters.waiting = "true"
++        if (project.value) filters.project = project.value
++        router.replace({query: filters})
 +        try {
-+            const query = new URLSearchParams({...(id.value.trim() ? {id: id.value.trim()} : {}), waiting: String(waiting.value)})
++            const query = new URLSearchParams({...filters, waiting: String(waiting.value)})
 +            rows.value = (await gateway<{orders: OrderRow[]}>(`/cr/api/orders?${query}`)).orders
 +        } catch (e: any) {
 +            error.value = e?.message ?? String(e)
@@ -3559,7 +3678,10 @@ index 0000000..2f30ae3
 +        })
 +    }
 +
-+    onMounted(load)
++    onMounted(async () => {
++        projectList.value = (await projects().catch(() => ({list: [], first: ""}))).list
++        await load()
++    })
 +</script>
 +
 +<style scoped lang="scss">
@@ -3574,6 +3696,10 @@ index 0000000..2f30ae3
 +        gap: var(--ks-spacing-3);
 +        align-items: center;
 +        max-width: 48rem;
++    }
++
++    .project-filter {
++        width: 14rem;
 +    }
 +
 +    .hint {
@@ -4515,10 +4641,10 @@ index e243b34..de41337 100644
      {name: "kv/list", path: "/:tenant?/kv", component: () => import("../components/kv/KVs.vue")},
  
 diff --git a/ui/src/translations/en.json b/ui/src/translations/en.json
-index f4a164d..aa4aa82 100644
+index f4a164d..6f152a5 100644
 --- a/ui/src/translations/en.json
 +++ b/ui/src/translations/en.json
-@@ -199,6 +199,278 @@
+@@ -199,6 +199,289 @@
      "details": "Details",
      "overview": "Overview",
      "gantt": "Gantt",
@@ -4562,6 +4688,8 @@ index f4a164d..aa4aa82 100644
 +      "title": "Orders",
 +      "search": "Order or child order id",
 +      "waiting_only": "Only child orders waiting for their MOP execution",
++      "all_projects": "All projects",
++      "project": "Project",
 +      "find": "Find",
 +      "none": "No order found.",
 +      "kind": "Kind",
@@ -4597,6 +4725,15 @@ index f4a164d..aa4aa82 100644
 +      "confirm_retire": "Retire version {version}? New orders can no longer use it.",
 +      "confirm_leave": "You have unsaved changes. Leave and lose them?",
 +      "diagram": "Steps (cards)",
++      "new_project": "New project",
++      "create_project": "Create project",
++      "project_id": "Project id (upper case, e.g. CR_AUTOMATIONS)",
++      "project_name": "Name",
++      "project_namespace": "Kestra namespace of its flows (e.g. cr_automations)",
++      "project_from": "Start from",
++      "project_empty": "an empty process",
++      "project_copy": "a copy of {project}'s process",
++      "new_project_hint": "The process starts as a draft. Its flows and files live in that namespace: copy kestra-local/flows/<ns> and namespace-files/<ns> from an existing project, set 'namespace:' in the flows and store.project in its config file, then ./deploy.sh <namespace>. Activities are declared per project.",
 +      "flow_tab": "Flow",
 +      "flow_main": "Main flow",
 +      "flow_main_hint": "What happens to an order, start to end - generated from the process. Click a box to edit it; double-click a box marked \"open\" to see inside.",

@@ -54,6 +54,24 @@ public class ProcessStoreIT {
     }
 
     @Test
+    public void aNewProjectGetsItsOwnNamespaceAndStartsAsADraft() throws Exception {
+        assertEquals("cr_automation", store.namespace(P), "the seed's namespace comes from its definition");
+        Map<String, Object> made = store.createProject("CR_AUTOMATIONS", "copy", "cr_automations", P, "admin");
+        assertEquals("DRAFT", made.get("state"));
+        ProcessStore.Version v = store.version("CR_AUTOMATIONS", 1);
+        assertEquals("cr_automations", v.definition().get("namespace"), "the copy runs the new namespace's flows");
+        assertEquals(((List<?>) store.latestPublished(P).definition().get("steps")).size(), ((List<?>) v.definition().get("steps")).size());
+        assertTrue(store.namespaces().containsAll(List.of("cr_automation", "cr_automations")));
+        assertEquals(409, assertThrows(UserStore.Rejected.class, () -> store.createProject("CR_AUTOMATIONS", "x", "other_ns", null, "admin")).status);
+        assertEquals(409, assertThrows(UserStore.Rejected.class, () -> store.createProject("OTHER", "x", "cr_automation", null, "admin")).status,
+                "one project per namespace");
+        assertEquals(400, assertThrows(UserStore.Rejected.class, () -> store.createProject("bad id", "x", "ns", null, "admin")).status);
+        assertEquals(400, assertThrows(UserStore.Rejected.class, () -> store.createProject("EMPTY", "x", "Bad NS", null, "admin")).status);
+        store.createProject("EMPTY", "", "empty_ns", null, "admin");
+        assertEquals(List.of(), store.version("EMPTY", 1).definition().get("steps"), "an empty project starts with no steps");
+    }
+
+    @Test
     public void theShippedDefinitionIsSeededOnceAsPublishedVersion1() throws Exception {
         assertFalse(store.seed(P, "again", shipped));
         ProcessStore.Version v = store.latestPublished(P);

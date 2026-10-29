@@ -31,12 +31,15 @@ final class OrderSearch {
                 .stream().map(r -> String.valueOf(r.get("id"))).toList();
     }
 
-    List<Map<String, Object>> find(Long id, boolean waitingOnly) throws SQLException {
+    /** @param project only this project's orders and children; null = every project */
+    List<Map<String, Object>> find(Long id, boolean waitingOnly, String project) throws SQLException {
         String r = schema + ".request";
         String waiting = "(r.kind = 'CHILD' AND r.stage IN ('MOP_GENERATED', 'PARTIAL', 'STOPPED'))";
         return db.with(c -> VersionedStore.all(c, "SELECT r.req_id, r.parent_req_id, r.kind, r.cr_name, r.stage, r.node_type,"
-                + " r.activity, r.kestra_execution_id AS execution_id, r.created_at::text AS created_at, r.updated_at::text AS updated_at, "
-                + waiting + " AS waiting FROM " + r + " r WHERE (CAST(? AS BIGINT) IS NULL OR r.req_id = ? OR r.parent_req_id = ?)"
-                + (waitingOnly ? " AND " + waiting : "") + " ORDER BY r.req_id DESC LIMIT " + LIMIT, id, id, id));
+                + " r.activity, p.project, r.kestra_execution_id AS execution_id, r.created_at::text AS created_at,"
+                + " r.updated_at::text AS updated_at, " + waiting + " AS waiting FROM " + r + " r LEFT JOIN " + schema
+                + ".process p ON p.process_id = r.process_id WHERE (CAST(? AS BIGINT) IS NULL OR r.req_id = ? OR r.parent_req_id = ?)"
+                + " AND (CAST(? AS VARCHAR) IS NULL OR p.project = ?)"
+                + (waitingOnly ? " AND " + waiting : "") + " ORDER BY r.req_id DESC LIMIT " + LIMIT, id, id, id, project, project));
     }
 }

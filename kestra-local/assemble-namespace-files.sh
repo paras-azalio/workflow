@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Collects everything the cr_automation flows need into namespace-files/cr_automation/:
+# Collects everything a project's flows need into namespace-files/<ns>/ (default cr_automation):
+#   ./assemble-namespace-files.sh [namespace]
 #   wrappers/                 component-wrappers jar (build: ../component-wrappers)
 #   nei/filecr/               the FileCR NEI package, unchanged: macro_FILECR_ANY_V1.jar, lib/, config/ (status codes)
 #   nei/clicr/                the CLICR NEI package, unchanged: macro_CLICR_ANY_V1.jar, lib/, config/ (status codes)
@@ -25,7 +26,9 @@ CLICR_RES="${CLICR_RES:-$NOKIA/JAVA_NOKIA_CLICR_AUTOMATION/src/main/resources/te
 CLICR_SCRIPTS="${CLICR_SCRIPTS:-$NOKIA/JAVA_NOKIA_CLICR_AUTOMATION/src/main/resources/script}"
 PG_JAR="${PG_JAR:-$HOME/.m2/repository/org/postgresql/postgresql/42.7.4/postgresql-42.7.4.jar}"   # JDBC driver (Java 8+)
 
-NS=namespace-files/cr_automation
+NAMESPACE="${1:-cr_automation}"
+NS="namespace-files/$NAMESPACE"
+[ -d "$NS/bin" ] && [ -d "$NS/config" ] || { echo "$NS needs its bin/ and config/ (copy them from namespace-files/cr_automation)" >&2; exit 1; }
 for f in "$WRAPPERS_JAR" "$FILECR_PKG/macro_FILECR_ANY_V1.jar" "$CLICR_PKG/macro_CLICR_ANY_V1.jar" "$PG_JAR"; do
   [ -f "$f" ] || { echo "missing: $f" >&2; exit 1; }
 done
@@ -56,6 +59,6 @@ mkdir -p "$NS/nei/clicr/script"
   mkdir -p "$OLDPWD/$NS/nei/clicr/script/$(dirname "$f")" && cp "$f" "$OLDPWD/$NS/nei/clicr/script/$f"
 done)
 
-echo "namespace files for cr_automation:"
+echo "namespace files for $NAMESPACE:"
 (cd "$NS" && find . -type f | sort | sed 's#^\./#  #')
 du -sh "$NS" | sed 's/^/total: /'

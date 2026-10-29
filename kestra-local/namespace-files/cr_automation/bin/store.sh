@@ -14,4 +14,4 @@ cmd="${1:?usage: store.sh <command> --opt value ...}"
 shift
 # the store's own options go before the caller's: after "--" everything belongs to the locked command
 exec "${NEI_JAVA:-java}" -cp "wrappers/*${s}lib/*" com.nokia.workflow.wrapper.store.RequestStore "$cmd" \
-  --config "${WRAPPER_CONFIG:-config/cr_automation.properties}" --shared-dir "${SHARED_DATA_DIR:-/mnt/shared_data}" "$@"
+  --config "${WRAPPER_CONFIG:-$(ls config/*.properties 2>/dev/null | head -1)}" --shared-dir "${SHARED_DATA_DIR:-/mnt/shared_data}" "$@"

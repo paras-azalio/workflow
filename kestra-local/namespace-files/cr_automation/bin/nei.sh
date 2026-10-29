@@ -8,7 +8,7 @@
 #
 # Environment:
 #   ORDER_DIR       the order folder (required)
-#   WRAPPER_CONFIG  project config (default config/cr_automation.properties)
+#   WRAPPER_CONFIG  project config (default: the namespace's one config/*.properties)
 #   NEI_JAVA        Java 8 runtime (the Kestra image sets it; default java)
 #   CP_SEP          classpath separator (default ':'; ';' for Git Bash on Windows)
 #   STORE_REQ_ID    request id the step belongs to: when set, the step is recorded in the request store
@@ -40,7 +40,7 @@ if [ -n "${STORE_REQ_ID:-}" ]; then
 fi
 "${NEI_JAVA:-java}" -cp "wrappers/*${s}nei/$ne/*${s}nei/$ne/lib/*" com.nokia.workflow.wrapper.WrapperMain \
   --component NEI \
-  --config "${WRAPPER_CONFIG:-config/cr_automation.properties}" \
+  --config "${WRAPPER_CONFIG:-$(ls config/*.properties 2>/dev/null | head -1)}" \
   --param "ne_type=$NE_TYPE" \
   --result "out/$name.result.json" \
   --io-log "$ORDER_DIR/logs/$name.io.log" \

@@ -65,10 +65,15 @@ final class Rules {
             new Rule(POST, "/api/v1/*/executions/*/*", Role.EXECUTOR, Need.PROCESS_FLOW, null)
     );
 
-    private final String processNamespace;
+    private final java.util.function.Predicate<String> isProjectNamespace;
 
     Rules(String processNamespace) {
-        this.processNamespace = processNamespace;
+        this(processNamespace::equals);
+    }
+
+    /** @param isProjectNamespace whether a namespace holds a project's flows (executors may run its process flows) */
+    Rules(java.util.function.Predicate<String> isProjectNamespace) {
+        this.isProjectNamespace = isProjectNamespace;
     }
 
     Decision decide(String method, String path) {
@@ -77,7 +82,7 @@ final class Rules {
             if (rule.methods().contains(method) && matches(segments, segments(rule.pattern()))) {
                 if (rule.need() == Need.PROCESS_FLOW) {
                     String namespace = segments[4];
-                    if (!processNamespace.equals(namespace)) {
+                    if (!isProjectNamespace.test(namespace)) {
                         continue;
                     }
                     return new Decision(rule.minRole(), rule.need(), namespace, segments[5], null, rule.reason());

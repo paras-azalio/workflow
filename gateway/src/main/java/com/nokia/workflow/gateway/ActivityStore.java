@@ -25,14 +25,22 @@ final class ActivityStore {
     private final VersionedStore versions;
     private final Set<String> knownSteps;
 
+    private final UserStore audit;
+
     /** @param knownSteps step names a configuration may name besides those the request store has recorded */
     ActivityStore(Db db, String schema, String project, UserStore audit, Set<String> knownSteps) {
         this.db = db;
         this.schema = schema;
         this.project = project;
+        this.audit = audit;
         this.knownSteps = knownSteps;
         this.versions = new VersionedStore(db, schema, new VersionedStore.Spec("ACTIVITY", "activity", "activity_id",
                 "activity_version", "config"), audit, ActivityConfig::problems);
+    }
+
+    /** The same store for another project's declarations. */
+    ActivityStore of(String otherProject) {
+        return otherProject == null || otherProject.equals(project) ? this : new ActivityStore(db, schema, otherProject, audit, knownSteps);
     }
 
     void ensureSchema() throws SQLException {

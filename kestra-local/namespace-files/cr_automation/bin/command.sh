@@ -3,7 +3,7 @@
 #
 #   sh bin/command.sh <command> <log-name> --param KEY=VALUE ...
 #
-#   <command>   config command.<command>, e.g. mail.default (see config/cr_automation.properties)
+#   <command>   config command.<command>, e.g. mail.default (see the namespace's config/*.properties)
 #   <log-name>  name of this task's logs: $ORDER_DIR/logs/<log-name>.io.log
 #
 # Environment: ORDER_DIR (required), WRAPPER_CONFIG, NEI_JAVA, CP_SEP, and STORE_REQ_ID / STORE_STEP / STORE_NODE /
@@ -25,7 +25,7 @@ if [ -n "${STORE_REQ_ID:-}" ]; then
 fi
 "${NEI_JAVA:-java}" -cp "wrappers/*" com.nokia.workflow.wrapper.WrapperMain \
   --component COMMAND \
-  --config "${WRAPPER_CONFIG:-config/cr_automation.properties}" \
+  --config "${WRAPPER_CONFIG:-$(ls config/*.properties 2>/dev/null | head -1)}" \
   --param "COMMAND=$cmd" \
   --result "out/$name.result.json" \
   --io-log "$ORDER_DIR/logs/$name.io.log" \

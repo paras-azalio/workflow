@@ -184,7 +184,7 @@ tasks:
     type: io.kestra.plugin.core.flow.Subflow
     description: The process's pipeline after the MOP generation (e.g. the MOP mailed to the CR's address)
     runIf: "{{ outputs.pipelines.vars.after_step is not empty }}"
-    namespace: cr_automation
+    namespace: "{{ flow.namespace }}"
     flowId: "{{ outputs.pipelines.vars.after_step }}"
     inputs:
       order_id: "{{ inputs.order_id }}"
@@ -217,7 +217,7 @@ tasks:
       - id: execute_all_nodes
         type: io.kestra.plugin.core.flow.Subflow
         description: The same MOP execution a user starts on demand, here for all nodes of the MOP
-        namespace: cr_automation
+        namespace: "{{ flow.namespace }}"
         flowId: cr_mop_execution
         inputs:
           order_id: "{{ inputs.order_id }}"

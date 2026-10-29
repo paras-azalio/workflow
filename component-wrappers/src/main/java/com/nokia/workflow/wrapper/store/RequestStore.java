@@ -1112,8 +1112,10 @@ public final class RequestStore {
 
     Map<String, Object> registry(long orderId) throws SQLException {
         List<Object> orders = new ArrayList<Object>();
+        // only the orders of the same project (process): each project's forms list its own orders
         for (Map<String, Object> o : query("SELECT * FROM " + SCHEMA + ".request WHERE kind = 'ORDER'"
-                + " ORDER BY req_id DESC LIMIT " + MAX_ORDERS)) {
+                + " AND process_id IS NOT DISTINCT FROM (SELECT process_id FROM " + SCHEMA + ".request WHERE req_id = ?)"
+                + " ORDER BY req_id DESC LIMIT " + MAX_ORDERS, orderId)) {
             Map<String, Object> s = new LinkedHashMap<String, Object>();
             s.put("value", String.valueOf(o.get("req_id")));
             s.put("label", label(o));

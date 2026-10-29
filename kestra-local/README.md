@@ -150,3 +150,13 @@ docker compose up -d --build                       # UI: http://localhost:8080
 - **CLICR file handle leak:** `YamlWorkflowLoader.load` never closes the workflow YAML. One file handle leaks per task in a long-running Macro Server. Here every task is a new JVM, so it does not matter.
 - **Size:** the namespace files are about 27 MB (FileCR's `lib/` is most of it), copied into every step's working folder. For production, install the NEI packages once on the worker and point the classpath there.
 - **No approval step between MOP generation and execution:** `run_execution=false` is the manual stop. A Pause (approve, then execute) can be added to the child if the process needs one.
+
+## More projects
+
+**Add a project** (e.g. CR_AUTOMATIONS in namespace cr_automations):
+1. `kestra-local/flows/cr_automations/` = a copy of `flows/cr_automation/`; in each of its 7 files set the first line to `namespace: cr_automations` (the flows refer to their own namespace as `{{ flow.namespace }}` everywhere else).
+2. `kestra-local/namespace-files/cr_automations/` = a copy of `namespace-files/cr_automation/` (or `./assemble-namespace-files.sh cr_automations` after copying its `bin/` and `config/`); in its one `config/*.properties` set `store.project=CR_AUTOMATIONS` (the scripts use whichever single `.properties` file is in `config/`).
+3. `./deploy.sh cr_automations` (files, flows, KV `SHARED_DATA_DIR`; refuses flows that name another namespace).
+4. Process designer → **New project**: id `CR_AUTOMATIONS`, namespace `cr_automations`, start from a copy of CR_AUTOMATION (or empty) → edit the draft → Publish (checks the flows exist in that namespace and deploys its pipelines there).
+5. Activities tab, project CR_AUTOMATIONS: declare its activities and levels (they are per project).
+New orders of that namespace's flows are pinned to that project; its Orders, Order tab, automatic starts and stops work like CR_AUTOMATION's.

@@ -249,6 +249,27 @@ final class Kestra {
     }
 
     /** The value of a namespace KV entry, or null when there is none. */
+    /**
+     * The project's config file in the namespace: the one {@code config/*.properties} (when there are several, the
+     * one named after the namespace); null when there is none.
+     */
+    @SuppressWarnings("unchecked")
+    String projectConfig(String namespace) throws IOException, InterruptedException {
+        HttpResponse<String> r = client.send(HttpRequest.newBuilder(base.resolve("/api/v1/" + tenant + "/namespaces/"
+                        + Paths.encode(namespace) + "/files/directory?path=%2Fconfig"))
+                .header("Authorization", authorization).GET().build(), HttpResponse.BodyHandlers.ofString());
+        if (r.statusCode() != 200 || !(SimpleJson.parse(r.body()) instanceof List<?> files)) {
+            return null;
+        }
+        List<String> names = files.stream().filter(f -> f instanceof Map<?, ?> m && "File".equals(String.valueOf(m.get("type"))))
+                .map(f -> String.valueOf(((Map<String, Object>) f).get("fileName"))).filter(n -> n.endsWith(".properties")).sorted().toList();
+        if (names.isEmpty()) {
+            return null;
+        }
+        String name = names.contains(namespace + ".properties") ? namespace + ".properties" : names.get(0);
+        return namespaceFile(namespace, "/config/" + name);
+    }
+
     /** A namespace file's text, or null when there is none. */
     String namespaceFile(String namespace, String path) throws IOException, InterruptedException {
         HttpResponse<String> r = client.send(HttpRequest.newBuilder(base.resolve("/api/v1/" + tenant + "/namespaces/"

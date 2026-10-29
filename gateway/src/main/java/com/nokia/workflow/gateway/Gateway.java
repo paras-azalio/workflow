@@ -49,16 +49,16 @@ final class Gateway implements HttpHandler {
     private final Kestra kestra;
     private final Rules rules;
     private final CrApi api;
-    private final String processNamespace;
+    private final java.util.function.Predicate<String> isProjectNamespace;
     private final Map<String, CachedBasic> basicCache = new ConcurrentHashMap<>();
 
     Gateway(UserStore users, ProcessStore processes, ActivityStore activities, Steps steps, Decisions decisions, OrderSearch search,
-            Kestra kestra, Rules rules, String processNamespace, String project) {
+            Kestra kestra, Rules rules, java.util.function.Predicate<String> isProjectNamespace, String defaultProject) {
         this.users = users;
         this.kestra = kestra;
         this.rules = rules;
-        this.processNamespace = processNamespace;
-        this.api = new CrApi(users, processes, activities, steps, decisions, search, kestra, processNamespace, project, this::forgetBasicLogins);
+        this.isProjectNamespace = isProjectNamespace;
+        this.api = new CrApi(users, processes, activities, steps, decisions, search, kestra, defaultProject, this::forgetBasicLogins);
     }
 
     @Override
@@ -161,7 +161,7 @@ final class Gateway implements HttpHandler {
             if (flow == null) {
                 return new Denial(404, "There is no execution %s.".formatted(d.executionId()));
             }
-            if (!processNamespace.equals(flow[0]) || !kestra.isProcessFlow(flow[0], flow[1])) {
+            if (!isProjectNamespace.test(flow[0]) || !kestra.isProcessFlow(flow[0], flow[1])) {
                 return new Denial(403, "Execution %s is not one of a process flow; only admins may act on it."
                         .formatted(d.executionId()));
             }
