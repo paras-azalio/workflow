@@ -10,7 +10,8 @@ import java.util.regex.Matcher;
 /**
  * Turns a {@link Pipeline} into the YAML of a Kestra flow, deployed when its process version is published and run
  * by the step's flow as a subflow ({@code store.sh pipelines} tells the flow which one). Inputs: {@code order_id},
- * {@code child_id} and {@code node} (node pipeline) or {@code nodes} (after_nodes, comma-separated).
+ * {@code child_id} and {@code node} (node pipeline), {@code nodes} (after_nodes, comma-separated) or {@code step}
+ * (after_step: the recorded step whose result the pipeline reads as run.X).
  *
  * <p>Values reach shell commands only through environment variables, never inside the command text, so a value
  * (an IMSI list, a mail body) cannot change the command. A node pipeline records its outcome as step NODE_PIPELINE
@@ -60,13 +61,18 @@ final class PipelineCompiler {
         List<Object> inputs = new ArrayList<>();
         inputs.add(map("id", "order_id", "type", "STRING"));
         inputs.add(map("id", "child_id", "type", "STRING"));
-        inputs.add(node ? map("id", "node", "type", "STRING") : map("id", "nodes", "type", "STRING"));
+        String runInput = switch (pipeline.hook) {
+            case NODE -> "node";
+            case AFTER_NODES -> "nodes";
+            case AFTER_STEP -> "step";
+        };
+        inputs.add(map("id", runInput, "type", "STRING"));
         f.put("inputs", inputs);
 
         List<Object> tasks = new ArrayList<>();
         tasks.add(shell("context", "The order, child, CIQ results and activity the widgets read", BASE_FILES, Map.of(),
                 List.of("sh bin/store.sh pipeline-context --req-id \"{{ inputs.child_id }}\""
-                        + (node ? "" : " --nodes \"{{ inputs.nodes }}\"")), false));
+                        + (node ? "" : " --" + runInput + " \"{{ inputs." + runInput + " }}\"")), false));
         tasks.addAll(list(pipeline.widgets, 0));
         f.put("tasks", tasks);
         if (node) {

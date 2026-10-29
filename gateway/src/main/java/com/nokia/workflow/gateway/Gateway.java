@@ -52,13 +52,13 @@ final class Gateway implements HttpHandler {
     private final String processNamespace;
     private final Map<String, CachedBasic> basicCache = new ConcurrentHashMap<>();
 
-    Gateway(UserStore users, ProcessStore processes, ActivityStore activities, Steps steps, Decisions decisions, Kestra kestra, Rules rules,
-            String processNamespace, String project) {
+    Gateway(UserStore users, ProcessStore processes, ActivityStore activities, Steps steps, Decisions decisions, OrderSearch search,
+            Kestra kestra, Rules rules, String processNamespace, String project) {
         this.users = users;
         this.kestra = kestra;
         this.rules = rules;
         this.processNamespace = processNamespace;
-        this.api = new CrApi(users, processes, activities, steps, decisions, kestra, processNamespace, project, this::forgetBasicLogins);
+        this.api = new CrApi(users, processes, activities, steps, decisions, search, kestra, processNamespace, project, this::forgetBasicLogins);
     }
 
     @Override

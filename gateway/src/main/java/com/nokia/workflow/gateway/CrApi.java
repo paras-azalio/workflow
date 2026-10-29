@@ -16,10 +16,15 @@ import java.util.Map;
  *   GET    /cr/api/users | POST | PUT /{u} | DELETE /{u}   users                                       ADMIN
  *   GET    /cr/api/audit?limit=N                           latest audit entries                        ADMIN
  *
+ *   GET    /cr/api/orders[?id=N&waiting=true]              orders and children (one id: the order with  any role
+ *                                                           its children, or the child); waiting = children
+ *                                                           whose MOP execution is still to be done
  *   GET    /cr/api/orders/{order}/next[?child=C]           steps offered now (from the pinned version) and
  *                                                           the open decisions of the order / child       any role
  *   POST   /cr/api/orders/{order}/steps/{step}[?child=C]   start one: {inputs, files, request_key}     EXECUTOR
  *   POST   /cr/api/orders/{order}/decisions/{id}           take a decision: {decision, comment}        EXECUTOR
+ *   POST   /cr/api/orders/{order}/stop?child=C             stop the child: kill what runs for it now     EXECUTOR
+ *                                                           (the child becomes STOPPED, no summary report)
  *   GET    /cr/api/processes                               projects with published / draft version     any role
  *   GET    /cr/api/processes/{p}/start                     steps that start an order                   any role
  *   POST   /cr/api/processes/{p}/start/{step}              start an order: {inputs, files, request_key} EXECUTOR
@@ -33,6 +38,8 @@ import java.util.Map;
  *
  *   GET    /cr/api/context-fields                          order / child field names (designer paths)  any role
  *   GET    /cr/api/activities                              declared activities + known step names      any role
+ *   GET    /cr/api/activities/parameters                   what each step sends, and the project's     any role
+ *                                                           login / GRC values per component (config file)
  *   POST   /cr/api/activities                              declare: {node_type, sub_activity, description} ADMIN
  *   GET    /cr/api/activities/{nt}/{sa}/versions[/{v}]     versions / one version with its config      any role
  *   POST   /cr/api/activities/{nt}/{sa}/versions           new draft: {from_version?}                  ADMIN
@@ -51,13 +58,15 @@ final class CrApi {
     private final ActivityStore activities;
     private final Steps steps;
     private final Decisions decisions;
+    private final OrderSearch search;
     private final Kestra kestra;
     private final String processNamespace;
     private final String project;
     private final Runnable onUserChange;
 
-    CrApi(UserStore users, ProcessStore processes, ActivityStore activities, Steps steps, Decisions decisions, Kestra kestra,
-          String processNamespace, String project, Runnable onUserChange) {
+    CrApi(UserStore users, ProcessStore processes, ActivityStore activities, Steps steps, Decisions decisions, OrderSearch search,
+          Kestra kestra, String processNamespace, String project, Runnable onUserChange) {
+        this.search = search;
         this.users = users;
         this.processes = processes;
         this.activities = activities;
@@ -164,15 +173,42 @@ final class CrApi {
         if (child != null && !child.matches("[1-9][0-9]{0,17}")) {
             throw new UserStore.Rejected(400, "The child order id must be a whole number.");
         }
-        if (s.length == 3 && "next".equals(s[2]) && "GET".equals(method)) {
+        if (s.length == 1 && "GET".equals(method)) {
+            String id = query(ex, "id");
+            if (id != null && !id.isBlank() && !id.trim().matches("[1-9][0-9]{0,17}")) {
+                throw new UserStore.Rejected(400, "Search by an order or child order id (a whole number).");
+            }
+            Long n = id == null || id.isBlank() ? null : Long.valueOf(id.trim());
+            Gateway.json(ex, 200, Map.of("orders", search.find(n, "true".equals(query(ex, "waiting")))));
+        } else if (s.length == 3 && "next".equals(s[2]) && "GET".equals(method)) {
             Map<String, Object> next = new LinkedHashMap<>(steps.next(s[1], child, who.user().role()));
             next.put("decisions", decisions.open(Long.parseLong(s[1]), child == null ? null : Long.valueOf(child)));
+            if (child != null) {
+                next.put("running", search.running(Long.parseLong(s[1]), Long.parseLong(child)));
+            }
             Gateway.json(ex, 200, next);
         } else if (s.length == 4 && "decisions".equals(s[2]) && "POST".equals(method)) {
             if (!s[1].matches("[1-9][0-9]{0,17}") || !s[3].matches("[1-9][0-9]{0,17}")) {
                 throw new UserStore.Rejected(400, "The order and decision ids must be whole numbers.");
             }
             Gateway.json(ex, 200, decisions.decide(Long.parseLong(s[1]), Long.parseLong(s[3]), Gateway.readJson(ex), who.user(), who.ip()));
+        } else if (s.length == 3 && "stop".equals(s[2]) && "POST".equals(method)) {
+            if (!who.user().role().atLeast(Role.EXECUTOR)) {
+                throw new UserStore.Rejected(403, "Only an order executor or an admin can stop a child order.");
+            }
+            if (child == null || !s[1].matches("[1-9][0-9]{0,17}")) {
+                throw new UserStore.Rejected(400, "Say which child order to stop (?child=<id>).");
+            }
+            List<String> running = search.running(Long.parseLong(s[1]), Long.parseLong(child));
+            if (running.isEmpty()) {
+                throw new UserStore.Rejected(409, "Nothing runs for child order %s now.".formatted(child));
+            }
+            for (String e : running) {
+                kestra.kill(e);
+            }
+            users.audit(who.user().username(), who.user().role(), "STOP_CHILD", method, null, 200, who.ip(),
+                    "order %s child %s: killed %s".formatted(s[1], child, running));
+            Gateway.json(ex, 200, Map.of("message", "Child order %s is being stopped.".formatted(child), "killed", running));
         } else if (s.length == 4 && "steps".equals(s[2]) && "POST".equals(method)) {
             Map<String, Object> body = Gateway.readJson(ex, MAX_STEP_BODY);
             Gateway.json(ex, 201, steps.start(s[1], child, s[3], body, who.user(), who.ip()));
@@ -266,6 +302,11 @@ final class CrApi {
         if (s.length == 1 && "GET".equals(method)) {
             Gateway.json(ex, 200, Map.of("project", project, "activities", activities.list(),
                     "known_steps", new ArrayList<>(activities.knownSteps())));
+            return;
+        }
+        if (s.length == 2 && "parameters".equals(s[1]) && "GET".equals(method)) {
+            Gateway.json(ex, 200, Map.of("steps", activities.stepParameters(), "components",
+                    ActivityStore.projectDefaults(kestra.namespaceFile(processNamespace, "/config/" + processNamespace + ".properties"))));
             return;
         }
         if (s.length == 1 && "POST".equals(method)) {

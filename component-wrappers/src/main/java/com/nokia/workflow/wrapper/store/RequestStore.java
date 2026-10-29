@@ -48,9 +48,10 @@ import java.util.TimeZone;
  *   set-stage     --req-id R --stage S [--if-stage S1,S2] [--cr-list CR1,CR2] [--json-file F]
  *   step-config   --req-id R --step S [--node N] --out FILE
  *                 -> the step's request overrides from the order's activity configuration, as a properties file
- *   claim-nodes   --req-id R --nodes N1,N2|* --execution E
+ *   claim-nodes   --req-id R --nodes N1,N2|* --execution E [--mode CONFIGURED|PARALLEL|QUEUED]
  *                 -> the child's data and the claimed nodes; all or none: fails when a node is not in the child's
- *                    MOP or another execution is running it
+ *                    MOP or another execution is running it; parallel_nodes / queued_nodes: how each runs (CONFIGURED,
+ *                    the default: the execution settings of the order's configuration levels, else PARALLEL)
  *   release-nodes --req-id R (--execution E | --all)
  *   child-status  --req-id R [--nodes N1,N2] [--update-stage]
  *                 -> nodes, failed_nodes, status of these nodes (default all), child_stage of the whole child
@@ -58,10 +59,11 @@ import java.util.TimeZone;
  *                                    children, cr_options, child_options, node options, rollback_options)
  *   locked        --key K -- command args...   runs the command while holding a database lock on K (one at a
  *                 time across all executions); exits with the command's exit code
- *   pipelines     --req-id R --flow F   -> node, after_nodes: the compiled pipeline flows the order's process
- *                                          version attaches to flow F ("" when none)
- *   pipeline-context --req-id R [--nodes N1,N2]
- *                 -> order, child (with its collected lists), ciq, activity, run (with --nodes: their results)
+ *   pipelines     --req-id R --flow F   -> node, after_nodes, after_step: the compiled pipeline flows the order's
+ *                                          process version attaches to flow F ("" when none)
+ *   pipeline-context --req-id R [--nodes N1,N2 | --step S]
+ *                 -> order, child (with its collected lists), ciq, activity, run (with --nodes: their results;
+ *                    with --step: that step's latest result - step, status, statusText, message and its results)
  *   collect       --req-id R --name LIST --value V1,V2 [--separator S] [--node N] [--execution E]   adds values to a
  *                 child's list; with a separator other than "," the value is kept whole and the list is read joined by S
  *   record        --req-id R --step S --status-text T [--status N] [--node N] [--execution E] [--message M]
@@ -77,6 +79,7 @@ public final class RequestStore {
 
     static final String SCHEMA = "cr_automation";
     private static final int MAX_ORDERS = 200;
+    private static final String[] HOOKS = {"node", "after_nodes", "after_step"};
 
     private final Connection db;
     private final Properties config;
@@ -146,7 +149,8 @@ public final class RequestStore {
             return stepConfig(Long.parseLong(require(opt, "req-id")), require(opt, "step"), opt.get("node"),
                     new File(require(opt, "out")));
         } else if ("claim-nodes".equals(name)) {
-            return claimNodes(Long.parseLong(require(opt, "req-id")), require(opt, "nodes"), require(opt, "execution"));
+            return claimNodes(Long.parseLong(require(opt, "req-id")), require(opt, "nodes"), require(opt, "execution"),
+                    first(opt.get("mode"), "CONFIGURED"));
         } else if ("release-nodes".equals(name)) {
             return releaseNodes(Long.parseLong(require(opt, "req-id")), opt.get("execution"), opt.containsKey("all"));
         } else if ("child-status".equals(name)) {
@@ -156,7 +160,7 @@ public final class RequestStore {
         } else if ("pipelines".equals(name)) {
             return pipelines(Long.parseLong(require(opt, "req-id")), require(opt, "flow"));
         } else if ("pipeline-context".equals(name)) {
-            return pipelineContext(Long.parseLong(require(opt, "req-id")), opt.get("nodes"));
+            return pipelineContext(Long.parseLong(require(opt, "req-id")), opt.get("nodes"), opt.get("step"));
         } else if ("collect".equals(name)) {
             return collect(Long.parseLong(require(opt, "req-id")), require(opt, "name"), opt.get("value"), opt.get("separator"),
                     opt.get("node"), opt.get("execution"));
@@ -200,6 +204,7 @@ public final class RequestStore {
             st.execute("ALTER TABLE " + SCHEMA + ".request ADD COLUMN IF NOT EXISTS process_version INT");
             st.execute("ALTER TABLE " + SCHEMA + ".request ADD COLUMN IF NOT EXISTS activity_id BIGINT");
             st.execute("ALTER TABLE " + SCHEMA + ".request ADD COLUMN IF NOT EXISTS activity_version INT");
+            st.execute("ALTER TABLE " + SCHEMA + ".request ADD COLUMN IF NOT EXISTS config_layers TEXT");
             st.execute("CREATE TABLE IF NOT EXISTS " + SCHEMA + ".request_value ("
                     + " value_id BIGSERIAL PRIMARY KEY,"
                     + " req_id BIGINT NOT NULL REFERENCES " + SCHEMA + ".request(req_id),"
@@ -254,9 +259,12 @@ public final class RequestStore {
             Object[] activity = parent == null
                     ? publishedActivity(first(opt.get("node-type"), null), first(opt.get("activity"), null))
                     : new Object[] {from.get("activity_id"), from.get("activity_version")};
+            String layers = parent == null ? configLayers(first(opt.get("node-type"), null), first(opt.get("activity"), null))
+                    : (String) from.get("config_layers");
             PreparedStatement ps = db.prepareStatement("INSERT INTO " + SCHEMA + ".request (req_id, parent_req_id,"
                     + " kind, node_type, activity, node_version, cr_name, stage, json_file, folder, kestra_execution_id,"
-                    + " process_id, process_version, activity_id, activity_version) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)");
+                    + " process_id, process_version, activity_id, activity_version, config_layers)"
+                    + " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)");
             try {
                 ps.setLong(1, id);
                 if (parent == null) {
@@ -277,6 +285,7 @@ public final class RequestStore {
                 ps.setObject(13, process[1]);
                 ps.setObject(14, activity[0]);
                 ps.setObject(15, activity[1]);
+                ps.setString(16, layers);
                 ps.executeUpdate();
             } finally {
                 ps.close();
@@ -333,12 +342,100 @@ public final class RequestStore {
                 : new Object[] {rows.get(0).get("activity_id"), rows.get(0).get("version")};
     }
 
+    /**
+     * The configuration levels a new order is pinned to, general to specific: the latest PUBLISHED version of
+     * {@code * / *} (the whole project), {@code <node type> / *} and {@code <node type> / <sub-activity>}, as a JSON
+     * list of {activity_id, version, node_type, sub_activity}; null when none is published.
+     */
+    private String configLayers(String nodeType, String subActivity) throws SQLException {
+        List<Object> out = new ArrayList<Object>();
+        String[][] levels = nodeType == null || subActivity == null ? new String[][] {{"*", "*"}}
+                : new String[][] {{"*", "*"}, {nodeType, "*"}, {nodeType, subActivity}};
+        for (String[] level : levels) {
+            Object[] v = publishedActivity(level[0], level[1]);
+            if (v[0] != null) {
+                Map<String, Object> l = new LinkedHashMap<String, Object>();
+                l.put("activity_id", v[0]);
+                l.put("version", v[1]);
+                l.put("node_type", level[0]);
+                l.put("sub_activity", level[1]);
+                out.add(l);
+            }
+        }
+        return out.isEmpty() ? null : SimpleJson.writeCompact(out);
+    }
+
+    /** The configurations of the order's levels, general to specific: {label, config}. */
+    @SuppressWarnings("unchecked")
+    private List<Map<String, Object>> layers(Map<String, Object> order) throws SQLException {
+        List<Object[]> pins = new ArrayList<Object[]>();
+        if (order.get("config_layers") != null) {
+            Object parsed = SimpleJson.parse(String.valueOf(order.get("config_layers")));
+            if (parsed instanceof List) {
+                for (Object o : (List<Object>) parsed) {
+                    Map<String, Object> l = (Map<String, Object>) o;
+                    pins.add(new Object[] {Long.valueOf(String.valueOf(l.get("activity_id"))), Integer.valueOf(String.valueOf(l.get("version")))});
+                }
+            }
+        } else if (order.get("activity_id") != null && order.get("activity_version") != null) {
+            pins.add(new Object[] {order.get("activity_id"), order.get("activity_version")});
+        }
+        List<Map<String, Object>> out = new ArrayList<Map<String, Object>>();
+        for (Object[] pin : pins) {
+            List<Map<String, Object>> rows = query("SELECT a.node_type, a.sub_activity, v.config FROM " + SCHEMA + ".activity a JOIN "
+                    + SCHEMA + ".activity_version v ON v.activity_id = a.activity_id WHERE a.activity_id = ? AND v.version = ?",
+                    pin[0], pin[1]);
+            if (rows.isEmpty()) {
+                throw new StoreException("order " + order.get("req_id") + " is pinned to activity configuration "
+                        + pin[0] + " v" + pin[1] + ", which does not exist");
+            }
+            Map<String, Object> l = new LinkedHashMap<String, Object>();
+            l.put("label", rows.get(0).get("node_type") + "/" + rows.get(0).get("sub_activity") + " v" + pin[1]);
+            Object cfg = SimpleJson.parse(String.valueOf(rows.get(0).get("config")));
+            l.put("config", cfg instanceof Map ? cfg : new LinkedHashMap<String, Object>());
+            out.add(l);
+        }
+        return out;
+    }
+
+    /**
+     * PARALLEL or QUEUED for a node, from the order's levels (general to specific): a matching node pattern of the
+     * most specific level that has one, else the mode of the most specific level that sets one, else PARALLEL.
+     */
+    @SuppressWarnings("unchecked")
+    static String configuredMode(List<Map<String, Object>> layers, String node) {
+        for (int i = layers.size() - 1; i >= 0; i--) {
+            Object e = ((Map<String, Object>) layers.get(i).get("config")).get("execution");
+            Object nodes = e instanceof Map ? ((Map<String, Object>) e).get("nodes") : null;
+            if (nodes instanceof Map) {
+                String found = null;
+                for (Map.Entry<String, Object> n : ((Map<String, Object>) nodes).entrySet()) {
+                    if (glob(n.getKey(), node)) {
+                        found = String.valueOf(n.getValue());
+                    }
+                }
+                if (found != null) {
+                    return found;
+                }
+            }
+        }
+        for (int i = layers.size() - 1; i >= 0; i--) {
+            Object e = ((Map<String, Object>) layers.get(i).get("config")).get("execution");
+            Object mode = e instanceof Map ? ((Map<String, Object>) e).get("mode") : null;
+            if (mode != null) {
+                return String.valueOf(mode);
+            }
+        }
+        return "PARALLEL";
+    }
+
     // ------------------------------------------------------------------ step-config (activity configuration of one step)
 
     private static final java.util.regex.Pattern REF = java.util.regex.Pattern.compile("\\$\\{([^}]*)\\}");
 
     /**
-     * Writes the request overrides of one step, from the activity configuration version the order is pinned to:
+     * Writes the request overrides of one step, from the configuration levels the order is pinned to (general to
+     * specific, later wins; an order from before the levels: its one activity configuration), in each level
      * section {@code *} then the step's section, each with {@code params} (as KEY), {@code login} (as login.KEY),
      * {@code grc} (as grc.KEY), then its {@code nodes} entries whose pattern matches the node, in declaration order
      * (later wins). References {@code ${order.X}}, {@code ${child.X}}, {@code ${node}}, {@code ${ciq.X}} are
@@ -351,19 +448,10 @@ public final class RequestStore {
         Map<String, Object> order = req.get("parent_req_id") == null ? req
                 : request(((Number) req.get("parent_req_id")).longValue());
         Map<String, String> overrides = new LinkedHashMap<String, String>();
-        String source = null;
-        if (order.get("activity_id") != null && order.get("activity_version") != null) {
-            List<Map<String, Object>> rows = query("SELECT a.node_type, a.sub_activity, v.config FROM " + SCHEMA + ".activity a JOIN "
-                    + SCHEMA + ".activity_version v ON v.activity_id = a.activity_id WHERE a.activity_id = ? AND v.version = ?",
-                    order.get("activity_id"), order.get("activity_version"));
-            if (rows.isEmpty()) {
-                throw new StoreException("order " + order.get("req_id") + " is pinned to activity configuration "
-                        + order.get("activity_id") + " v" + order.get("activity_version") + ", which does not exist");
-            }
-            Map<String, Object> row = rows.get(0);
-            source = row.get("node_type") + "/" + row.get("sub_activity") + " v" + order.get("activity_version");
-            Object cfg = SimpleJson.parse(String.valueOf(row.get("config")));
-            Object steps = cfg instanceof Map ? ((Map<String, Object>) cfg).get("steps") : null;
+        List<String> sources = new ArrayList<String>();
+        for (Map<String, Object> layer : layers(order)) {
+            sources.add(String.valueOf(layer.get("label")));
+            Object steps = ((Map<String, Object>) layer.get("config")).get("steps");
             if (steps instanceof Map) {
                 for (String section : new String[] {"*", step}) {
                     Object s = ((Map<String, Object>) steps).get(section);
@@ -380,13 +468,14 @@ public final class RequestStore {
                     }
                 }
             }
-            Map<String, Object> ciq = null;
-            for (Map.Entry<String, String> e : overrides.entrySet()) {
-                if (e.getValue().contains("${ciq.") && ciq == null) {
-                    ciq = ciqResults(((Number) order.get("req_id")).longValue());
-                }
-                e.setValue(resolve(e.getKey(), e.getValue(), order, req.get("parent_req_id") == null ? null : withValues(req), node, ciq));
+        }
+        String source = sources.isEmpty() ? null : join(sources);
+        Map<String, Object> ciq = null;
+        for (Map.Entry<String, String> e : overrides.entrySet()) {
+            if (e.getValue().contains("${ciq.") && ciq == null) {
+                ciq = ciqResults(((Number) order.get("req_id")).longValue());
             }
+            e.setValue(resolve(e.getKey(), e.getValue(), order, req.get("parent_req_id") == null ? null : withValues(req), node, ciq));
         }
         Properties p = new Properties();
         for (Map.Entry<String, String> e : overrides.entrySet()) {
@@ -568,7 +657,10 @@ public final class RequestStore {
      * execution makes the whole claim fail, so two executions never run the same node at the same time. A claim by
      * the same execution again (a restarted task) succeeds. {@code *} means every node of the child's MOP.
      */
-    Map<String, Object> claimNodes(long reqId, String nodes, String execution) throws Exception {
+    Map<String, Object> claimNodes(long reqId, String nodes, String execution, String mode) throws Exception {
+        if (!"CONFIGURED".equals(mode) && !"PARALLEL".equals(mode) && !"QUEUED".equals(mode)) {
+            throw new StoreException("--mode must be CONFIGURED, PARALLEL or QUEUED, not '" + mode + "'");
+        }
         Map<String, Object> child = request(reqId);
         if (!"CHILD".equals(child.get("kind"))) {
             throw new StoreException("request " + reqId + " is not a child order");
@@ -630,6 +722,16 @@ public final class RequestStore {
         Map<String, Object> out = new LinkedHashMap<String, Object>();
         out.put("nodes", wanted);
         out.put("node_count", wanted.size());
+        List<Map<String, Object>> layers = "CONFIGURED".equals(mode)
+                ? layers(request(((Number) child.get("parent_req_id")).longValue())) : null;
+        List<String> parallel = new ArrayList<String>();
+        List<String> queued = new ArrayList<String>();
+        for (String node : wanted) {
+            String m = layers == null ? mode : configuredMode(layers, node);
+            ("QUEUED".equals(m) ? queued : parallel).add(node);
+        }
+        out.put("parallel_nodes", parallel);
+        out.put("queued_nodes", queued);
         out.put("child_id", String.valueOf(reqId));
         out.put("order_id", String.valueOf(child.get("parent_req_id")));
         for (String k : new String[] {"cr_name", "node_type", "activity", "node_version", "json_file", "folder"}) {
@@ -791,8 +893,9 @@ public final class RequestStore {
     @SuppressWarnings("unchecked")
     Map<String, Object> pipelines(long reqId, String flow) throws SQLException {
         Map<String, Object> out = new LinkedHashMap<String, Object>();
-        out.put("node", "");
-        out.put("after_nodes", "");
+        for (String hook : HOOKS) {
+            out.put(hook, "");
+        }
         Map<String, Object> req = request(reqId);
         Map<String, Object> order = req.get("parent_req_id") == null ? req : request(((Number) req.get("parent_req_id")).longValue());
         List<Map<String, Object>> col = query("SELECT 1 FROM information_schema.columns WHERE table_schema = ?"
@@ -808,7 +911,7 @@ public final class RequestStore {
         Object compiled = SimpleJson.parse(String.valueOf(rows.get(0).get("compiled")));
         Object hooks = compiled instanceof Map ? ((Map<String, Object>) compiled).get(flow) : null;
         if (hooks instanceof Map) {
-            for (String hook : new String[] {"node", "after_nodes"}) {
+            for (String hook : HOOKS) {
                 Object id = ((Map<String, Object>) hooks).get(hook);
                 if (id != null) {
                     out.put(hook, String.valueOf(id));
@@ -822,10 +925,11 @@ public final class RequestStore {
      * What a pipeline's references read: {@code order} and {@code child} (request columns as text, the child with
      * its collected lists as comma-separated text), {@code ciq} (the order's validation results), {@code activity}
      * ({@code node_type}, {@code sub_activity}) and, with {@code nodes}, {@code run}: nodes, failed_nodes,
-     * succeeded_nodes (comma-separated) and failed_count of those nodes.
+     * succeeded_nodes (comma-separated) and failed_count of those nodes; with {@code step}, {@code run} is that
+     * step's latest row of the request: step, status, statusText, message and each of its results.
      */
     @SuppressWarnings("unchecked")
-    Map<String, Object> pipelineContext(long reqId, String nodes) throws SQLException {
+    Map<String, Object> pipelineContext(long reqId, String nodes, String step) throws SQLException {
         Map<String, Object> req = request(reqId);
         boolean isChild = req.get("parent_req_id") != null;
         Map<String, Object> order = isChild ? request(((Number) req.get("parent_req_id")).longValue()) : req;
@@ -848,6 +952,23 @@ public final class RequestStore {
             run.put("failed_nodes", join(failed));
             run.put("succeeded_nodes", join(ok));
             run.put("failed_count", String.valueOf(failed.size()));
+        }
+        if (step != null) {
+            run.put("step", step);
+            List<Map<String, Object>> rows = query("SELECT status, status_text, message, results::text AS results FROM " + SCHEMA
+                    + ".request_step WHERE req_id = ? AND step = ? ORDER BY step_id DESC LIMIT 1", reqId, step);
+            if (!rows.isEmpty()) {
+                Map<String, Object> r = rows.get(0);
+                Object results = r.get("results") == null ? null : SimpleJson.parse(String.valueOf(r.get("results")));
+                if (results instanceof Map) {
+                    for (Map.Entry<String, Object> e : ((Map<String, Object>) results).entrySet()) {
+                        run.put(e.getKey(), text(e.getValue()));
+                    }
+                }
+                run.put("status", text(r.get("status")));
+                run.put("statusText", text(r.get("status_text")));
+                run.put("message", text(r.get("message")));
+            }
         }
         out.put("run", run);
         return out;

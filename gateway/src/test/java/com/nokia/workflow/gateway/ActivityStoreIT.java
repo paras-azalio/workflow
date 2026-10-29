@@ -56,8 +56,12 @@ public class ActivityStoreIT {
         assertEquals(Map.of(), store.version(NT, SA, 1).content().get("steps"));
         assertEquals(409, assertThrows(UserStore.Rejected.class, () -> store.declare(NT, SA, "again", "admin", users)).status);
         assertEquals(400, assertThrows(UserStore.Rejected.class, () -> store.declare("PGW RDS", SA, "x", "admin", users)).status);
+        assertEquals(400, assertThrows(UserStore.Rejected.class, () -> store.declare("*", SA, "x", "admin", users)).status,
+                "node type * is the whole project: its sub-activity is * too");
+        assertEquals("*", store.declare("*", "*", "the whole project", "admin", users).get("sub_activity"));
+        assertEquals("*", store.declare(NT, "*", "every sub-activity", "admin", users).get("sub_activity"));
         assertEquals(404, assertThrows(UserStore.Rejected.class, () -> store.versions(NT, "1058_UNKNOWN")).status);
-        assertEquals(1, store.list().size());
+        assertEquals(3, store.list().size());
     }
 
     @Test

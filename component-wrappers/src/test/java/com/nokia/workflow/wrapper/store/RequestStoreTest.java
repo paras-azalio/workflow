@@ -62,6 +62,26 @@ public class RequestStoreTest {
     }
 
     @Test
+    public void theMostSpecificLevelDecidesHowANodeRuns() {
+        java.util.List<Map<String, Object>> layers = Arrays.asList(
+                layer("{\"execution\": {\"mode\": \"QUEUED\", \"nodes\": {\"EAST*\": \"QUEUED\"}}}"),
+                layer("{\"execution\": {\"nodes\": {\"SOUTH*\": \"QUEUED\"}}}"),
+                layer("{\"execution\": {\"mode\": \"PARALLEL\", \"nodes\": {\"SOUTH9\": \"PARALLEL\"}}}"));
+        assertEquals("PARALLEL", RequestStore.configuredMode(layers, "NORTH1"), "the sub-activity's mode beats the project's");
+        assertEquals("QUEUED", RequestStore.configuredMode(layers, "SOUTH1"), "a node pattern beats every mode");
+        assertEquals("PARALLEL", RequestStore.configuredMode(layers, "SOUTH9"), "the most specific node pattern wins");
+        assertEquals("QUEUED", RequestStore.configuredMode(layers, "EAST1"), "a project node pattern beats a sub-activity mode");
+        assertEquals("PARALLEL", RequestStore.configuredMode(Arrays.asList(layer("{}")), "NORTH1"), "nothing set: parallel");
+        assertEquals("PARALLEL", RequestStore.configuredMode(new java.util.ArrayList<Map<String, Object>>(), "NORTH1"));
+    }
+
+    private static Map<String, Object> layer(String config) {
+        Map<String, Object> l = new java.util.HashMap<String, Object>();
+        l.put("config", com.nokia.workflow.wrapper.SimpleJson.parse(config));
+        return l;
+    }
+
+    @Test
     public void csvTrimsAndDropsEmptyAndDuplicateNodes() {
         assertEquals(Arrays.asList("NORTH1", "SOUTH1"), RequestStore.csv(" NORTH1, ,SOUTH1,NORTH1 "));
         assertTrue(RequestStore.csv(null).isEmpty());

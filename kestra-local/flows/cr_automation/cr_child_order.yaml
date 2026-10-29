@@ -16,6 +16,10 @@ description: |
   nodes, in parallel. Only when "run_execution" is ticked (off by default) this flow runs it for all nodes right
   after the MOP generation.
 
+  The process decides whether this runs by itself for every CR once the CIQ is validated (the step's auto_start in
+  the Process designer), and may attach an after_step pipeline: it runs right after the MOP generation, with its
+  result as ${run.X} - e.g. a mail with the MOP to the CR's e-mail address.
+
   IO and MML logs: <child folder>/logs/ (also this execution's output files and the "IO / MML" tab).
   Secrets: Kestra secrets CLICR_REPO_PASSWORD (GRC REPO_PASSWORD), CR_DB_PASSWORD (request store).
 
@@ -23,6 +27,8 @@ labels:
   project: CR_AUTOMATION
   process: "true"   # a step of the order process: executors may start it (gateway rule)
   order_type: CHILD
+  pipeline_hooks: "after_step"   # the process may attach a pipeline run right after the MOP generation
+  outline: "MOP generation (CLICR) | after_step"   # what the process designer's Flow view draws (see cr_mop_execution)
 
 inputs:
   - id: order_id
@@ -160,6 +166,36 @@ tasks:
     kvType: JSON
     value: "{{ outputs.register_mop.vars.order | toJson }}"
 
+  - id: pipelines
+    type: io.kestra.plugin.scripts.shell.Commands
+    description: The pipeline the order's process version attaches to this flow (after_step), if any
+    taskRunner:
+      type: io.kestra.plugin.core.runner.Process
+    namespaceFiles:
+      enabled: true
+      include: [bin/**, wrappers/**, lib/**, config/**]
+    env:
+      SHARED_DATA_DIR: "{{ kv('SHARED_DATA_DIR') }}"
+      STORE_JDBC_PASSWORD: "{{ secret('CR_DB_PASSWORD') }}"
+    commands:
+      - sh bin/store.sh pipelines --req-id "{{ render(vars.child_id) }}" --flow "{{ flow.id }}"
+
+  - id: after_step_pipeline
+    type: io.kestra.plugin.core.flow.Subflow
+    description: The process's pipeline after the MOP generation (e.g. the MOP mailed to the CR's address)
+    runIf: "{{ outputs.pipelines.vars.after_step is not empty }}"
+    namespace: cr_automation
+    flowId: "{{ outputs.pipelines.vars.after_step }}"
+    inputs:
+      order_id: "{{ inputs.order_id }}"
+      child_id: "{{ render(vars.child_id) }}"
+      step: MOP_GENERATION
+    labels:
+      order_id: "{{ inputs.order_id }}"
+      req_id: "{{ render(vars.child_id) }}"
+    wait: true
+    transmitFailed: true
+
   - id: mop_generation_failed
     type: io.kestra.plugin.core.execution.Fail
     runIf: "{{ outputs.mop_generation.vars.status != 0 }}"
@@ -212,7 +248,7 @@ finally:
 afterExecution:
   - id: register_end
     type: io.kestra.plugin.scripts.shell.Commands
-    description: A child that ended before its MOP stage was recorded (failed or killed early) becomes FAILED
+    description: A child that ended before its MOP stage was recorded becomes FAILED, or STOPPED when it was killed
     runIf: "{{ render(vars.child_id) is not empty }}"
     taskRunner:
       type: io.kestra.plugin.core.runner.Process
@@ -222,9 +258,11 @@ afterExecution:
     env:
       SHARED_DATA_DIR: "{{ kv('SHARED_DATA_DIR') }}"
       STORE_JDBC_PASSWORD: "{{ secret('CR_DB_PASSWORD') }}"
+      STATE: "{{ execution.state }}"
     commands:
       - >-
-        sh bin/store.sh set-stage --req-id "{{ render(vars.child_id) }}" --stage FAILED --if-stage RUNNING > /dev/null
+        sh bin/store.sh set-stage --req-id "{{ render(vars.child_id) }}" --if-stage RUNNING
+        --stage "$( [ "$STATE" = KILLED ] || [ "$STATE" = KILLING ] && echo STOPPED || echo FAILED )" > /dev/null
       - sh bin/store.sh registry --order "{{ inputs.order_id }}"
 
   - id: save_order_end

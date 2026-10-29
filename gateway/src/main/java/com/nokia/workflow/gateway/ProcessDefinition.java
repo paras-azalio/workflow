@@ -20,6 +20,7 @@ import java.util.regex.Pattern;
  *  "layout": {"child_order": {"x": 320, "y": 0}},              where the designer draws each step (optional)
  *  "steps": [{"id": "child_order", "label": "...", "description": "...", "scope": "ORDER" | "CHILD",
  *             "starts_order": false, "follows": ["validate"],  the arrows of the diagram (optional)
+ *             "otherwise": "validate",          where the diagram's FALSE arrow of available_when leads (optional)
  *             "available_when": {"order.stage": {"in": ["VALIDATED"]}, "child.mop_nodes": {"non_empty": true}},
  *             "runs": {"flow": "cr_child_order"},
  *             "inputs": {"order_id": {"from": "order.value"},
@@ -28,8 +29,10 @@ import java.util.regex.Pattern;
  *                                    "options_from": "order.cr_options"},
  *                        "nodes": {"from": "user", "type": "MULTISELECT", "options_from": "child.node_options",
  *                                  "all_value": "*"}},
- *             "pipelines": {"node": [...widgets], "after_nodes": [...widgets]}}]}   see {@link Pipeline}; only on a
- *                                                CHILD step whose flow's label pipeline_hooks lists the hook
+ *             "pipelines": {"node": [...widgets], "after_nodes": [...widgets]},   see {@link Pipeline}; the flow's
+ *                                                label pipeline_hooks lists the hooks it runs (node / after_nodes: CHILD)
+ *             "auto_start": {"for_each": "cr_name", "max_running": 2}}]}   started by the gateway as soon as it is
+ *                                                offered, once per value of that SELECT input (see {@link AutoStarter})
  * </pre>
  */
 final class ProcessDefinition {
@@ -47,10 +50,20 @@ final class ProcessDefinition {
                  Object defaultValue, String optionsFrom, List<Map<String, Object>> options, String allValue) {
     }
 
-    /** {@code follows}: the steps this one comes after - the arrows of the process diagram. */
+    /**
+     * {@code follows}: the steps this one comes after - the arrows of the process diagram; {@code otherwise}: the step
+     * the diagram's FALSE arrow leads to while this one is not offered (drawing only, may be null).
+     */
     record Step(String id, String label, String description, Scope scope, boolean startsOrder, String flow,
                 List<Condition> availableWhen, List<Input> inputs, List<String> follows,
-                Map<Pipeline.Hook, Pipeline> pipelines) {
+                Map<Pipeline.Hook, Pipeline> pipelines, AutoStart autoStart, String otherwise) {
+    }
+
+    /**
+     * Start the step without a person as soon as it is offered: once, or once per value of the SELECT input
+     * {@code forEach}; {@code maxRunning} &gt; 0 limits how many of these starts run at the same time.
+     */
+    record AutoStart(String forEach, int maxRunning) {
     }
 
     /** The definition is not valid; every problem found is listed. */
@@ -189,14 +202,14 @@ final class ProcessDefinition {
         Map<Pipeline.Hook, Pipeline> pipelines = new LinkedHashMap<>();
         Object pl = m.get("pipelines");
         if (pl != null && !(pl instanceof Map)) {
-            problems.add(where + ": 'pipelines' must be an object of hook (node, after_nodes) -> list of widgets.");
+            problems.add(where + ": 'pipelines' must be an object of hook (node, after_nodes, after_step) -> list of widgets.");
         } else if (pl != null) {
             for (Map.Entry<String, Object> e : ((Map<String, Object>) pl).entrySet()) {
                 Pipeline.Hook hook = Pipeline.Hook.of(e.getKey());
                 if (hook == null) {
-                    problems.add(where + ": unknown pipeline '" + e.getKey() + "' (use node or after_nodes).");
-                } else if (scope != Scope.CHILD) {
-                    problems.add(where + ": only a CHILD step can have pipelines.");
+                    problems.add(where + ": unknown pipeline '" + e.getKey() + "' (use node, after_nodes or after_step).");
+                } else if (hook != Pipeline.Hook.AFTER_STEP && scope != Scope.CHILD) {
+                    problems.add(where + ": only a CHILD step can have a " + hook.key + " pipeline.");
                 } else {
                     Pipeline p = Pipeline.parse(where + ", pipeline " + hook.key, hook, e.getValue(), problems);
                     if (p != null) {
@@ -205,12 +218,54 @@ final class ProcessDefinition {
                 }
             }
         }
+        AutoStart autoStart = autoStart(where, m.get("auto_start"), startsOrder, inputs, problems);
         if (problems.size() > before) {
             return null;
         }
         String description = str(m.get("description"));
         return new Step(id, label, description, scope, startsOrder, flow, List.copyOf(conditions), List.copyOf(inputs),
-                follows(m.get("follows")), Map.copyOf(pipelines));
+                follows(m.get("follows")), Map.copyOf(pipelines), autoStart, str(m.get("otherwise")));
+    }
+
+    /** Null when the step is started by a person only. */
+    private static AutoStart autoStart(String where, Object o, boolean startsOrder, List<Input> inputs, List<String> problems) {
+        if (o == null) {
+            return null;
+        }
+        String at = where + ": auto_start";
+        if (!(o instanceof Map<?, ?> m)) {
+            problems.add(at + " must be an object {for_each, max_running}.");
+            return null;
+        }
+        if (startsOrder) {
+            problems.add(at + ": a step that starts an order cannot start by itself (there is no order yet).");
+        }
+        for (Object k : m.keySet()) {
+            if (!"for_each".equals(k) && !"max_running".equals(k)) {
+                problems.add(at + ": unknown key '" + k + "' (use for_each, max_running).");
+            }
+        }
+        String forEach = str(m.get("for_each"));
+        if (forEach != null && inputs.stream().noneMatch(i -> i.name().equals(forEach) && i.source() == Source.USER
+                && i.type() == InputType.SELECT)) {
+            problems.add(at + ": for_each must name a SELECT input asked from the user ('" + forEach + "' is not one).");
+        }
+        for (Input i : inputs) {
+            if (i.source() != Source.USER || i.name().equals(forEach)) {
+                continue;
+            }
+            if (i.type() == InputType.FILE && i.required()) {
+                problems.add(at + ": input '" + i.name() + "' is a required file, which nobody gives when the step starts by itself.");
+            } else if (i.required() && i.type() != InputType.BOOL && i.defaultValue() == null) {
+                problems.add(at + ": input '" + i.name() + "' is required: give it a default, used when the step starts by itself.");
+            }
+        }
+        Long max = number(m.containsKey("max_running") ? m.get("max_running") : "0");
+        if (max == null || max < 0 || max > 50) {
+            problems.add(at + ": max_running must be 0 (no limit) to 50.");
+            max = 0L;
+        }
+        return new AutoStart(forEach, max.intValue());
     }
 
     private static List<String> follows(Object o) {
@@ -236,6 +291,9 @@ final class ProcessDefinition {
         Set<String> ids = new LinkedHashSet<>();
         steps.forEach(s -> ids.add(s.id()));
         for (Step s : steps) {
+            if (s.otherwise() != null && (s.otherwise().equals(s.id()) || !ids.contains(s.otherwise()))) {
+                problems.add("Step '" + s.id() + "': otherwise '" + s.otherwise() + "' must be another step of this process.");
+            }
             for (String f : s.follows()) {
                 if (f.equals(s.id())) {
                     problems.add("Step '" + s.id() + "' cannot follow itself.");

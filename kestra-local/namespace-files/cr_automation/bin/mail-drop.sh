@@ -1,7 +1,8 @@
 #!/bin/sh
 # Drop-folder mail sender for environments without a mail server (command.mail.default): the mail - the request
 # file as is (TO, CC, SUBJECT, BODY, ATTACHMENTS, ORDER_ID, CHILD_ID, NODE, ITEM, ...) - goes to
-# $SHARED_DATA_DIR/mail/outbox/<MESSAGE_ID>.properties. Replace it with the real mail program of the environment.
+# $SHARED_DATA_DIR/mail/outbox/<MESSAGE_ID>.properties, with copies of its ATTACHMENTS (comma-separated paths; a
+# missing file fails the mail) in outbox/<MESSAGE_ID>.files/. Replace it with the real mail program of the environment.
 #
 #   sh mail-drop.sh <request file> <response file>
 set -eu
@@ -13,6 +14,22 @@ id="mail-$(date +%Y%m%d%H%M%S)-$$-$(od -An -N4 -tx4 /dev/urandom | tr -d ' ')"
 if ! grep -q '^TO=.' "$request"; then
   printf 'STATUS=FAILED\nMESSAGE=No recipient (TO) given.\n' > "$response"
   exit 0
+fi
+attachments=$(sed -n 's/^ATTACHMENTS=//p' "$request" | head -1 | sed 's/\\\([,:=#! ]\)/\1/g')
+if [ -n "$attachments" ]; then
+  mkdir -p "$outbox/$id.files"
+  old_ifs=$IFS; IFS=,
+  for f in $attachments; do
+    f=$(printf '%s' "$f" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')
+    [ -n "$f" ] || continue
+    if [ ! -f "$f" ]; then
+      IFS=$old_ifs
+      printf 'STATUS=FAILED\nMESSAGE=Attachment not found: %s\n' "$f" > "$response"
+      exit 0
+    fi
+    cp "$f" "$outbox/$id.files/"
+  done
+  IFS=$old_ifs
 fi
 cp "$request" "$outbox/$id.properties"
 printf 'STATUS=SUCCESS\nMESSAGE=Mail %s written to the outbox.\nMESSAGE_ID=%s\n' "$id" "$id" > "$response"

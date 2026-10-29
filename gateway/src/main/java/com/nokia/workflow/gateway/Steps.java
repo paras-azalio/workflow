@@ -37,11 +37,14 @@ final class Steps {
     private final UserStore users;
     private final String namespace;
     private final String project;
+    private final AutoStarter autoStarter;
     private final Map<String, Started> recent = new ConcurrentHashMap<>();
     private final Map<String, Object> inFlight = new ConcurrentHashMap<>();
 
-    Steps(Kestra kestra, ProcessStore processes, ActivityStore activities, UserStore users, String namespace, String project) {
+    Steps(Kestra kestra, ProcessStore processes, ActivityStore activities, UserStore users, String namespace, String project,
+          AutoStarter autoStarter) {
         this.kestra = kestra;
+        this.autoStarter = autoStarter;
         this.processes = processes;
         this.activities = activities;
         this.users = users;
@@ -102,6 +105,9 @@ final class Steps {
             for (ProcessDefinition.Step s : available(ctx)) {
                 steps.add(view(s, ctx.order(), ctx.child()));
             }
+            if (autoStarter != null) {
+                out.put("auto_starts", autoStarter.list(Long.parseLong(orderId), childId == null ? null : Long.valueOf(childId)));
+            }
         }
         out.put("steps", steps);
         return out;
@@ -123,7 +129,7 @@ final class Steps {
                 role.atLeast(Role.EXECUTOR), "steps", steps);
     }
 
-    private static List<ProcessDefinition.Step> available(Context ctx) {
+    static List<ProcessDefinition.Step> available(Context ctx) {
         List<ProcessDefinition.Step> out = new ArrayList<>();
         ProcessDefinition.Scope scope = ctx.child() == null ? ProcessDefinition.Scope.ORDER : ProcessDefinition.Scope.CHILD;
         for (ProcessDefinition.Step s : ctx.definition().steps) {
@@ -260,8 +266,21 @@ final class Steps {
             throw new UserStore.Rejected(409, "The step '%s' is not available for %s now (the order may have moved on): reload."
                     .formatted(step.label(), childId == null ? "order " + orderId : "child order " + childId));
         }
-        return run(step, ctx.definition().namespace, ctx.order(), ctx.child(), body, user, ip,
+        Map<String, Object> out = run(step, ctx.definition().namespace, ctx.order(), ctx.child(), body, user, ip,
                 "order " + orderId + (childId == null ? "" : " child " + childId), ctx.version());
+        if (step.autoStart() != null && autoStarter != null) {
+            Object item = step.autoStart().forEach() == null ? "" : body.get("inputs") instanceof Map<?, ?> in ? in.get(step.autoStart().forEach()) : null;
+            autoStarter.startedByPerson(Long.parseLong(orderId), childId == null ? null : Long.valueOf(childId), step,
+                    item == null ? "" : String.valueOf(item), ctx.version().version(), user.username(), out.get("execution_id"));
+        }
+        return out;
+    }
+
+    /** Starts an automatic step the gateway found offered in {@code ctx} (just evaluated), as {@code user}. */
+    Map<String, Object> startAutomatically(Context ctx, ProcessDefinition.Step step, Map<String, Object> body, UserStore.User user)
+            throws Exception {
+        return run(step, ctx.definition().namespace, ctx.order(), ctx.child(), body, user, null,
+                "automatic start, order " + ctx.order().get("value"), ctx.version());
     }
 
     Map<String, Object> startOrder(String stepId, Map<String, Object> body, UserStore.User user, String ip) throws Exception {

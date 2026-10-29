@@ -33,6 +33,7 @@
     },
     {
       "id": "validate",
+      "follows": ["new_order_template"],
       "label": "Validate a CIQ for this order",
       "description": "Optional: choose the filled (or corrected) CIQ - it replaces the CIQ in the order folder. Without a file, the CIQ already placed in the order folder is validated.",
       "scope": "ORDER",
@@ -45,11 +46,14 @@
     },
     {
       "id": "child_order",
+      "follows": ["new_order_validation", "validate"],
+      "otherwise": "validate",
       "label": "Start a child order",
-      "description": "MOP generation for one CR of the order (CLICR MOP_GENERATION); the child gets its own request id.",
+      "description": "MOP generation for one CR of the order (CLICR MOP_GENERATION); the child gets its own request id. Starts by itself for every CR once the CIQ is validated.",
       "scope": "ORDER",
       "available_when": {"order.stage": {"in": ["VALIDATED"]}},
       "runs": {"flow": "cr_child_order"},
+      "auto_start": {"for_each": "cr_name", "max_running": 2},
       "inputs": {
         "order_id": {"from": "order.value"},
         "cr_name": {"from": "user", "type": "SELECT", "label": "CR", "required": true, "options_from": "order.cr_options"},
@@ -58,6 +62,7 @@
     },
     {
       "id": "rollback_order_node",
+      "follows": ["mop_execution"],
       "label": "Roll back a node",
       "description": "Nodes whose execution ended with ROLLBACK_ENABLED=TRUE, for activities that allow rollback: MOP_EXECUTION with ROLLBACK_ONLY=true, then the rollback report.",
       "scope": "ORDER",
@@ -70,19 +75,26 @@
     },
     {
       "id": "mop_execution",
+      "follows": ["child_order"],
+      "otherwise": "child_order",
       "label": "Execute the MOP",
-      "description": "Choose all nodes or some of them - the chosen nodes run in parallel. A node that is running now is refused.",
+      "description": "Choose all nodes or some of them, and whether they run in parallel (all at once) or queued (one after the other). A node that is running now is refused.",
       "scope": "CHILD",
       "available_when": {"child.mop_nodes": {"non_empty": true}},
       "runs": {"flow": "cr_mop_execution"},
       "inputs": {
         "order_id": {"from": "order.value"},
         "child_id": {"from": "child.child_id"},
-        "nodes": {"from": "user", "type": "MULTISELECT", "label": "Nodes", "required": true, "options_from": "child.node_options", "all_value": "*", "default": ["*"]}
+        "nodes": {"from": "user", "type": "MULTISELECT", "label": "Nodes", "required": true, "options_from": "child.node_options", "all_value": "*", "default": ["*"]},
+        "mode": {"from": "user", "type": "SELECT", "label": "How the nodes run", "required": true, "default": "CONFIGURED",
+                 "options": [{"value": "CONFIGURED", "label": "As configured for the activity (else parallel)"},
+                             {"value": "PARALLEL", "label": "Parallel - all chosen nodes at once"},
+                             {"value": "QUEUED", "label": "Queued - one node after the other"}]}
       }
     },
     {
       "id": "rollback_child_node",
+      "follows": ["mop_execution"],
       "label": "Roll back a node",
       "description": "Nodes of this child whose execution ended with ROLLBACK_ENABLED=TRUE, for activities that allow rollback.",
       "scope": "CHILD",

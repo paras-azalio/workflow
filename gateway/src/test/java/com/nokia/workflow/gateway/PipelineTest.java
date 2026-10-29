@@ -178,7 +178,7 @@ public class PipelineTest {
         List<String> p = org.junit.jupiter.api.Assertions.assertThrows(ProcessDefinition.Invalid.class, () ->
                 ProcessDefinition.parse(SimpleJson.parse("{\"namespace\": \"cr_automation\", \"steps\": [" + step.formatted("a", "ORDER")
                         + "]}"))).problems;
-        assertTrue(has(p, "only a CHILD step can have pipelines"), p.toString());
+        assertTrue(has(p, "only a CHILD step can have a node pipeline"), p.toString());
         p = org.junit.jupiter.api.Assertions.assertThrows(ProcessDefinition.Invalid.class, () ->
                 ProcessDefinition.parse(SimpleJson.parse("{\"namespace\": \"cr_automation\", \"steps\": [" + step.formatted("a", "CHILD")
                         + ", " + step.formatted("b", "CHILD") + "]}"))).problems;
@@ -186,6 +186,25 @@ public class PipelineTest {
         ProcessDefinition ok = ProcessDefinition.parse(SimpleJson.parse("{\"namespace\": \"cr_automation\", \"steps\": ["
                 + step.formatted("a", "CHILD") + "]}"));
         assertNotNull(ok.step("a").pipelines().get(Pipeline.Hook.NODE));
+    }
+
+    @Test
+    public void anAfterStepPipelineReadsTheStepsResultOnAnOrderStep() {
+        ProcessDefinition def = ProcessDefinition.parse(SimpleJson.parse("""
+                {"namespace": "cr_automation", "steps": [{"id": "child_order", "label": "x", "scope": "ORDER", "runs": {"flow": "cr_child_order"},
+                  "pipelines": {"after_step": [
+                    {"id": "ready", "widget": "IF", "conditions": [{"ref": "run.statusText", "op": "equals", "value": "SUCCESS"}],
+                     "then": [{"id": "mop_mail", "widget": "MAIL", "to": "${run.ACTIVITY_CR_EMAIL}", "subject": "Child order ${child.id}",
+                               "attachments": "${child.folder}/${run.ACTIVITY_CR_MOP}"}]}]}}]}"""));
+        Pipeline pipeline = def.step("child_order").pipelines().get(Pipeline.Hook.AFTER_STEP);
+        String y = PipelineCompiler.compile("cr_automation", "CR_AUTOMATION", 3, "child_order", pipeline).yaml();
+        assertTrue(y.contains("id: \"pl_cr_automation_child_order_after_step_v3\""), y);
+        assertTrue(y.contains("- id: \"step\""), "the flow passes the step whose result is read: " + y);
+        assertTrue(y.contains("--step \\\"{{ inputs.step }}\\\""), y);
+        assertTrue(y.contains("outputs.context.vars.run['ACTIVITY_CR_MOP']"), y);
+        assertFalse(y.contains("afterExecution"), y);
+        assertTrue(has(problems(Pipeline.Hook.AFTER_STEP, """
+                [{"id": "c", "widget": "COLLECT", "list": "X", "value": "${node} ${run.a.b}"}]"""), "${run.a.b}: use run.step"));
     }
 
     @Test

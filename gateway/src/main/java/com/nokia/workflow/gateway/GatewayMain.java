@@ -27,6 +27,8 @@ import java.util.concurrent.Executors;
  *   GATEWAY_PROCESS_NAMESPACE    cr_automation               where executors may run process flows
  *   GATEWAY_PROJECT              CR_AUTOMATION               the project of the process and the activities
  *   GATEWAY_KNOWN_STEPS          NEI step names an activity configuration may name before any flow recorded them
+ *   GATEWAY_AUTO_START_SECONDS   15     how often automatic steps (auto_start) are looked for; 0 = never
+ *   GATEWAY_AUTO_START_WINDOW_MINUTES 60   orders changed within this time are looked at
  * </pre>
  */
 public final class GatewayMain {
@@ -60,11 +62,18 @@ public final class GatewayMain {
         activities.ensureSchema();
         Kestra kestra = new Kestra(URI.create(env.getOrDefault("KESTRA_INTERNAL_URL", "http://kestra:8080")),
                 require(env, "KESTRA_USER"), require(env, "KESTRA_PASSWORD"), "main");
-        Steps steps = new Steps(kestra, processes, activities, users, namespace, project);
+        AutoStarter autoStarter = new AutoStarter(db, schema, kestra, processes, users);
+        autoStarter.ensureSchema();
+        Steps steps = new Steps(kestra, processes, activities, users, namespace, project, autoStarter);
+        int autoSeconds = Integer.parseInt(env.getOrDefault("GATEWAY_AUTO_START_SECONDS", "15"));
+        if (autoSeconds > 0) {
+            autoStarter.start(steps, autoSeconds, Integer.parseInt(env.getOrDefault("GATEWAY_AUTO_START_WINDOW_MINUTES", "60")));
+        }
 
         HttpServer server = HttpServer.create(new InetSocketAddress(port), 256);
         Decisions decisions = new Decisions(db, schema, kestra, users);
-        server.createContext("/", new Gateway(users, processes, activities, steps, decisions, kestra, new Rules(namespace), namespace, project));
+        server.createContext("/", new Gateway(users, processes, activities, steps, decisions,
+                new OrderSearch(db, schema), kestra, new Rules(namespace), namespace, project));
         server.setExecutor(Executors.newVirtualThreadPerTaskExecutor());
         server.start();
         System.out.println("gateway: listening on " + port + ", Kestra at " + env.getOrDefault("KESTRA_INTERNAL_URL", "http://kestra:8080"));

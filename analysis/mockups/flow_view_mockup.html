@@ -1,0 +1,217 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Flow view mockup</title>
+<style>
+  :root {
+    --bg: #f7f7fa; --canvas: #ffffff; --text: #1d1d27; --dim: #6b6b80; --line: #3d3d4e; --border: #d9d9e3;
+    --nei: #7c4dff; --if: #0f9fb5; --mail: #2f7de1; --wait: #d98a00; --report: #2e9d55; --fail: #d64545; --group: #9a9ab0;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 13px/1.35 Inter, "Segoe UI", Arial, sans-serif; color: var(--text); background: var(--bg); }
+  .app { display: grid; grid-template-columns: 64px 1fr 300px; grid-template-rows: auto 1fr; height: 100vh; }
+  header { grid-column: 1 / 4; display: flex; align-items: center; gap: 16px; padding: 10px 16px; border-bottom: 1px solid var(--border); background: var(--canvas); }
+  header h1 { font-size: 16px; margin: 0; }
+  .crumbs { color: var(--dim); }
+  .crumbs b { color: var(--text); }
+  .tabs { margin-left: auto; display: flex; gap: 6px; }
+  .tabs span { padding: 4px 10px; border: 1px solid var(--border); border-radius: 6px; }
+  .tabs span.on { background: #ece6ff; border-color: var(--nei); color: #4b2bb3; font-weight: 600; }
+  .palette { border-right: 1px solid var(--border); background: var(--canvas); padding: 10px 6px; display: flex; flex-direction: column; gap: 10px; align-items: center; }
+  .palette div { width: 48px; text-align: center; font-size: 10px; color: var(--dim); }
+  .palette svg { display: block; margin: 0 auto 2px; }
+  main { overflow: hidden; padding: 12px; display: flex; flex-direction: column; gap: 12px; }
+  .panel { background: var(--canvas); border: 1px solid var(--border); border-radius: 8px; position: relative; }
+  .panel h2 { position: absolute; left: 12px; top: 8px; margin: 0; font-size: 13px; }
+  .panel h2 small { font-weight: 400; color: var(--dim); }
+  aside { border-left: 1px solid var(--border); background: var(--canvas); padding: 14px; display: flex; flex-direction: column; gap: 10px; }
+  aside h3 { margin: 0; font-size: 14px; }
+  aside label { color: var(--dim); font-size: 11px; display: block; margin-bottom: 2px; }
+  aside .f { border: 1px solid var(--border); border-radius: 6px; padding: 6px 8px; background: #fafafe; }
+  aside .note { color: var(--dim); font-size: 11px; }
+  .legend { display: flex; gap: 14px; flex-wrap: wrap; font-size: 11px; color: var(--dim); }
+  text { font-family: Inter, "Segoe UI", Arial, sans-serif; }
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <h1>Process designer</h1>
+    <span class="crumbs">CR_AUTOMATION v25 › <b>Main flow</b> › Execute the MOP › Each node</span>
+    <div class="tabs"><span class="on">Flow</span><span>Steps (cards)</span><span>JSON</span></div>
+  </header>
+  <nav class="palette" id="palette"></nav>
+  <main>
+    <div class="panel"><h2>Main flow <small>- what happens to an order, start to end (arrows are generated from the process, not drawn by hand)</small></h2>
+      <svg id="main" width="1270" height="300"></svg></div>
+    <div class="panel"><h2>Execute the MOP › Each node <small>- double-click "Execute the MOP" to open it, like a SUB_ORDER tab in BST</small></h2>
+      <svg id="node" width="1270" height="400"></svg></div>
+    <div class="legend" id="legend"></div>
+  </main>
+  <aside>
+    <h3>Mail the MOP to the CR owner</h3>
+    <div class="note">Clicked box. Same fields as today, but beside the flow.</div>
+    <div><label>Runs</label><div class="f">Once for each CR, after its MOP generation</div></div>
+    <div><label>To</label><div class="f">CR's e-mail from the CIQ</div></div>
+    <div><label>Subject</label><div class="f">Child order 103: MOP of CR1 is ready</div></div>
+    <div><label>Attachment</label><div class="f">The generated MOP (html)</div></div>
+    <div><label>When it fails</label><div class="f">Stop this CR</div></div>
+    <div class="note">+ on any arrow inserts a box there (or drag one from the palette onto the arrow). A diamond's TRUE / FALSE arrows each lead to their own boxes.</div>
+  </aside>
+</div>
+<script>
+const C = getComputedStyle(document.documentElement)
+const v = n => C.getPropertyValue(n).trim()
+const NS = "http://www.w3.org/2000/svg"
+const W = 118, H = 50, D = 30
+
+function el(svg, tag, attrs, text) {
+  const e = document.createElementNS(NS, tag)
+  for (const k in attrs) e.setAttribute(k, attrs[k])
+  if (text !== undefined) e.textContent = text
+  svg.appendChild(e)
+  return e
+}
+
+function icon(svg, type, x, y, s = 1) {
+  const g = el(svg, "g", {transform: `translate(${x},${y}) scale(${s})`})
+  const c = {nei: v("--nei"), mail: v("--mail"), wait: v("--wait"), report: v("--report"), each: v("--group"), fail: v("--fail"), collect: v("--report")}[type] ?? v("--nei")
+  if (type === "if") el(g, "polygon", {points: "0,-11 11,0 0,11 -11,0", fill: v("--if")})
+  else if (type === "start") el(g, "circle", {r: 9, fill: v("--line")})
+  else if (type === "end") { el(g, "circle", {r: 10, fill: "none", stroke: v("--line"), "stroke-width": 2}); el(g, "circle", {r: 6, fill: v("--line")}) }
+  else if (type === "fail") el(g, "rect", {x: -9, y: -9, width: 18, height: 18, rx: 3, fill: c})
+  else if (type === "nei") el(g, "polygon", {points: "-5,-10 5,-10 10,-3 10,3 5,10 -5,10 -10,3 -10,-3", fill: c})
+  else if (type === "mail") { el(g, "rect", {x: -10, y: -7, width: 20, height: 14, rx: 2, fill: c}); el(g, "polyline", {points: "-10,-7 0,1 10,-7", fill: "none", stroke: "#fff", "stroke-width": 1.5}) }
+  else if (type === "wait") { el(g, "circle", {r: 10, fill: c}); el(g, "rect", {x: -4, y: -5, width: 3, height: 10, fill: "#fff"}); el(g, "rect", {x: 1, y: -5, width: 3, height: 10, fill: "#fff"}) }
+  else if (type === "each") { el(g, "circle", {r: 9, fill: "none", stroke: c, "stroke-width": 3}); el(g, "polygon", {points: "7,-6 12,0 3,0", fill: c}) }
+  else el(g, "rect", {x: -9, y: -10, width: 18, height: 20, rx: 2, fill: c})
+}
+
+function draw(id, nodes, edges, groups = []) {
+  const svg = document.getElementById(id)
+  const defs = el(svg, "defs", {})
+  const m = el(defs, "marker", {id: id + "a", viewBox: "0 0 10 10", refX: 9, refY: 5, markerWidth: 7, markerHeight: 7, orient: "auto-start-reverse"})
+  el(m, "path", {d: "M0,0 L10,5 L0,10 z", fill: v("--line")})
+  const N = Object.fromEntries(nodes.map(n => [n.id, n]))
+  for (const g of groups) {
+    el(svg, "rect", {x: g.x, y: g.y, width: g.w, height: g.h, rx: 10, fill: "#f3f3fb", stroke: v("--group"), "stroke-dasharray": "5 4"})
+    el(svg, "text", {x: g.x + 10, y: g.y + 15, fill: v("--dim"), "font-size": 11}, g.label)
+  }
+  const half = n => n.type === "if" ? {w: D, h: D} : n.small ? {w: 14, h: 14} : {w: W / 2, h: H / 2}
+  const anchor = (n, side) => {
+    const s = half(n)
+    return side === "r" ? [n.x + s.w, n.y] : side === "l" ? [n.x - s.w, n.y] : side === "t" ? [n.x, n.y - s.h] : [n.x, n.y + s.h]
+  }
+  for (const e of edges) {
+    const a = N[e.from], b = N[e.to]
+    const [x1, y1] = anchor(a, e.out ?? "r"), [x2, y2] = anchor(b, e.in ?? "l")
+    let pts
+    if ((e.out ?? "r") === "r" && (e.in ?? "l") === "l") {
+      const mx = e.mx ?? (x1 + x2) / 2
+      pts = y1 === y2 ? [[x1, y1], [x2, y2]] : [[x1, y1], [mx, y1], [mx, y2], [x2, y2]]
+    } else if ((e.out === "b" || e.out === "t") && (e.in ?? "l") === "l") pts = [[x1, y1], [x1, y2], [x2, y2]]
+    else if ((e.out ?? "r") === "r" && (e.in === "t" || e.in === "b")) pts = [[x1, y1], [x2, y1], [x2, y2]]
+    else if (e.out === "l" && e.in === "b") pts = [[x1, y1], [x2, y1], [x2, y2]]
+    else if (e.out === "b" && e.in === "b") { const by = e.by; pts = [[x1, y1], [x1, by], [x2, by], [x2, y2]] }
+    else if (e.out === "t" && e.in === "t") { const ty = e.ty; pts = [[x1, y1], [x1, ty], [x2, ty], [x2, y2]] }
+    else pts = [[x1, y1], [x2, y2]]
+    el(svg, "polyline", {points: pts.map(p => p.join(",")).join(" "), fill: "none", stroke: v("--line"), "stroke-width": 1.4,
+      "stroke-dasharray": e.dash ? "5 4" : "", "marker-end": `url(#${id}a)`})
+    if (e.label) {
+      const [lx, ly] = e.at ?? [(pts[0][0] + pts[1][0]) / 2, (pts[0][1] + pts[1][1]) / 2]
+      const t = el(svg, "text", {x: lx, y: ly - 4, "text-anchor": "middle", "font-size": 10, "font-weight": 700,
+        fill: e.label === "FALSE" ? v("--fail") : e.label === "TRUE" ? v("--report") : v("--dim")}, e.label)
+    }
+    if (e.plus) {
+      const [px, py] = [(pts[0][0] + pts[1][0]) / 2, (pts[0][1] + pts[1][1]) / 2]
+      el(svg, "circle", {cx: px, cy: py, r: 7, fill: "#fff", stroke: v("--nei")})
+      el(svg, "text", {x: px, y: py + 4, "text-anchor": "middle", "font-size": 12, fill: v("--nei")}, "+")
+    }
+  }
+  for (const n of nodes) {
+    if (n.type === "if") {
+      el(svg, "polygon", {points: `${n.x},${n.y - D} ${n.x + D},${n.y} ${n.x},${n.y + D} ${n.x - D},${n.y}`, fill: "#e3f6f9", stroke: v("--if"), "stroke-width": 1.5})
+      el(svg, "text", {x: n.x, y: n.y + 4, "text-anchor": "middle", "font-size": 11, "font-weight": 700, fill: v("--if")}, "IF")
+      n.title.split("|").forEach((l, i) => el(svg, "text", {x: n.x + 10, y: n.y + D + 12 + i * 12, "font-size": 11, "font-weight": 600}, l))
+    } else if (n.small) {
+      icon(svg, n.type, n.x, n.y, 1.2)
+      el(svg, "text", {x: n.x, y: n.y + 28, "text-anchor": "middle", "font-size": 11, "font-weight": 600}, n.title)
+    } else {
+      el(svg, "rect", {x: n.x - W / 2, y: n.y - H / 2, width: W, height: H, rx: 8, fill: n.sel ? "#efe9ff" : "#fff",
+        stroke: n.sel ? v("--nei") : v("--border"), "stroke-width": n.sel ? 2 : 1})
+      icon(svg, n.type, n.x - W / 2 + 15, n.y)
+      const lines = n.title.split("|")
+      lines.forEach((l, i) => el(svg, "text", {x: n.x - W / 2 + 30, y: n.y - 6 + i * 12 - (lines.length - 1) * 4, "font-size": 11, "font-weight": 600}, l))
+      if (n.sub) el(svg, "text", {x: n.x - W / 2 + 30, y: n.y + 16, "font-size": 9.5, fill: v("--dim")}, n.sub)
+    }
+  }
+}
+
+draw("main", [
+  {id: "s", type: "start", small: true, x: 30, y: 110, title: "START"},
+  {id: "order", type: "nei", x: 120, y: 110, title: "Create order", sub: "template or CIQ upload"},
+  {id: "val", type: "report", x: 265, y: 110, title: "Validate CIQ", sub: "FileCR"},
+  {id: "ok", type: "if", x: 385, y: 110, title: "CIQ valid?"},
+  {id: "fix", type: "wait", x: 385, y: 235, title: "Fix the CIQ", sub: "person uploads again"},
+  {id: "mop", type: "nei", x: 540, y: 110, title: "MOP generation", sub: "CLICR · starts by itself"},
+  {id: "mail", type: "mail", x: 680, y: 110, title: "Mail the MOP", sub: "to the CR owner", sel: true},
+  {id: "wait", type: "wait", x: 820, y: 110, title: "Wait for|Continue", sub: "Orders page"},
+  {id: "exec", type: "each", x: 960, y: 110, title: "Execute the MOP", sub: "each node ▸ open"},
+  {id: "sum", type: "report", x: 1095, y: 110, title: "Summary report", sub: "FileCR, per CR"},
+  {id: "e", type: "end", small: true, x: 1235, y: 110, title: "END"},
+  {id: "stop", type: "fail", small: true, x: 960, y: 235, title: "STOPPED"},
+  {id: "rb", type: "nei", x: 1095, y: 235, title: "Roll back a node", sub: "manual, ROLLBACK_ENABLED"},
+], [
+  {from: "s", to: "order"}, {from: "order", to: "val", plus: true}, {from: "val", to: "ok"},
+  {from: "ok", to: "mop", label: "TRUE"}, {from: "ok", out: "b", to: "fix", in: "t", label: "FALSE", at: [362, 190]},
+  {from: "fix", out: "l", to: "val", in: "b"},
+  {from: "mop", to: "mail", plus: true}, {from: "mail", to: "wait"}, {from: "wait", to: "exec"}, {from: "exec", to: "sum"},
+  {from: "sum", to: "e"}, {from: "exec", out: "b", to: "stop", in: "t", label: "Stop", dash: true, at: [985, 160]},
+  {from: "sum", out: "b", to: "rb", in: "t", label: "if a node can", dash: true, at: [1128, 160]},
+], [{x: 470, y: 55, w: 280, h: 95, label: "↻ for each CR of the order (its own child order)"}])
+
+draw("node", [
+  {id: "s", type: "start", small: true, x: 30, y: 195, title: "node"},
+  {id: "if33", type: "if", x: 120, y: 195, title: "SBC and 33?"},
+  {id: "pre", type: "nei", x: 255, y: 80, title: "Precheck MOP", sub: "CLICR, …_PRECHECK"},
+  {id: "own", type: "mail", x: 395, y: 80, title: "Ask the owner", sub: "mail to REPORT_EMAIL"},
+  {id: "rep", type: "wait", x: 535, y: 80, title: "Owner's answer", sub: "reply, 2 days"},
+  {id: "ap", type: "if", x: 665, y: 80, title: "Approved?"},
+  {id: "lic", type: "nei", x: 810, y: 80, title: "Licence MOP", sub: "CLICR MOP_EXECUTION"},
+  {id: "rej", type: "fail", small: true, x: 665, y: 158, title: "End FAILED (rejected)"},
+  {id: "if51", type: "if", x: 255, y: 280, title: "PGW_RDS and 1051?"},
+  {id: "prof", type: "nei", x: 395, y: 250, title: "Subscriber|profile MOP", sub: "CLICR MOP_EXECUTION"},
+  {id: "col", type: "collect", x: 535, y: 250, title: "Keep failed IMSIs", sub: "list FAILURE_IMSIS"},
+  {id: "imsi", type: "each", x: 675, y: 250, title: "Each changed IMSI", sub: "mail MMTel, wait reply"},
+  {id: "main", type: "nei", x: 395, y: 345, title: "MOP execution", sub: "every other activity"},
+  {id: "nf", type: "if", x: 960, y: 195, title: "Node failed?"},
+  {id: "fr", type: "report", x: 1095, y: 195, title: "Failure report", sub: "FileCR, this node"},
+  {id: "e", type: "end", small: true, x: 1235, y: 195, title: "node done"},
+], [
+  {from: "s", to: "if33"},
+  {from: "if33", out: "t", to: "pre", label: "TRUE", at: [107, 130]},
+  {from: "pre", to: "own", plus: true}, {from: "own", to: "rep"}, {from: "rep", to: "ap"},
+  {from: "ap", to: "lic", label: "TRUE"}, {from: "ap", out: "b", to: "rej", in: "t", label: "FALSE", at: [645, 140]},
+  {from: "lic", to: "nf", in: "t"}, {from: "rej", out: "r", to: "nf", in: "l", mx: 900},
+  {from: "if33", out: "b", to: "if51", label: "FALSE", at: [100, 262]},
+  {from: "if51", out: "t", to: "prof", label: "TRUE", at: [242, 235]},
+  {from: "prof", to: "col", plus: true}, {from: "col", to: "imsi"}, {from: "imsi", to: "nf", in: "b"},
+  {from: "if51", out: "b", to: "main", label: "FALSE", at: [234, 348]},
+  {from: "main", to: "nf", in: "b"},
+  {from: "nf", to: "fr", label: "TRUE"}, {from: "fr", to: "e"},
+  {from: "nf", out: "t", to: "e", in: "t", ty: 140, label: "FALSE", at: [1100, 134]},
+], [{x: 610, y: 196, w: 130, h: 88, label: "↻ 5 IMSIs at a time"}])
+
+const pal = [["nei", "NEI call"], ["if", "If / else"], ["mail", "Mail"], ["wait", "Wait / decide"], ["each", "For each"], ["collect", "Collect"], ["report", "Report"], ["fail", "End"]]
+const P = document.getElementById("palette")
+for (const [t, label] of pal) {
+  const d = document.createElement("div")
+  const s = document.createElementNS(NS, "svg"); s.setAttribute("width", 30); s.setAttribute("height", 28)
+  d.appendChild(s); icon(s, t, 15, 14, 1.1); d.appendChild(document.createTextNode(label)); P.appendChild(d)
+}
+document.getElementById("legend").textContent =
+  "Purple hexagon = NEI call (CLICR / FileCR)   ·   Diamond = If (TRUE / FALSE arrows)   ·   Envelope = mail   ·   Pause = wait for a person or a reply   ·   Loop = for each   ·   Green = report   ·   Red = end / stop   ·   Dashed = optional path"
+</script>
+</body>
+</html>

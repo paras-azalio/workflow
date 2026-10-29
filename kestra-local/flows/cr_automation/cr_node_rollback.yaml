@@ -17,6 +17,7 @@ description: |
 labels:
   project: CR_AUTOMATION
   process: "true"   # a step of the order process: executors may start it (gateway rule)
+  outline: "Rollback MOP (CLICR) | Rollback report (FileCR)"   # what the process designer's Flow view draws (see cr_mop_execution)
   order_type: CHILD
   action: ROLLBACK
 

@@ -12,11 +12,12 @@ import java.util.regex.Pattern;
 /**
  * Activity declarations (project + node type + sub-activity) with versioned configurations (table {@code activity},
  * versions in {@code activity_version}, content column {@code config}). A declaration starts as an empty draft; new
- * orders of the activity are pinned to its latest published version (request store, new-request).
+ * orders are pinned to the latest published version of each level that applies to them (request store,
+ * new-request): {@code * / *} (the whole project), {@code <node type> / *}, {@code <node type> / <sub-activity>}.
  */
 final class ActivityStore {
 
-    private static final Pattern NAME = Pattern.compile("[A-Za-z0-9][A-Za-z0-9_.&-]{0,127}");
+    private static final Pattern NAME = Pattern.compile("\\*|[A-Za-z0-9][A-Za-z0-9_.&-]{0,127}");
 
     private final Db db;
     private final String schema;
@@ -57,8 +58,11 @@ final class ActivityStore {
             throws SQLException {
         for (String[] f : new String[][] {{"node_type", nodeType}, {"sub_activity", subActivity}}) {
             if (f[1] == null || !NAME.matcher(f[1]).matches()) {
-                throw new UserStore.Rejected(400, "'%s' must be letters, digits and _ . & - (as in the activity's YAML names).".formatted(f[0]));
+                throw new UserStore.Rejected(400, "'%s' must be letters, digits and _ . & - (as in the activity's YAML names), or * for all.".formatted(f[0]));
             }
+        }
+        if ("*".equals(nodeType) && !"*".equals(subActivity)) {
+            throw new UserStore.Rejected(400, "With node type * (the whole project) the sub-activity is * too.");
         }
         long id = db.transaction(c -> {
             if (VersionedStore.one(c, "SELECT activity_id FROM " + t("activity") + " WHERE project = ? AND node_type = ? AND sub_activity = ?",
@@ -111,16 +115,94 @@ final class ActivityStore {
         versions.retire(requireId(nodeType, subActivity), label(nodeType, subActivity), version, actor);
     }
 
-    /** The activity configuration an order is pinned to, or null: {node_type, sub_activity, version, state}. */
+    /**
+     * The activity configuration an order is pinned to, or null: {node_type, sub_activity, version, state}, with
+     * {@code layers}: every configuration level it is pinned to, general to specific, as "node type / sub-activity vN".
+     */
+    @SuppressWarnings("unchecked")
     Map<String, Object> pinned(long orderId) throws SQLException {
         return db.with(c -> {
             if (!Boolean.TRUE.equals(VersionedStore.one(c, "SELECT to_regclass('" + schema + ".request') IS NOT NULL AS ok").get("ok"))) {
                 return null;
             }
-            return VersionedStore.one(c, "SELECT a.node_type, a.sub_activity, v.version, v.state FROM " + t("request") + " r JOIN "
+            Map<String, Object> out = VersionedStore.one(c, "SELECT a.node_type, a.sub_activity, v.version, v.state FROM " + t("request") + " r JOIN "
                     + t("activity_version") + " v ON v.activity_id = r.activity_id AND v.version = r.activity_version JOIN "
                     + t("activity") + " a ON a.activity_id = v.activity_id WHERE r.req_id = ?", orderId);
+            boolean hasLayers = VersionedStore.one(c, "SELECT 1 FROM information_schema.columns WHERE table_schema = ?"
+                    + " AND table_name = 'request' AND column_name = 'config_layers'", schema) != null;
+            Map<String, Object> row = hasLayers ? VersionedStore.one(c, "SELECT config_layers FROM " + t("request") + " WHERE req_id = ?", orderId) : null;
+            List<String> layers = new ArrayList<>();
+            if (row != null && row.get("config_layers") != null
+                    && com.nokia.workflow.wrapper.SimpleJson.parse(String.valueOf(row.get("config_layers"))) instanceof List<?> list) {
+                for (Object o : list) {
+                    Map<String, Object> l = (Map<String, Object>) o;
+                    layers.add(l.get("node_type") + " / " + l.get("sub_activity") + " v" + l.get("version"));
+                }
+            }
+            if (out == null && layers.isEmpty()) {
+                return null;
+            }
+            Map<String, Object> m = out == null ? new java.util.LinkedHashMap<>() : new java.util.LinkedHashMap<>(out);
+            m.put("layers", layers);
+            return m;
         });
+    }
+
+    /**
+     * What each recorded step sends: per step its component (the request's ne_type, lower case) and the request
+     * parameters of its latest run (without the process's own keys and the login. / grc. overrides; secrets were
+     * masked when recorded).
+     */
+    @SuppressWarnings("unchecked")
+    Map<String, Object> stepParameters() throws SQLException {
+        Map<String, Object> out = new java.util.TreeMap<>();
+        db.with(c -> {
+            if (!Boolean.TRUE.equals(VersionedStore.one(c, "SELECT to_regclass('" + schema + ".request_step') IS NOT NULL AS ok").get("ok"))) {
+                return null;
+            }
+            for (Map<String, Object> r : VersionedStore.all(c, "SELECT DISTINCT ON (step) step, request::text AS request FROM "
+                    + t("request_step") + " WHERE request IS NOT NULL ORDER BY step, step_id DESC")) {
+                if (!(com.nokia.workflow.wrapper.SimpleJson.parse(String.valueOf(r.get("request"))) instanceof Map<?, ?> req)) {
+                    continue;
+                }
+                Map<String, Object> params = new java.util.TreeMap<>();
+                for (Map.Entry<?, ?> e : req.entrySet()) {
+                    String k = String.valueOf(e.getKey());
+                    if (!ActivityConfig.RESERVED.contains(k) && !k.startsWith("login.") && !k.startsWith("grc.")) {
+                        params.put(k, e.getValue() == null ? "" : String.valueOf(e.getValue()));
+                    }
+                }
+                Object ne = req.get("ne_type");
+                out.put(String.valueOf(r.get("step")), Map.of("component", ne == null ? "" : String.valueOf(ne).toLowerCase(java.util.Locale.ROOT),
+                        "params", params));
+            }
+            return null;
+        });
+        return out;
+    }
+
+    /**
+     * The project's login and GRC values per component from its config file ({@code nei.<component>.login.KEY},
+     * {@code nei.<component>.grc.KEY}): what a configuration level changes. Secrets are only references there.
+     */
+    static Map<String, Object> projectDefaults(String properties) throws java.io.IOException {
+        java.util.Properties p = new java.util.Properties();
+        if (properties != null) {
+            p.load(new java.io.StringReader(properties));
+        }
+        Map<String, Object> out = new java.util.TreeMap<>();
+        for (String name : new java.util.TreeSet<>(p.stringPropertyNames())) {
+            String[] part = name.split("\\.", 4);
+            if (part.length == 4 && "nei".equals(part[0]) && ("login".equals(part[2]) || "grc".equals(part[2]))) {
+                @SuppressWarnings("unchecked")
+                Map<String, Object> component = (Map<String, Object>) out.computeIfAbsent(part[1], k -> new java.util.TreeMap<>(
+                        Map.of("login", new java.util.TreeMap<String, String>(), "grc", new java.util.TreeMap<String, String>())));
+                @SuppressWarnings("unchecked")
+                Map<String, String> group = (Map<String, String>) component.get(part[2]);
+                group.put(part[3], p.getProperty(name));
+            }
+        }
+        return out;
     }
 
     /**

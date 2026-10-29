@@ -63,24 +63,47 @@ public class ProcessDefinitionTest {
     }
 
     @Test
+    public void anAutomaticStepNeedsAValueForEveryInputNobodyGives() {
+        String step = """
+                {"namespace": "cr_automation", "steps": [{"id": "child_order", "label": "x", "scope": "ORDER", "runs": {"flow": "f"},
+                  "inputs": {"cr_name": {"from": "user", "type": "SELECT", "required": true, "options_from": "order.cr_options"},
+                             "run_execution": {"from": "user", "type": "BOOL", "default": false}%s},
+                  "auto_start": %s}]}""";
+        ProcessDefinition ok = ProcessDefinition.parse(SimpleJson.parse(step.formatted("", "{\"for_each\": \"cr_name\", \"max_running\": 2}")));
+        assertEquals(new ProcessDefinition.AutoStart("cr_name", 2), ok.step("child_order").autoStart());
+
+        String all = String.join("\n", problems(step.formatted(
+                ", \"note\": {\"from\": \"user\", \"type\": \"STRING\", \"required\": true}",
+                "{\"for_each\": \"run_execution\", \"max_running\": 99, \"when\": 1}")));
+        assertTrue(all.contains("for_each must name a SELECT input asked from the user ('run_execution' is not one)"), all);
+        assertTrue(all.contains("input 'cr_name' is required: give it a default"), "cr_name is no longer the for_each input: " + all);
+        assertTrue(all.contains("input 'note' is required: give it a default"), all);
+        assertTrue(all.contains("max_running must be 0 (no limit) to 50"), all);
+        assertTrue(all.contains("unknown key 'when'"), all);
+        assertFalse(all.contains("'run_execution' is required"), "a BOOL is false when not given: " + all);
+    }
+
+    @Test
     public void theDiagramMayOnlyJoinAndPlaceExistingSteps() {
         String all = String.join("\n", problems("""
                 {"namespace": "cr_automation",
                  "layout": {"a": {"x": 10, "y": 20.5}, "ghost": {"x": 0, "y": 0}, "b": {"x": "left"}},
                  "steps": [
                   {"id": "a", "label": "A", "scope": "ORDER", "runs": {"flow": "f"}, "follows": ["a"]},
-                  {"id": "b", "label": "B", "scope": "ORDER", "runs": {"flow": "f"}, "follows": ["a", "nope"]}
+                  {"id": "b", "label": "B", "scope": "ORDER", "runs": {"flow": "f"}, "follows": ["a", "nope"], "otherwise": "ghost"}
                 ]}"""));
         assertTrue(all.contains("Step 'a' cannot follow itself"), all);
         assertTrue(all.contains("Step 'b' follows 'nope', which is not a step"), all);
         assertTrue(all.contains("layout.ghost: there is no such step"), all);
+        assertTrue(all.contains("Step 'b': otherwise 'ghost' must be another step of this process."), all);
         assertTrue(all.contains("layout.b must be {x: number, y: number}"), all);
         assertFalse(all.contains("layout.a"), all);
         ProcessDefinition ok = ProcessDefinition.parse(SimpleJson.parse("""
                 {"namespace": "cr_automation", "layout": {"b": {"x": 300, "y": 0}}, "steps": [
                   {"id": "a", "label": "A", "scope": "ORDER", "runs": {"flow": "f"}},
-                  {"id": "b", "label": "B", "scope": "ORDER", "runs": {"flow": "f"}, "follows": ["a"]}]}"""));
+                  {"id": "b", "label": "B", "scope": "ORDER", "runs": {"flow": "f"}, "follows": ["a"], "otherwise": "a"}]}"""));
         assertEquals(List.of("a"), ok.step("b").follows());
+        assertEquals("a", ok.step("b").otherwise());
     }
 
     @Test

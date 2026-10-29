@@ -14,7 +14,8 @@ import java.util.regex.Pattern;
 
 /**
  * A pipeline of widgets a process step attaches to its flow: {@code node} runs for each node instead of the flow's
- * default node work, {@code after_nodes} once after all nodes. A pipeline is a list of widgets; If / else and For
+ * default node work, {@code after_nodes} once after all nodes, {@code after_step} once after the flow's own NEI step
+ * (e.g. the MOP generation of a child order), with that step's result. A pipeline is a list of widgets; If / else and For
  * each hold their own lists, so a pipeline is always a tree (no loops, no joins) and compiles to plain Kestra tasks
  * ({@link PipelineCompiler}).
  *
@@ -34,14 +35,15 @@ import java.util.regex.Pattern;
  * </pre>
  * References in texts: {@code ${order.X}}, {@code ${child.X}} (also the child's collected lists), {@code ${ciq.X}},
  * {@code ${activity.node_type}}, {@code ${activity.sub_activity}}, {@code ${node}} (node pipeline),
- * {@code ${run.nodes|failed_nodes|succeeded_nodes|failed_count}} (after_nodes), {@code ${item}} (inside For each),
+ * {@code ${run.nodes|failed_nodes|succeeded_nodes|failed_count}} (after_nodes), {@code ${run.step|status|statusText|message}}
+ * and {@code ${run.RESULT}} (after_step: the flow's step and its NEI results), {@code ${item}} (inside For each),
  * {@code ${step.ID.FIELD}} (an earlier widget: NEI / MAIL results, status, statusText, message; DECISION decision,
  * comment, decided_by, from, received_at (yyyyMMddHHmmss), subject), and in NEI parameters and mail fields {@code ${secret:NAME}} and {@code ${WORKDIR}}.
  */
 final class Pipeline {
 
     enum Hook {
-        NODE("node"), AFTER_NODES("after_nodes");
+        NODE("node"), AFTER_NODES("after_nodes"), AFTER_STEP("after_step");
 
         final String key;
 
@@ -497,8 +499,12 @@ final class Pipeline {
                             : "use activity.node_type or activity.sub_activity.";
                 }
                 case "run" -> {
+                    if (hook == Hook.AFTER_STEP) {
+                        return p.length == 2 && IDENT.matcher(p[1]).matches() ? null
+                                : "use run.step, run.status, run.statusText, run.message or run.RESULT_NAME.";
+                    }
                     if (hook != Hook.AFTER_NODES) {
-                        return "run.X is known only in the after_nodes pipeline.";
+                        return "run.X is known only in the after_nodes and after_step pipelines.";
                     }
                     return p.length == 2 && RUN_FIELDS.contains(p[1]) ? null : "use run." + RUN_FIELDS + ".";
                 }

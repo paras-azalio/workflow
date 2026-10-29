@@ -22,6 +22,7 @@ description: |
 labels:
   project: CR_AUTOMATION
   process: "true"   # a step of the order process: executors may start it (gateway rule)
+  outline: "CIQ validation (FileCR)"   # what the process designer's Flow view draws (see cr_mop_execution)
   ne_type: FILECR
   action: CR_CIQ_PROCESSOR
 

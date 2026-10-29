@@ -194,6 +194,16 @@ final class Kestra {
         return e != null && e.get("state") instanceof Map<?, ?> s ? String.valueOf(s.get("current")) : null;
     }
 
+    /** Kills an execution and its subflow executions; a finished one is left as it is (Kestra answers 409). */
+    void kill(String executionId) throws IOException, InterruptedException {
+        HttpResponse<String> r = client.send(HttpRequest.newBuilder(base.resolve("/api/v1/" + tenant + "/executions/"
+                        + Paths.encode(executionId) + "/actions/kill?isOnKillCascade=true"))
+                .header("Authorization", authorization).DELETE().build(), HttpResponse.BodyHandlers.ofString());
+        if (r.statusCode() / 100 != 2 && r.statusCode() != 409) {
+            throw new KestraError(r.statusCode() == 401 ? 502 : r.statusCode(), "Kestra refused to kill " + executionId + ": " + r.body());
+        }
+    }
+
     /** Resumes a paused execution with these inputs (the Pause task's onResume inputs). */
     void resume(String executionId, Map<String, String> inputs) throws IOException, InterruptedException {
         String boundary = "----crgateway" + java.util.UUID.randomUUID().toString().replace("-", "");
@@ -239,6 +249,20 @@ final class Kestra {
     }
 
     /** The value of a namespace KV entry, or null when there is none. */
+    /** A namespace file's text, or null when there is none. */
+    String namespaceFile(String namespace, String path) throws IOException, InterruptedException {
+        HttpResponse<String> r = client.send(HttpRequest.newBuilder(base.resolve("/api/v1/" + tenant + "/namespaces/"
+                        + Paths.encode(namespace) + "/files?path=" + java.net.URLEncoder.encode(path, java.nio.charset.StandardCharsets.UTF_8)))
+                .header("Authorization", authorization).GET().build(), HttpResponse.BodyHandlers.ofString());
+        if (r.statusCode() == 404) {
+            return null;
+        }
+        if (r.statusCode() != 200) {
+            throw new IOException("Kestra answered %d for namespace file %s%s.".formatted(r.statusCode(), namespace, path));
+        }
+        return r.body();
+    }
+
     Object kv(String namespace, String key) throws IOException, InterruptedException {
         HttpResponse<String> r = client.send(HttpRequest.newBuilder(base.resolve("/api/v1/" + tenant + "/namespaces/"
                         + Paths.encode(namespace) + "/kv/" + Paths.encode(key)))

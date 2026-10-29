@@ -27,6 +27,34 @@ public class ActivityConfigTest {
     }
 
     @Test
+    public void executionSettingsNameAModeAndNodePatterns() {
+        assertEquals(List.of(), problems("""
+                {"execution": {"mode": "QUEUED", "nodes": {"SOUTH*": "PARALLEL"}}}"""));
+        String all = String.join("\n", problems("""
+                {"execution": {"mode": "SERIAL", "nodes": {"a b": "QUEUED", "X": "LATER"}, "order": 1}}"""));
+        assertTrue(all.contains("execution.mode must be PARALLEL or QUEUED"), all);
+        assertTrue(all.contains("execution.nodes.a b: a node pattern is"), all);
+        assertTrue(all.contains("execution.nodes.X must be PARALLEL or QUEUED"), all);
+        assertTrue(all.contains("execution: unknown key 'order'"), all);
+    }
+
+    @Test
+    public void theProjectsLoginAndGrcValuesAreReadPerComponent() throws Exception {
+        java.util.Map<String, Object> d = ActivityStore.projectDefaults("""
+                nei.clicr.grc.NIAM_IP=127.0.0.1
+                nei.clicr.login.M2MUSER1=m2madmin
+                nei.clicr.login.M2MPASSWORD1=${secret:CLICR_M2MPASSWORD1}
+                nei.clicr.configdir=nei/clicr/config
+                nei.filecr.grc.yaml_path=${WORKDIR}/templates/rules
+                store.jdbc.user=kestra
+                """);
+        assertEquals(java.util.Map.of("login", java.util.Map.of("M2MUSER1", "m2madmin", "M2MPASSWORD1", "${secret:CLICR_M2MPASSWORD1}"),
+                "grc", java.util.Map.of("NIAM_IP", "127.0.0.1")), d.get("clicr"));
+        assertEquals(java.util.Map.of("login", java.util.Map.of(), "grc", java.util.Map.of("yaml_path", "${WORKDIR}/templates/rules")), d.get("filecr"));
+        assertEquals(2, d.size(), "only nei.<component>.login / grc lines count");
+    }
+
+    @Test
     public void secretsAreNeverWrittenAsValues() {
         String all = String.join("\n", problems("""
                 {"steps": {"MOP_EXECUTION": {"login": {"M2MPASSWORD1": "plain-text"},

@@ -1,9 +1,9 @@
 diff --git a/ui/src/components/crdesigner/ActivityDesigner.vue b/ui/src/components/crdesigner/ActivityDesigner.vue
 new file mode 100644
-index 0000000..c041d7c
+index 0000000..4b0c617
 --- /dev/null
 +++ b/ui/src/components/crdesigner/ActivityDesigner.vue
-@@ -0,0 +1,302 @@
+@@ -0,0 +1,379 @@
 +<template>
 +    <div class="designer">
 +        <div class="designer-top">
@@ -15,8 +15,8 @@ index 0000000..c041d7c
 +                data-test="activity-select"
 +                @update:model-value="selectActivity"
 +            >
-+                <KsOption v-for="a in activities" :key="keyOf(a)" :label="keyOf(a)" :value="keyOf(a)">
-+                    <span>{{ keyOf(a) }}</span>
++                <KsOption v-for="a in activities" :key="keyOf(a)" :label="labelOf(a)" :value="keyOf(a)">
++                    <span>{{ labelOf(a) }}</span>
 +                    <span class="hint">{{ a.published_version ? ` v${a.published_version}` : "" }}{{ a.draft_version ? ` · ${$t("cr_designer.draft")} v${a.draft_version}` : "" }}</span>
 +                </KsOption>
 +            </KsSelect>
@@ -51,6 +51,45 @@ index 0000000..c041d7c
 +                        <KsInput v-model="config.description" :disabled="!editable" />
 +                    </label>
 +
++                    <KsCard class="section" data-test="execution-section">
++                        <h5>{{ $t("cr_designer.execution") }}</h5>
++                        <p class="hint">{{ $t("cr_designer.execution_hint") }}</p>
++                        <label class="field">
++                            <span>{{ $t("cr_designer.execution_mode") }}</span>
++                            <KsSelect
++                                :modelValue="config.execution?.mode ?? ''"
++                                :placeholder="$t('cr_designer.mode_unset')"
++                                :disabled="!editable"
++                                data-test="execution-mode"
++                                @update:model-value="(m: string) => setExecution('mode', m || undefined)"
++                            >
++                                <KsOption :label="$t('cr_designer.mode_unset')" value="" />
++                                <KsOption v-for="m in MODES" :key="m" :label="$t(`cr_designer.mode_${m}`)" :value="m" />
++                            </KsSelect>
++                        </label>
++                        <div v-for="(mode, pattern) in config.execution?.nodes ?? {}" :key="pattern" class="section-head">
++                            <span>{{ $t("cr_designer.node_pattern") }}</span>
++                            <KsInput
++                                :modelValue="String(pattern)"
++                                class="pattern-input"
++                                :disabled="!editable"
++                                @change="(p: string | number) => setExecution('nodes', renameKey(config.execution.nodes, String(pattern), String(p)))"
++                            />
++                            <KsSelect
++                                :modelValue="mode"
++                                class="pattern-input"
++                                :disabled="!editable"
++                                @update:model-value="(m: string) => setExecution('nodes', {...config.execution.nodes, [pattern]: m})"
++                            >
++                                <KsOption v-for="m in MODES" :key="m" :label="$t(`cr_designer.mode_${m}`)" :value="m" />
++                            </KsSelect>
++                            <KsButton v-if="editable" :icon="Close" size="small" :aria-label="$t('delete')" @click="removeExecutionNode(String(pattern))" />
++                        </div>
++                        <KsButton v-if="editable" :icon="Plus" size="small" data-test="add-execution-node" @click="addExecutionNode">
++                            {{ $t("cr_designer.add_node_override") }}
++                        </KsButton>
++                    </KsCard>
++
 +                    <KsCard v-for="(section, stepName) in config.steps" :key="stepName" class="section" :data-test="`section-${stepName}`">
 +                        <div class="section-head">
 +                            <span>{{ $t("cr_designer.for_step") }}</span>
@@ -68,7 +107,7 @@ index 0000000..c041d7c
 +                                {{ $t("delete") }}
 +                            </KsButton>
 +                        </div>
-+                        <KeyValues v-for="g in GROUPS" :key="g" v-model="section[g]" :group="g" :editable="editable" />
++                        <KeyValues v-for="g in GROUPS" :key="g" v-model="section[g]" :group="g" :editable="editable" :known="known(String(stepName), g)" />
 +
 +                        <h5>{{ $t("cr_designer.node_overrides") }}</h5>
 +                        <p class="hint">{{ $t("cr_designer.node_overrides_hint") }}</p>
@@ -83,7 +122,7 @@ index 0000000..c041d7c
 +                                />
 +                                <KsButton v-if="editable" :icon="Close" size="small" :aria-label="$t('delete')" @click="removeNode(section, String(pattern))" />
 +                            </div>
-+                            <KeyValues v-for="g in GROUPS" :key="g" v-model="node[g]" :group="g" :editable="editable" />
++                            <KeyValues v-for="g in GROUPS" :key="g" v-model="node[g]" :group="g" :editable="editable" :known="known(String(stepName), g)" />
 +                        </div>
 +                        <KsButton v-if="editable" :icon="Plus" size="small" @click="addNode(section)">
 +                            {{ $t("cr_designer.add_node_override") }}
@@ -110,6 +149,7 @@ index 0000000..c041d7c
 +                <KsFormItem :label="$t('description')">
 +                    <KsInput v-model="draft.description" />
 +                </KsFormItem>
++                <p class="hint">{{ $t("cr_designer.declare_levels_hint") }}</p>
 +            </KsForm>
 +            <KsAlert v-if="declareError" type="error" :closable="false">
 +                {{ declareError }}
@@ -143,11 +183,16 @@ index 0000000..c041d7c
 +    interface Activity {node_type: string, sub_activity: string, description?: string, published_version?: number, draft_version?: number}
 +
 +    const GROUPS = ["params", "login", "grc"] as const
++    const MODES = ["PARALLEL", "QUEUED"] as const
 +
 +    const props = defineProps<{me: Me}>()
 +    const {t} = useI18n()
 +
++    interface Parameters {steps: Record<string, {component: string, params: Record<string, string>}>,
++                          components: Record<string, {login: Record<string, string>, grc: Record<string, string>}>}
++
 +    const activities = ref<Activity[]>([])
++    const parameters = ref<Parameters>({steps: {}, components: {}})
 +    const knownSteps = ref<string[]>([])
 +    const activity = ref<Activity>()
 +    const listError = ref("")
@@ -157,6 +202,8 @@ index 0000000..c041d7c
 +    const declareError = ref("")
 +
 +    const keyOf = (a: Activity) => `${a.node_type} / ${a.sub_activity}`
++    const labelOf = (a: Activity) => a.node_type === "*" ? t("cr_designer.whole_project")
++        : a.sub_activity === "*" ? t("cr_designer.all_sub_activities", {nodeType: a.node_type}) : keyOf(a)
 +    const activityKey = computed(() => activity.value ? keyOf(activity.value) : "")
 +
 +    const {versions, selected, loaded, content: config, busy, error, message, problems, dirty, loadVersions, leaveConfirmed, ask, handlers} = useVersioned({
@@ -187,6 +234,14 @@ index 0000000..c041d7c
 +        if (activity.value) await loadVersions()
 +    }
 +
++    /** What a section's group can set: the step's request parameters, or its component's login / GRC values (all for *). */
++    function known(stepName: string, group: string): Record<string, string> {
++        const steps = stepName === "*" ? Object.values(parameters.value.steps) : [parameters.value.steps[stepName]].filter(Boolean)
++        if (group === "params") return Object.assign({}, ...steps.map(s => s.params))
++        const components = stepName === "*" ? Object.keys(parameters.value.components) : steps.map(s => s.component)
++        return Object.assign({}, ...components.map(c => (parameters.value.components[c] as any)?.[group] ?? {}))
++    }
++
 +    function addSection() {
 +        const name = stepChoices.value.find(s => !(s in config.value.steps)) ?? `STEP_${Object.keys(config.value.steps).length + 1}`
 +        config.value.steps = {...config.value.steps, [name]: {}}
@@ -197,6 +252,27 @@ index 0000000..c041d7c
 +        const next = {...config.value.steps}
 +        delete next[name]
 +        config.value.steps = next
++    }
++
++    function setExecution(key: string, value: any) {
++        const next = {...config.value.execution}
++        if (value === undefined || (typeof value === "object" && !Object.keys(value).length)) delete next[key]
++        else next[key] = value
++        if (Object.keys(next).length) config.value.execution = next
++        else delete config.value.execution
++    }
++
++    function addExecutionNode() {
++        const nodes = config.value.execution?.nodes ?? {}
++        let n = Object.keys(nodes).length + 1
++        while (`NODE${n}*` in nodes) n++
++        setExecution("nodes", {...nodes, [`NODE${n}*`]: "QUEUED"})
++    }
++
++    function removeExecutionNode(pattern: string) {
++        const next = {...config.value.execution?.nodes}
++        delete next[pattern]
++        setExecution("nodes", next)
 +    }
 +
 +    function addNode(section: any) {
@@ -239,6 +315,7 @@ index 0000000..c041d7c
 +    onMounted(async () => {
 +        try {
 +            await refreshList()
++            parameters.value = await gateway<Parameters>("/cr/api/activities/parameters").catch(() => parameters.value)
 +            if (activities.value.length) await selectActivity(keyOf(activities.value[0]))
 +        } catch (e: any) {
 +            listError.value = e?.message ?? String(e)
@@ -361,6 +438,654 @@ index 0000000..faea362
 +        }
 +    })
 +</script>
+diff --git a/ui/src/components/crdesigner/ExtraNode.vue b/ui/src/components/crdesigner/ExtraNode.vue
+new file mode 100644
+index 0000000..13774aa
+--- /dev/null
++++ b/ui/src/components/crdesigner/ExtraNode.vue
+@@ -0,0 +1,65 @@
++<template>
++    <div class="extra-node" :data-test="`extra-node-${data.step}-${data.hook}-${data.index}`">
++        <Handle type="target" :position="Position.Top" :connectable="false" />
++        <div class="extra-head">
++            <KsTag size="small" type="info">
++                {{ $t(`cr_designer.hook_${data.hook}`) }}
++            </KsTag>
++        </div>
++        <div class="extra-label">{{ title }}</div>
++        <div class="extra-meta">{{ summary }}</div>
++    </div>
++</template>
++
++<script setup lang="ts">
++    import {computed} from "vue"
++    import {useI18n} from "vue-i18n"
++    import {Handle, Position} from "@vue-flow/core"
++    import {flatten} from "./pipelineWidgets"
++
++    const props = defineProps<{data: {step: string, hook: string, index: number, conditions: any[] | null, widgets: any[]}}>()
++    const {t} = useI18n()
++
++    const condition = (c: any) => c.op === "equals" ? String(c.value)
++        : c.op === "in" ? (c.value ?? []).join(` ${t("cr_designer.or")} `)
++            : `${c.ref.replace("activity.", "")} ${t(`cr_designer.op_${c.op}`)} ${Array.isArray(c.value) ? c.value.join(",") : c.value ?? ""}`
++
++    const title = computed(() => props.data.conditions
++        ? props.data.conditions.map(condition).join(" / ")
++        : t(props.data.index === 0 ? "cr_designer.every_activity" : "cr_designer.every_other_activity"))
++
++    const summary = computed(() => {
++        const all = flatten(props.data.widgets)
++        const shown = all.slice(0, 4).map(w => w.label || w.id).join(" → ")
++        return all.length > 4 ? `${shown} … (${all.length})` : shown
++    })
++</script>
++
++<style scoped lang="scss">
++    .extra-node {
++        width: 13rem;
++        padding: var(--ks-spacing-2);
++        border: 1px dashed var(--ks-border-strong);
++        border-radius: var(--ks-spacing-2);
++        background: var(--ks-bg-surface);
++        cursor: pointer;
++    }
++
++    .extra-head {
++        display: flex;
++        gap: var(--ks-spacing-1);
++    }
++
++    .extra-label {
++        margin-top: var(--ks-spacing-1);
++        font-size: var(--ks-font-size-sm);
++        font-weight: 600;
++        word-break: break-word;
++    }
++
++    .extra-meta {
++        color: var(--ks-text-secondary);
++        font-size: var(--ks-font-size-xs);
++        word-break: break-word;
++    }
++</style>
+diff --git a/ui/src/components/crdesigner/FlowNode.vue b/ui/src/components/crdesigner/FlowNode.vue
+new file mode 100644
+index 0000000..6ae35d5
+--- /dev/null
++++ b/ui/src/components/crdesigner/FlowNode.vue
+@@ -0,0 +1,209 @@
++<template>
++    <div
++        class="flow-node"
++        :class="[`kind-${data.kind}`, {selected, drill: data.drill}]"
++        :style="{width: `${data.w}px`, height: `${data.h}px`, '--accent': ACCENT[data.kind] ?? ACCENT.step}"
++        :data-test="`flow-${data.kind}-${data.widget ?? data.step ?? data.id}`"
++        :title="tooltip"
++    >
++        <Handle id="l" type="target" :position="Position.Left" :connectable="false" />
++        <Handle id="tb" type="target" :position="Position.Bottom" :connectable="false" />
++        <Handle id="r" type="source" :position="Position.Right" :connectable="false" />
++        <Handle id="b" type="source" :position="Position.Bottom" :connectable="false" />
++
++        <template v-if="data.kind === 'group'">
++            <span class="group-title">{{ data.title }}</span>
++        </template>
++        <template v-else-if="data.kind === 'merge'" />
++        <template v-else-if="data.kind === 'if'">
++            <div class="diamond"><span>IF</span></div>
++            <span class="under">{{ data.title }}</span>
++        </template>
++        <template v-else-if="ROUND.includes(data.kind)">
++            <component :is="ICON[data.kind]" class="round-icon" />
++            <span class="under">{{ data.title }}</span>
++            <span v-if="data.sub" class="under under-sub">{{ data.sub }}</span>
++        </template>
++        <template v-else>
++            <component :is="ICON[data.kind] ?? Hexagon" class="box-icon" />
++            <div class="box-text">
++                <span class="box-title">{{ data.title }}</span>
++                <span v-if="data.sub" class="box-sub">{{ data.sub }}</span>
++            </div>
++            <KsTag v-if="data.tag" size="small" type="success" class="box-tag">
++                {{ data.tag }}
++            </KsTag>
++        </template>
++    </div>
++</template>
++
++<script setup lang="ts">
++    import {computed} from "vue"
++    import {Handle, Position} from "@vue-flow/core"
++    import Hexagon from "vue-material-design-icons/Hexagon.vue"
++    import EmailOutline from "vue-material-design-icons/EmailOutline.vue"
++    import PauseCircleOutline from "vue-material-design-icons/PauseCircleOutline.vue"
++    import AccountClockOutline from "vue-material-design-icons/AccountClockOutline.vue"
++    import Sync from "vue-material-design-icons/Sync.vue"
++    import PlaylistPlus from "vue-material-design-icons/PlaylistPlus.vue"
++    import FileChartOutline from "vue-material-design-icons/FileChartOutline.vue"
++    import PlayCircleOutline from "vue-material-design-icons/PlayCircleOutline.vue"
++    import CheckCircleOutline from "vue-material-design-icons/CheckCircleOutline.vue"
++    import StopCircleOutline from "vue-material-design-icons/StopCircleOutline.vue"
++    import type {FlowNode} from "./flowGraph"
++
++    const props = defineProps<{data: FlowNode, selected?: boolean}>()
++
++    const ROUND = ["start", "end", "fail", "person"]
++    const ICON: Record<string, any> = {
++        step: Hexagon, nei: Hexagon, mail: EmailOutline, wait: PauseCircleOutline, person: AccountClockOutline, each: Sync,
++        collect: PlaylistPlus, report: FileChartOutline, start: PlayCircleOutline, end: CheckCircleOutline, fail: StopCircleOutline,
++    }
++    const ACCENT: Record<string, string> = {
++        step: "var(--ks-status-running)", nei: "var(--ks-status-running)", mail: "var(--ks-status-info)",
++        wait: "var(--ks-status-warning)", person: "var(--ks-status-warning)", if: "var(--ks-status-pending)",
++        each: "var(--ks-status-neutral)", group: "var(--ks-status-neutral)", collect: "var(--ks-status-success)",
++        report: "var(--ks-status-success)", start: "var(--ks-status-neutral)", end: "var(--ks-status-success)",
++        fail: "var(--ks-status-error)", merge: "var(--ks-status-neutral)",
++    }
++
++    const tooltip = computed(() => [props.data.title, props.data.sub].filter(Boolean).join(" - "))
++</script>
++
++<style scoped lang="scss">
++    .flow-node {
++        position: relative;
++        display: flex;
++        align-items: center;
++        gap: var(--ks-spacing-2);
++        color: var(--ks-text-primary);
++    }
++
++    .flow-node:not(.kind-group):not(.kind-if):not(.kind-merge):not(.kind-start):not(.kind-end):not(.kind-fail):not(.kind-person) {
++        padding: var(--ks-spacing-1) var(--ks-spacing-2);
++        border: 1px solid var(--ks-border-default);
++        border-left: 4px solid var(--accent);
++        border-radius: var(--ks-spacing-2);
++        background: var(--ks-bg-surface);
++        cursor: pointer;
++    }
++
++    .flow-node.selected:not(.kind-group) {
++        outline: 2px solid var(--ks-border-focus);
++        outline-offset: 2px;
++    }
++
++    .kind-group {
++        align-items: flex-start;
++        padding: var(--ks-spacing-1) var(--ks-spacing-2);
++        border: 1px dashed var(--ks-border-strong);
++        border-radius: var(--ks-spacing-3);
++        background: var(--ks-bg-base);
++        pointer-events: none;
++    }
++
++    .group-title {
++        color: var(--ks-text-secondary);
++        font-size: var(--ks-font-size-xs);
++    }
++
++    .kind-merge {
++        border-radius: 50%;
++        background: var(--ks-text-secondary);
++    }
++
++    .box-icon {
++        flex: none;
++        color: var(--accent);
++    }
++
++    .box-text {
++        display: flex;
++        flex-direction: column;
++        min-width: 0;
++    }
++
++    .box-title {
++        overflow: hidden;
++        font-size: var(--ks-font-size-sm);
++        font-weight: 600;
++        line-height: 1.2;
++        text-overflow: ellipsis;
++        display: -webkit-box;
++        -webkit-line-clamp: 2;
++        -webkit-box-orient: vertical;
++    }
++
++    .box-sub {
++        overflow: hidden;
++        color: var(--ks-text-secondary);
++        font-size: var(--ks-font-size-xs);
++        text-overflow: ellipsis;
++        white-space: nowrap;
++    }
++
++    .box-tag {
++        position: absolute;
++        top: calc(-1 * var(--ks-spacing-3));
++        right: var(--ks-spacing-2);
++    }
++
++    .kind-if {
++        justify-content: center;
++        cursor: pointer;
++    }
++
++    .diamond {
++        display: flex;
++        align-items: center;
++        justify-content: center;
++        width: 70%;
++        height: 70%;
++        transform: rotate(45deg);
++        border: 2px solid var(--accent);
++        background: var(--ks-bg-surface);
++    }
++
++    .diamond span {
++        transform: rotate(-45deg);
++        color: var(--accent);
++        font-size: var(--ks-font-size-xs);
++        font-weight: 700;
++    }
++
++    .kind-start, .kind-end, .kind-fail, .kind-person {
++        justify-content: center;
++    }
++
++    .round-icon {
++        color: var(--accent);
++        transform: scale(1.6);
++    }
++
++    .under {
++        position: absolute;
++        top: 100%;
++        left: 50%;
++        width: 11rem;
++        margin-top: var(--ks-spacing-1);
++        transform: translateX(-50%);
++        color: var(--ks-text-primary);
++        font-size: var(--ks-font-size-xs);
++        font-weight: 600;
++        text-align: center;
++        line-height: 1.2;
++    }
++
++    .kind-if .under {
++        left: calc(50% + var(--ks-spacing-2));
++        width: 12rem;
++        transform: none;
++        text-align: left;
++    }
++
++    .under-sub {
++        margin-top: calc(var(--ks-spacing-1) + 1.3em);
++        color: var(--ks-text-secondary);
++        font-weight: 400;
++    }
++</style>
+diff --git a/ui/src/components/crdesigner/FlowView.vue b/ui/src/components/crdesigner/FlowView.vue
+new file mode 100644
+index 0000000..f7b312b
+--- /dev/null
++++ b/ui/src/components/crdesigner/FlowView.vue
+@@ -0,0 +1,201 @@
++<template>
++    <div class="flow-view" data-test="flow-view">
++        <div class="flow-crumbs">
++            <KsButton size="small" text :disabled="!drill" data-test="flow-crumb-main" @click="drill = undefined">
++                {{ $t("cr_designer.flow_main") }}
++            </KsButton>
++            <template v-if="drill">
++                <ChevronRight />
++                <span>{{ drillStep?.label }}</span>
++                <ChevronRight />
++                <strong>{{ $t(`cr_designer.hook_${drill.hook}`) }}</strong>
++            </template>
++            <span class="hint">{{ drill ? $t("cr_designer.flow_drill_hint") : $t("cr_designer.flow_main_hint") }}</span>
++            <span class="tools">
++                <KsButton size="small" :icon="MagnifyPlusOutline" :aria-label="$t('cr_designer.flow_zoom_in')" :title="$t('cr_designer.flow_zoom_in')" @click="zoom(1)" />
++                <KsButton size="small" :icon="MagnifyMinusOutline" :aria-label="$t('cr_designer.flow_zoom_out')" :title="$t('cr_designer.flow_zoom_out')" @click="zoom(-1)" />
++                <KsButton size="small" :icon="FitToScreenOutline" :aria-label="$t('cr_designer.flow_fit')" :title="$t('cr_designer.flow_fit')" data-test="flow-fit" @click="fit" />
++                <KsButton size="small" :icon="Download" :aria-label="$t('cr_designer.flow_export')" :title="$t('cr_designer.flow_export')" data-test="flow-export" @click="exportPng" />
++            </span>
++        </div>
++        <div class="flow-canvas" :class="{split: drill}">
++            <VueFlow
++                id="cr-flow-main"
++                :nodes="toNodes(main.nodes)"
++                :edges="toEdges(main.edges)"
++                :nodesDraggable="false"
++                :nodesConnectable="false"
++                :minZoom="0.2"
++                :maxZoom="1.5"
++                @nodeClick="({node}) => pick(node.data)"
++                @nodeDoubleClick="({node}) => open(node.data)"
++                @nodesInitialized="readable(main$)"
++            >
++                <Background :gap="GRAPH_BACKGROUND.gap" :size="GRAPH_BACKGROUND.size" />
++                <template #node-flow="p">
++                    <FlowNode :data="p.data" :selected="isSelected(p.data)" />
++                </template>
++                <template #edge-insert="p">
++                    <InsertEdge v-bind="p" />
++                </template>
++            </VueFlow>
++        </div>
++        <div v-if="drill" class="flow-canvas split" data-test="flow-drill">
++            <VueFlow
++                id="cr-flow-drill"
++                :nodes="toNodes(drillGraph.nodes)"
++                :edges="toEdges(drillGraph.edges)"
++                :nodesDraggable="false"
++                :nodesConnectable="false"
++                :minZoom="0.2"
++                :maxZoom="1.5"
++                @nodeClick="({node}) => pick(node.data)"
++                @nodesInitialized="readable(drill$)"
++            >
++                <Background :gap="GRAPH_BACKGROUND.gap" :size="GRAPH_BACKGROUND.size" />
++                <template #node-flow="p">
++                    <FlowNode :data="p.data" :selected="isSelected(p.data)" />
++                </template>
++                <template #edge-insert="p">
++                    <InsertEdge v-bind="p" />
++                </template>
++            </VueFlow>
++        </div>
++        <p class="hint legend">{{ $t("cr_designer.flow_legend") }}</p>
++    </div>
++</template>
++
++<script setup lang="ts">
++    import {computed, provide, ref, watch} from "vue"
++    import {useI18n} from "vue-i18n"
++    import {VueFlow, MarkerType, getRectOfNodes, useVueFlow} from "@vue-flow/core"
++    import {Background} from "@vue-flow/background"
++    import {GRAPH_BACKGROUND, useScreenshot} from "@kestra-io/topology"
++    import ChevronRight from "vue-material-design-icons/ChevronRight.vue"
++    import MagnifyPlusOutline from "vue-material-design-icons/MagnifyPlusOutline.vue"
++    import MagnifyMinusOutline from "vue-material-design-icons/MagnifyMinusOutline.vue"
++    import FitToScreenOutline from "vue-material-design-icons/FitToScreenOutline.vue"
++    import Download from "vue-material-design-icons/Download.vue"
++    import FlowNode from "./FlowNode.vue"
++    import InsertEdge from "./InsertEdge.vue"
++    import {FLOW_INSERT} from "./pipelineWidgets"
++    import {mainFlow, drillFlow} from "./flowGraph"
++    import type {FlowNode as Box, FlowEdge, FlowPick} from "./flowGraph"
++    import type {FlowInfo} from "./crApi"
++
++    const props = defineProps<{definition: any, flows: FlowInfo[], selected?: FlowPick, editable?: boolean}>()
++    const emit = defineEmits<{select: [pick: FlowPick], insert: [insert: NonNullable<FlowEdge["insert"]>, type: string]}>()
++
++    provide(FLOW_INSERT, (insert, type) => emit("insert", insert, type))
++    const {t} = useI18n()
++    const main$ = useVueFlow("cr-flow-main")
++    const drill$ = useVueFlow("cr-flow-drill")
++    const READABLE = 0.85
++
++    /** Fit the whole picture; when that is too small to read, start at a readable zoom from the left (pan to see more). */
++    async function readable(flow: ReturnType<typeof useVueFlow>) {
++        await flow.fitView({padding: 0.1})
++        const {y, zoom} = flow.getViewport()
++        if (zoom >= READABLE) return
++        const h = flow.dimensions.value.height
++        flow.setViewport({x: 24, y: h / 2 - (h / 2 - y) * READABLE / zoom, zoom: READABLE})
++    }
++
++    const target = () => drill.value ? drill$ : main$
++
++    const zoom = (direction: number) => direction > 0 ? target().zoomIn() : target().zoomOut()
++
++    const fit = () => target().fitView({padding: 0.1})
++
++    const {capture} = useScreenshot()
++
++    /** The whole picture of the panel shown (main flow, or the drill-down when open) as a PNG download. */
++    async function exportPng() {
++        const flow = target()
++        if (!flow.vueFlowRef.value) return
++        const name = drill.value ? `${drill.value.step}-${drill.value.hook}` : "main-flow"
++        await capture(flow.vueFlowRef.value, {type: "png", fileName: `flow-${name}`, bounds: getRectOfNodes(flow.getNodes.value), shouldDownload: true})
++    }
++
++    const drill = ref<{step: string, hook: string}>()
++    const drillStep = computed(() => props.definition?.steps?.find((s: any) => s.id === drill.value?.step))
++
++    const main = computed(() => mainFlow(props.definition, props.flows, t))
++    const drillGraph = computed(() => drill.value ? drillFlow(props.definition, props.flows, drill.value.step, drill.value.hook, t) : {nodes: [], edges: []})
++
++    watch(() => props.definition, () => {
++        if (drill.value && !drillStep.value) drill.value = undefined
++    })
++
++    const toNodes = (nodes: Box[]) => nodes.map(n => ({
++        id: n.id, type: "flow", position: {x: n.x, y: n.y}, data: n, draggable: false, connectable: false,
++        zIndex: n.kind === "group" ? 0 : 1, style: {width: `${n.w}px`, height: `${n.h}px`},
++    }))
++
++    const toEdges = (edges: FlowEdge[]) => edges.map(e => ({
++        id: e.id, source: e.source, target: e.target, sourceHandle: e.sourceHandle, targetHandle: e.targetHandle,
++        type: props.editable && e.insert ? "insert" : "smoothstep", label: e.label, markerEnd: MarkerType.ArrowClosed, zIndex: 2,
++        style: e.back ? {strokeDasharray: "5 4"} : undefined,
++        pathOptions: e.back ? {offset: 40 + 28 * (e.lane ?? 1)} : undefined,
++        labelStyle: e.label === "TRUE" ? {fill: "var(--ks-text-success)", fontWeight: 700}
++            : e.label === "FALSE" ? {fill: "var(--ks-text-error)", fontWeight: 700} : undefined,
++        labelBgStyle: {fill: "var(--ks-bg-base)"},
++        data: e,
++    }))
++
++    function pick(n: Box) {
++        if (n.step) emit("select", {step: n.step, hook: n.hook, widget: n.widget})
++    }
++
++    function open(n: Box) {
++        if (n.drill && n.step && n.hook) drill.value = {step: n.step, hook: n.hook}
++    }
++
++    const isSelected = (n: Box) => !!props.selected && n.step === props.selected.step
++        && (props.selected.widget ? n.widget === props.selected.widget : n.kind === "step")
++</script>
++
++<style scoped lang="scss">
++    .flow-view {
++        display: flex;
++        flex: 1;
++        flex-direction: column;
++        gap: var(--ks-spacing-2);
++        min-width: 0;
++    }
++
++    .tools {
++        display: flex;
++        gap: var(--ks-spacing-1);
++        margin-left: auto;
++    }
++
++    .flow-crumbs {
++        display: flex;
++        gap: var(--ks-spacing-1);
++        align-items: center;
++        font-size: var(--ks-font-size-sm);
++    }
++
++    .flow-canvas {
++        flex: 1;
++        min-height: 0;
++        border: 1px solid var(--ks-border-default);
++        border-radius: var(--ks-spacing-2);
++        background: var(--ks-bg-base);
++    }
++
++    .flow-canvas.split {
++        flex: 0 0 calc(50% - var(--ks-spacing-4));
++    }
++
++    .hint {
++        margin: 0 0 0 var(--ks-spacing-2);
++        color: var(--ks-text-secondary);
++        font-size: var(--ks-font-size-xs);
++    }
++
++    .legend {
++        margin: 0;
++    }
++</style>
+diff --git a/ui/src/components/crdesigner/FlowWidgetPanel.vue b/ui/src/components/crdesigner/FlowWidgetPanel.vue
+new file mode 100644
+index 0000000..dbe7923
+--- /dev/null
++++ b/ui/src/components/crdesigner/FlowWidgetPanel.vue
+@@ -0,0 +1,94 @@
++<template>
++    <div class="widget-panel" data-test="flow-widget-panel">
++        <div class="panel-head">
++            <KsButton size="small" text :icon="ArrowLeft" data-test="flow-widget-back" @click="emit('back')">
++                {{ stepLabel }}
++            </KsButton>
++        </div>
++        <template v-if="widget">
++            <div class="panel-head">
++                <KsTag size="small" type="info">{{ $t(`cr_designer.widget_${widget.widget}`) }}</KsTag>
++                <span class="hint">{{ $t(`cr_designer.hook_${hook}`) }}</span>
++                <KsButton v-if="editable" size="small" :icon="Delete" data-test="flow-widget-delete" class="push" @click="remove">
++                    {{ $t("delete") }}
++                </KsButton>
++            </div>
++            <label class="field">
++                <span>{{ $t("cr_designer.f_id") }}</span>
++                <KsInput :modelValue="widget.id" :disabled="!editable" @change="(v: string | number) => rename(String(v))" />
++            </label>
++            <label class="field">
++                <span>{{ $t("cr_designer.label") }}</span>
++                <KsInput v-model="widget.label" :disabled="!editable" />
++            </label>
++            <WidgetForm :widget="widget" />
++            <p v-if="widget.widget === 'IF' || widget.widget === 'FOR_EACH'" class="hint">{{ $t("cr_designer.flow_branch_hint") }}</p>
++        </template>
++        <p v-else class="hint">{{ $t("cr_designer.flow_widget_gone") }}</p>
++    </div>
++</template>
++
++<script setup lang="ts">
++    import {computed, provide, toRef} from "vue"
++    import ArrowLeft from "vue-material-design-icons/ArrowLeft.vue"
++    import Delete from "vue-material-design-icons/Delete.vue"
++    import WidgetForm from "./WidgetForm.vue"
++    import {PIPELINE, flatten, removeWidget, renameWidget} from "./pipelineWidgets"
++
++    const props = defineProps<{step: any, hook: string, widgetId: string, editable: boolean}>()
++    const emit = defineEmits<{back: [], renamed: [id: string]}>()
++
++    const root = computed(() => props.step.pipelines?.[props.hook] ?? [])
++    const widget = computed(() => flatten(root.value).find(w => w.id === props.widgetId))
++    const stepLabel = computed(() => props.step.label || props.step.id)
++
++    provide(PIPELINE, {editable: toRef(props, "editable"), root, hook: toRef(props, "hook")})
++
++    function rename(to: string) {
++        if (!to || to === props.widgetId || flatten(root.value).some(w => w.id === to)) return
++        renameWidget(root.value, props.widgetId, to)
++        emit("renamed", to)
++    }
++
++    /** An emptied pipeline is no pipeline: the flow then runs its own default again. */
++    function remove() {
++        removeWidget(root.value, props.widgetId)
++        if (!root.value.length) {
++            delete props.step.pipelines[props.hook]
++            if (!Object.keys(props.step.pipelines).length) delete props.step.pipelines
++        }
++        emit("back")
++    }
++</script>
++
++<style scoped lang="scss">
++    .widget-panel {
++        display: flex;
++        flex-direction: column;
++        gap: var(--ks-spacing-2);
++    }
++
++    .panel-head {
++        display: flex;
++        gap: var(--ks-spacing-2);
++        align-items: center;
++    }
++
++    .push {
++        margin-left: auto;
++    }
++
++    .field {
++        display: flex;
++        flex-direction: column;
++        gap: var(--ks-spacing-1);
++        color: var(--ks-text-secondary);
++        font-size: var(--ks-font-size-sm);
++    }
++
++    .hint {
++        margin: 0;
++        color: var(--ks-text-secondary);
++        font-size: var(--ks-font-size-xs);
++    }
++</style>
+diff --git a/ui/src/components/crdesigner/InsertEdge.vue b/ui/src/components/crdesigner/InsertEdge.vue
+new file mode 100644
+index 0000000..39f9774
+--- /dev/null
++++ b/ui/src/components/crdesigner/InsertEdge.vue
+@@ -0,0 +1,49 @@
++<template>
++    <BaseEdge
++        :id="id"
++        :path="path[0]"
++        :markerEnd="markerEnd"
++        :style="style"
++        :label="label"
++        :labelX="path[1]"
++        :labelY="path[2]"
++        :labelStyle="labelStyle"
++        :labelShowBg="true"
++        :labelBgStyle="labelBgStyle"
++    />
++    <EdgeLabelRenderer>
++        <div class="insert nodrag nopan" :style="{transform: `translate(-50%, -50%) translate(${path[1] + (label ? 26 : 0)}px, ${path[2]}px)`}">
++            <KsDropdown trigger="click" placement="bottom">
++                <KsButton size="small" circle :icon="Plus" :aria-label="$t('cr_designer.flow_insert')" :title="$t('cr_designer.flow_insert')" :data-test="`flow-insert-${id}`" />
++                <template #dropdown>
++                    <KsDropdownMenu>
++                        <KsDropdownItem v-for="t in WIDGETS" :key="t" :data-test="`flow-insert-${t}`" @click="insert?.(data.insert, t)">
++                            {{ $t(`cr_designer.widget_${t}`) }}
++                        </KsDropdownItem>
++                    </KsDropdownMenu>
++                </template>
++            </KsDropdown>
++        </div>
++    </EdgeLabelRenderer>
++</template>
++
++<script setup lang="ts">
++    import {computed, inject} from "vue"
++    import {BaseEdge, EdgeLabelRenderer, getSmoothStepPath} from "@vue-flow/core"
++    import type {EdgeProps} from "@vue-flow/core"
++    import Plus from "vue-material-design-icons/Plus.vue"
++    import {FLOW_INSERT, WIDGETS} from "./pipelineWidgets"
++
++    const props = defineProps<EdgeProps>()
++    const insert = inject(FLOW_INSERT, undefined)
++
++    const path = computed(() => getSmoothStepPath(props))
++</script>
++
++<style scoped lang="scss">
++    .insert {
++        position: absolute;
++        z-index: 10;
++        pointer-events: all;
++    }
++</style>
 diff --git a/ui/src/components/crdesigner/JsonView.vue b/ui/src/components/crdesigner/JsonView.vue
 new file mode 100644
 index 0000000..2e622a4
@@ -439,10 +1164,10 @@ index 0000000..2e622a4
 +</style>
 diff --git a/ui/src/components/crdesigner/KeyValues.vue b/ui/src/components/crdesigner/KeyValues.vue
 new file mode 100644
-index 0000000..0f1c16e
+index 0000000..e418640
 --- /dev/null
 +++ b/ui/src/components/crdesigner/KeyValues.vue
-@@ -0,0 +1,85 @@
+@@ -0,0 +1,106 @@
 +<template>
 +    <div class="key-values" :data-test="`key-values-${group}`">
 +        <div class="kv-head">
@@ -458,6 +1183,14 @@ index 0000000..0f1c16e
 +        <KsButton v-if="editable" :icon="Plus" size="small" @click="add">
 +            {{ $t("cr_designer.add_key") }}
 +        </KsButton>
++        <div v-if="offered.length" class="kv-known" :data-test="`known-${group}`">
++            <span class="hint">{{ $t(`cr_designer.known_${group}`) }}</span>
++            <KsTooltip v-for="[key, value] in offered" :key="key" :content="$t('cr_designer.known_value', {value: value || '-'})">
++                <KsTag size="small" :class="{clickable: editable}" :data-test="`known-${group}-${key}`" @click="editable && set(key, value)">
++                    {{ key }}
++                </KsTag>
++            </KsTooltip>
++        </div>
 +    </div>
 +</template>
 +
@@ -470,9 +1203,11 @@ index 0000000..0f1c16e
 +    const SECRET_REF = /^\$\{secret:[A-Za-z0-9_]+\}$/
 +
 +    const model = defineModel<Record<string, string> | undefined>()
-+    defineProps<{group: "params" | "login" | "grc", editable: boolean}>()
++    const props = defineProps<{group: "params" | "login" | "grc", editable: boolean, known?: Record<string, string>}>()
 +
 +    const entries = computed(() => Object.entries(model.value ?? {}))
++    /** Keys the step sends or the project sets today and this level does not change yet, with today's value. */
++    const offered = computed(() => Object.entries(props.known ?? {}).filter(([k]) => !(k in (model.value ?? {}))))
 +    const needsSecret = (key: string, value: string) => SECRET_KEY.test(key) && !!value && !SECRET_REF.test(String(value))
 +
 +    function rename(from: string, to: string) {
@@ -522,6 +1257,17 @@ index 0000000..0f1c16e
 +        font-size: var(--ks-font-size-xs);
 +    }
 +
++    .kv-known {
++        display: flex;
++        flex-wrap: wrap;
++        gap: var(--ks-spacing-1);
++        align-items: center;
++    }
++
++    .clickable {
++        cursor: pointer;
++    }
++
 +    .kv-warning {
 +        width: 100%;
 +        color: var(--ks-text-warning);
@@ -530,10 +1276,10 @@ index 0000000..0f1c16e
 +</style>
 diff --git a/ui/src/components/crdesigner/PipelineEditor.vue b/ui/src/components/crdesigner/PipelineEditor.vue
 new file mode 100644
-index 0000000..2a7a551
+index 0000000..fad5af0
 --- /dev/null
 +++ b/ui/src/components/crdesigner/PipelineEditor.vue
-@@ -0,0 +1,55 @@
+@@ -0,0 +1,57 @@
 +<template>
 +    <div class="pipeline-editor" data-test="pipeline-editor">
 +        <p class="hint">{{ $t(`cr_designer.hook_${hook}_hint`) }}</p>
@@ -563,7 +1309,9 @@ index 0000000..2a7a551
 +        ["${order.NAME} ${child.NAME}", "context"],
 +        ["${ciq.NAME}", "ciq"],
 +        ["${activity.node_type} ${activity.sub_activity}", "activity"],
-+        ...(props.hook === "node" ? [["${node}", "node"]] : [["${run.failed_nodes} ${run.succeeded_nodes}", "run"]]),
++        ...(props.hook === "node" ? [["${node}", "node"]]
++            : props.hook === "after_step" ? [["${run.statusText} ${run.RESULT}", "run_step"]]
++                : [["${run.failed_nodes} ${run.succeeded_nodes}", "run"]]),
 +        ["${item}", "item"],
 +        ["${step.ID.NAME}", "step"],
 +        ["${secret:NAME} ${WORKDIR}", "secret"],
@@ -591,10 +1339,10 @@ index 0000000..2a7a551
 +</style>
 diff --git a/ui/src/components/crdesigner/ProcessDesigner.vue b/ui/src/components/crdesigner/ProcessDesigner.vue
 new file mode 100644
-index 0000000..7696247
+index 0000000..ced33a4
 --- /dev/null
 +++ b/ui/src/components/crdesigner/ProcessDesigner.vue
-@@ -0,0 +1,319 @@
+@@ -0,0 +1,423 @@
 +<template>
 +    <div class="designer">
 +        <div class="designer-top">
@@ -616,7 +1364,36 @@ index 0000000..7696247
 +        </div>
 +
 +        <KsTabs v-if="def" v-model="view" class="designer-tabs">
-+            <KsTabPane name="diagram" :label="$t('cr_designer.diagram')">
++            <KsTabPane name="flow" :label="$t('cr_designer.flow_tab')">
++                <div class="designer-body flow-body">
++                    <FlowView :definition="def" :flows="flows" :selected="flowPick" :editable="editable" @select="pickInFlow" @insert="insertInFlow" />
++                    <aside class="panel">
++                        <FlowWidgetPanel
++                            v-if="selectedStep && flowPick?.widget && flowPick.hook"
++                            :key="`${flowPick.step}/${flowPick.hook}/${flowPick.widget}`"
++                            :step="selectedStep"
++                            :hook="flowPick.hook"
++                            :widgetId="flowPick.widget"
++                            :editable="editable"
++                            @back="flowPick = {step: flowPick.step}"
++                            @renamed="(id: string) => flowPick = {...flowPick, widget: id}"
++                        />
++                        <StepEditor
++                            v-else-if="selectedStep"
++                            :key="selectedStep.id"
++                            :step="selectedStep"
++                            :editable="editable"
++                            :flows="flows"
++                            :fields="fields"
++                            @rename="renameStep"
++                            @delete="deleteStep"
++                            @edit-pipeline="openPipeline"
++                        />
++                        <p v-else class="hint">{{ $t("cr_designer.flow_select_hint") }}</p>
++                    </aside>
++                </div>
++            </KsTabPane>
++            <KsTabPane name="diagram" :label="$t('cr_designer.diagram')" lazy>
 +                <div class="designer-body">
 +                    <div class="canvas">
 +                        <div v-if="editable" class="canvas-tools">
@@ -633,8 +1410,8 @@ index 0000000..7696247
 +                            :nodesConnectable="editable"
 +                            :minZoom="MIN_ZOOM"
 +                            :maxZoom="1.5"
-+                            @nodeClick="({node}) => selectedId = node.id"
-+                            @nodeDragStop="({node}) => def.layout[node.id] = {x: Math.round(node.position.x), y: Math.round(node.position.y)}"
++                            @nodeClick="({node}) => clickNode(node)"
++                            @nodeDragStop="({node}) => node.type === 'step' && (def.layout[node.id] = {x: Math.round(node.position.x), y: Math.round(node.position.y)})"
 +                            @connect="connect"
 +                            @edgeClick="({edge}) => removeArrow(edge.source, edge.target)"
 +                            @paneClick="selectedId = undefined"
@@ -643,6 +1420,9 @@ index 0000000..7696247
 +                            <Background :gap="GRAPH_BACKGROUND.gap" :size="GRAPH_BACKGROUND.size" />
 +                            <template #node-step="nodeProps">
 +                                <StepNode :data="nodeProps.data" :selected="nodeProps.id === selectedId" :editable="editable" />
++                            </template>
++                            <template #node-extra="nodeProps">
++                                <ExtraNode :data="nodeProps.data" />
 +                            </template>
 +                        </VueFlow>
 +                    </div>
@@ -684,16 +1464,21 @@ index 0000000..7696247
 +    import Plus from "vue-material-design-icons/Plus.vue"
 +    import VersionBar from "./VersionBar.vue"
 +    import StepNode from "./StepNode.vue"
++    import ExtraNode from "./ExtraNode.vue"
++    import FlowView from "./FlowView.vue"
++    import FlowWidgetPanel from "./FlowWidgetPanel.vue"
++    import type {FlowPick} from "./flowGraph"
 +    import StepEditor from "./StepEditor.vue"
 +    import JsonView from "./JsonView.vue"
 +    import PipelineEditor from "./PipelineEditor.vue"
-+    import {normalize as normalizeWidgets} from "./pipelineWidgets"
++    import {insertWidget, normalize as normalizeWidgets, routes} from "./pipelineWidgets"
 +    import {computeDagLayout} from "../dependencies/utils/dagLayout"
 +    import {gateway, processUrl, processFlows} from "./crApi"
 +    import type {Me, FlowInfo} from "./crApi"
 +    import {useVersioned} from "./useVersioned"
 +
 +    const NODE = {width: 240, height: 110}
++    const EXTRA = {width: 220, height: 110}
 +
 +    const props = defineProps<{me: Me}>()
 +    const {t} = useI18n()
@@ -705,14 +1490,36 @@ index 0000000..7696247
 +    const flows = ref<FlowInfo[]>([])
 +    const fields = ref<{order: string[], child: string[]}>({order: [], child: []})
 +    const selectedId = ref<string>()
-+    const view = ref("diagram")
++    const view = ref("flow")
++    let loadedKey = ""
++    const flowPick = ref<FlowPick>()
++
++    /** A box of the Flow view in the side panel: its widget's form, or its step. */
++    function pickInFlow(pick: FlowPick) {
++        flowPick.value = pick
++        selectedId.value = pick.step
++    }
++
++    /** "+" on an arrow: the new widget goes there and its form opens. */
++    function insertInFlow(at: {step: string, hook: string, path: (string | number)[], index: number}, type: string) {
++        const step = def.value.steps.find((s: any) => s.id === at.step)
++        if (!step || !editable.value) return
++        const id = insertWidget(step, at.hook, at.path, at.index, type)
++        pickInFlow({step: at.step, hook: at.hook, widget: id})
++    }
 +
 +    const {versions, selected, loaded, content: def, busy, error, message, problems, dirty, loadVersions, leaveConfirmed, ask, handlers} = useVersioned({
 +        base: () => processUrl(project.value),
 +        field: "definition",
 +        normalize,
 +        onLoaded: async () => {
-+            selectedId.value = undefined
++            // a save reloads the same version: keep what is open; another version starts with nothing selected
++            const key = `${project.value}/${loaded.value?.version}`
++            if (key !== loadedKey) {
++                selectedId.value = undefined
++                flowPick.value = undefined
++            }
++            loadedKey = key
 +            flows.value = await processFlows(String(route.params.tenant ?? "main"), def.value.namespace ?? "")
 +        },
 +    })
@@ -779,26 +1586,67 @@ index 0000000..7696247
 +        return placed
 +    })
 +
-+    const nodes = computed(() => (def.value?.steps ?? []).map((s: any) => ({
-+        id: s.id,
-+        type: "step",
-+        position: def.value.layout[s.id] ?? positions.value[s.id] ?? {x: 0, y: 0},
-+        data: s,
-+    })))
++    const stepPosition = (s: any) => def.value.layout[s.id] ?? positions.value[s.id] ?? {x: 0, y: 0}
 +
-+    const edges = computed(() => (def.value?.steps ?? []).flatMap((s: any) => s.follows.map((f: string) => ({
-+        id: `${f}->${s.id}`,
-+        source: f,
-+        target: s.id,
-+        markerEnd: MarkerType.ArrowClosed,
-+    }))))
++    /** The extra steps of each step's pipelines (one box per activity branch), below everything else, under their step. */
++    const extras = computed(() => {
++        const steps: any[] = def.value?.steps ?? []
++        const bottom = Math.max(0, ...steps.map(s => stepPosition(s).y)) + NODE.height + 80
++        let row = 0
++        return steps.flatMap(s => Object.entries(s.pipelines ?? {}).flatMap(([hook, widgets]: [string, any]) => {
++            const boxes = routes(widgets).map((r, index) => ({
++                id: `extra:${s.id}:${hook}:${index}`,
++                type: "extra",
++                draggable: false,
++                connectable: false,
++                position: {x: stepPosition(s).x + index * (EXTRA.width + 20), y: bottom + row * (EXTRA.height + 40)},
++                data: {step: s.id, hook, index, conditions: r.conditions, widgets: r.widgets},
++            }))
++            if (boxes.length) row++
++            return boxes
++        }))
++    })
++
++    const nodes = computed(() => [
++        ...(def.value?.steps ?? []).map((s: any) => ({id: s.id, type: "step", position: stepPosition(s), data: s})),
++        ...extras.value,
++    ])
++
++    const edges = computed(() => [
++        ...(def.value?.steps ?? []).flatMap((s: any) => s.follows.map((f: string) => ({
++            id: `${f}->${s.id}`,
++            source: f,
++            target: s.id,
++            markerEnd: MarkerType.ArrowClosed,
++        }))),
++        ...extras.value.map(x => ({
++            id: `${x.data.step}->${x.id}`,
++            source: x.data.step,
++            target: x.id,
++            label: t(`cr_designer.hook_${x.data.hook}`),
++            style: {strokeDasharray: "4 4"},
++            markerEnd: MarkerType.Arrow,
++            data: {extra: true},
++        })),
++    ])
++
++    function clickNode(node: any) {
++        if (node.type === "extra") {
++            selectedId.value = node.data.step
++            openPipeline(node.data.hook)
++        } else {
++            selectedId.value = node.id
++        }
++    }
 +
 +    function connect({source, target}: {source: string, target: string}) {
++        if (source.startsWith("extra:") || target.startsWith("extra:")) return
 +        const step = def.value.steps.find((s: any) => s.id === target)
 +        if (step && source !== target && !step.follows.includes(source)) step.follows.push(source)
 +    }
 +
 +    async function removeArrow(source: string, target: string) {
++        if (target.startsWith("extra:")) return
 +        if (!editable.value || !await ask(t("cr_designer.confirm_remove_arrow", {from: source, to: target}))) return
 +        const step = def.value.steps.find((s: any) => s.id === target)
 +        step.follows = step.follows.filter((f: string) => f !== source)
@@ -882,6 +1730,10 @@ index 0000000..7696247
 +        height: 70vh;
 +    }
 +
++    .flow-body {
++        height: 78vh;
++    }
++
 +    .canvas {
 +        position: relative;
 +        flex: 1;
@@ -916,10 +1768,10 @@ index 0000000..7696247
 +</style>
 diff --git a/ui/src/components/crdesigner/StepEditor.vue b/ui/src/components/crdesigner/StepEditor.vue
 new file mode 100644
-index 0000000..62d5d76
+index 0000000..1603a77
 --- /dev/null
 +++ b/ui/src/components/crdesigner/StepEditor.vue
-@@ -0,0 +1,279 @@
+@@ -0,0 +1,357 @@
 +<template>
 +    <div class="step-editor" data-test="step-editor">
 +        <div class="editor-head">
@@ -960,6 +1812,39 @@ index 0000000..62d5d76
 +            </KsSelect>
 +        </label>
 +
++        <template v-if="!step.starts_order">
++            <h5>{{ $t("cr_designer.auto_start") }}</h5>
++            <KsCheckbox :modelValue="!!step.auto_start" :disabled="!editable" data-test="auto-start" @update:model-value="toggleAutoStart">
++                {{ $t("cr_designer.auto_start_on") }}
++            </KsCheckbox>
++            <template v-if="step.auto_start">
++                <p class="hint">{{ $t("cr_designer.auto_start_hint") }}</p>
++                <div class="field-row">
++                    <label class="field">
++                        <span>{{ $t("cr_designer.auto_for_each") }}</span>
++                        <KsSelect
++                            :modelValue="step.auto_start.for_each ?? ''"
++                            :disabled="!editable"
++                            @update:model-value="(v: string) => setAutoStart('for_each', v || undefined)"
++                        >
++                            <KsOption :label="$t('cr_designer.auto_once')" value="" />
++                            <KsOption v-for="n in selectInputs" :key="n" :label="n" :value="n" />
++                        </KsSelect>
++                    </label>
++                    <label class="field">
++                        <span>{{ $t("cr_designer.auto_max_running") }}</span>
++                        <KsInputNumber
++                            :modelValue="Number(step.auto_start.max_running ?? 0)"
++                            :min="0"
++                            :max="50"
++                            :disabled="!editable"
++                            @update:model-value="(v: number | undefined) => setAutoStart('max_running', v || undefined)"
++                        />
++                    </label>
++                </div>
++            </template>
++        </template>
++
 +        <h5>{{ $t("cr_designer.offered_when") }}</h5>
 +        <p v-if="!conditionRows.length" class="hint">{{ $t("cr_designer.always_offered") }}</p>
 +        <div v-for="row in conditionRows" :key="row.path" class="condition-row">
@@ -998,6 +1883,20 @@ index 0000000..62d5d76
 +                    {{ editable ? $t("cr_designer.edit_pipeline") : $t("cr_designer.view_pipeline") }}
 +                </KsButton>
 +            </div>
++            <template v-if="editable">
++                <h5>{{ $t("cr_designer.add_extra") }}</h5>
++                <p class="hint">{{ $t("cr_designer.add_extra_hint") }}</p>
++                <div class="field-row">
++                    <KsSelect v-model="extra.hook" class="source-select" data-test="extra-hook">
++                        <KsOption v-for="h in flow.hooks" :key="h" :label="$t(`cr_designer.hook_${h}`)" :value="h" />
++                    </KsSelect>
++                    <KsInput v-model="extra.nodeType" :placeholder="$t('cr_designer.node_type')" data-test="extra-node-type" />
++                    <KsInput v-model="extra.subActivity" :placeholder="$t('cr_designer.extra_sub_activity')" data-test="extra-sub-activity" />
++                </div>
++                <KsButton :icon="Plus" size="small" :disabled="!extra.hook || !extra.nodeType.trim()" data-test="add-extra" @click="addExtra">
++                    {{ $t("cr_designer.add_extra") }}
++                </KsButton>
++            </template>
 +        </template>
 +
 +        <h5>{{ $t("cr_designer.inputs") }}</h5>
@@ -1065,12 +1964,12 @@ index 0000000..62d5d76
 +</template>
 +
 +<script setup lang="ts">
-+    import {computed} from "vue"
++    import {computed, reactive} from "vue"
 +    import Delete from "vue-material-design-icons/Delete.vue"
 +    import Close from "vue-material-design-icons/Close.vue"
 +    import Plus from "vue-material-design-icons/Plus.vue"
 +    import type {FlowInfo} from "./crApi"
-+    import {flatten as flattenWidgets} from "./pipelineWidgets"
++    import {addRoute, flatten as flattenWidgets, normalize as normalizeWidgets} from "./pipelineWidgets"
 +
 +    const OPERATORS = ["in", "not_in", "equals", "non_empty", "empty"]
 +    const SOURCES = ["", "value", "order", "child", "user"]
@@ -1092,6 +1991,37 @@ index 0000000..62d5d76
 +    const inputNames = computed(() => [...new Set([...(flow.value?.inputs ?? []).map(i => i.id), ...Object.keys(inputs.value)])])
 +    const widgetCount = (hook: string) => flattenWidgets(step.value.pipelines?.[hook] ?? []).length
 +    const flowInputType = (name: string) => flow.value?.inputs.find(i => i.id === name)?.type ?? "?"
++
++    const extra = reactive({hook: "", nodeType: "", subActivity: ""})
++
++    /** A new box: a first If branch for the node type (and sub-activity); everything else moves to its else. */
++    function addExtra() {
++        step.value.pipelines = {...step.value.pipelines}
++        const routed = addRoute(step.value.pipelines[extra.hook] ?? [], extra.hook, extra.nodeType.trim(), extra.subActivity.trim())
++        step.value.pipelines[extra.hook] = normalizeWidgets(routed)
++        emit("edit-pipeline", extra.hook)
++        extra.nodeType = ""
++        extra.subActivity = ""
++    }
++
++    const selectInputs = computed(() => Object.entries(inputs.value)
++        .filter(([, spec]: [string, any]) => spec?.from === "user" && spec.type === "SELECT")
++        .map(([name]) => name))
++
++    function toggleAutoStart(on: string | number | boolean) {
++        if (on) step.value.auto_start = selectInputs.value.length ? {for_each: selectInputs.value[0]} : {}
++        else delete step.value.auto_start
++    }
++
++    // KsInputNumber emits its value once when it mounts, and the gateway sends numbers back as text: an unchanged
++    // value written back would mark the version edited
++    function setAutoStart(key: string, value: string | number | undefined) {
++        if (String(step.value.auto_start?.[key] ?? "") === String(value ?? "")) return
++        const next = {...step.value.auto_start}
++        if (value === undefined) delete next[key]
++        else next[key] = value
++        step.value.auto_start = next
++    }
 +
 +    function sourceOf(name: string): string {
 +        const spec = inputs.value[name]
@@ -1201,10 +2131,10 @@ index 0000000..62d5d76
 +</style>
 diff --git a/ui/src/components/crdesigner/StepNode.vue b/ui/src/components/crdesigner/StepNode.vue
 new file mode 100644
-index 0000000..ba11bf2
+index 0000000..c1f6534
 --- /dev/null
 +++ b/ui/src/components/crdesigner/StepNode.vue
-@@ -0,0 +1,70 @@
+@@ -0,0 +1,73 @@
 +<template>
 +    <div class="step-node" :class="{selected, 'starts-order': data.starts_order}" :data-test="`step-node-${data.id}`">
 +        <Handle type="target" :position="Position.Left" :connectable="editable" />
@@ -1214,6 +2144,9 @@ index 0000000..ba11bf2
 +            </KsTag>
 +            <KsTag v-if="data.starts_order" size="small" type="success">
 +                {{ $t("cr_designer.starts_order") }}
++            </KsTag>
++            <KsTag v-if="data.auto_start" size="small" type="info">
++                {{ $t("cr_designer.auto_start") }}
 +            </KsTag>
 +        </div>
 +        <div class="step-label">{{ data.label }}</div>
@@ -1761,10 +2694,10 @@ index 0000000..6f76697
 +</style>
 diff --git a/ui/src/components/crdesigner/crApi.ts b/ui/src/components/crdesigner/crApi.ts
 new file mode 100644
-index 0000000..e9587d6
+index 0000000..18942f2
 --- /dev/null
 +++ b/ui/src/components/crdesigner/crApi.ts
-@@ -0,0 +1,60 @@
+@@ -0,0 +1,61 @@
 +/**
 + * The cr_automation gateway's API (/cr/api) and the Kestra calls the designer needs. The gateway enforces the
 + * roles; the UI only avoids offering what the role cannot do.
@@ -1778,8 +2711,8 @@ index 0000000..e9587d6
 +
 +export interface ActivityVersion extends VersionSummary {node_type: string, sub_activity: string, config: any, problems: string[]}
 +
-+/** `hooks`: the pipelines a step may attach to the flow (its label pipeline_hooks). */
-+export interface FlowInfo {id: string, inputs: {id: string, type: string}[], hooks: string[]}
++/** `hooks`: the pipelines a step may attach to the flow (its label pipeline_hooks); `labels`: all its labels (e.g. outline). */
++export interface FlowInfo {id: string, inputs: {id: string, type: string}[], hooks: string[], labels?: Record<string, string>}
 +
 +export class GatewayError extends Error {
 +    constructor(message: string, public status: number, public problems: string[] = []) {
@@ -1812,6 +2745,7 @@ index 0000000..e9587d6
 +            id: f.id,
 +            inputs: (f.inputs ?? []).map((i: any) => ({id: i.id, type: i.type})),
 +            hooks: String((f.labels ?? []).find((l: any) => l.key === "pipeline_hooks")?.value ?? "").split(",").map(h => h.trim()).filter(Boolean),
++            labels: Object.fromEntries((f.labels ?? []).map((l: any) => [l.key, String(l.value)])),
 +        }))
 +}
 +
@@ -1825,12 +2759,441 @@ index 0000000..e9587d6
 +    if (!to || to === from || entries.some(([k]) => k === to)) return object ?? {}
 +    return Object.fromEntries(entries.map(([k, v]) => [k === from ? to : k, v]))
 +}
+diff --git a/ui/src/components/crdesigner/flowGraph.ts b/ui/src/components/crdesigner/flowGraph.ts
+new file mode 100644
+index 0000000..841540d
+--- /dev/null
++++ b/ui/src/components/crdesigner/flowGraph.ts
+@@ -0,0 +1,423 @@
++import type {FlowInfo} from "./crApi"
++
++/**
++ * The Flow view's picture, built from the process data only: the steps (ranked by `follows`, START to END), each
++ * with the person's wait or its automatic start, its `available_when` as an If, the flow's own work (its `outline`
++ * label) and its pipelines; a pipeline is drawn from its widget tree (If = TRUE straight on, FALSE below, both
++ * meeting again; For each = a group). Positions are computed here; nothing is placed by hand.
++ */
++
++export type Kind = "start" | "end" | "fail" | "step" | "nei" | "mail" | "wait" | "person" | "if" | "collect"
++    | "each" | "report" | "merge" | "group"
++
++export interface FlowNode {
++    id: string
++    kind: Kind
++    title: string
++    sub?: string
++    tag?: string
++    x: number
++    y: number
++    w: number
++    h: number
++    /** What a click opens: the step, a hook's pipeline, a widget of it; `drill` = the box opens the hook's drill-down. */
++    step?: string
++    hook?: string
++    widget?: string
++    drill?: boolean
++}
++
++export interface FlowEdge {
++    id: string
++    source: string
++    target: string
++    sourceHandle: string
++    targetHandle: string
++    label?: string
++    back?: boolean
++    /** A back arrow's lane below the flow (1, 2, ...), so two of them never share a line. */
++    lane?: number
++    /** Where a new widget goes when it is inserted on this arrow (G2): the list and the index in it. */
++    insert?: {step: string, hook: string, path: (string | number)[], index: number}
++}
++
++/** What a click on a box selects: its step, and the hook and widget when it is part of a pipeline. */
++export interface FlowPick {step?: string, hook?: string, widget?: string}
++
++export interface Graph {
++    nodes: FlowNode[]
++    edges: FlowEdge[]
++}
++
++type T = (key: string, values?: Record<string, unknown>) => string
++
++const SIZE: Record<string, {w: number, h: number}> = {
++    box: {w: 176, h: 60}, if: {w: 64, h: 64}, merge: {w: 12, h: 12}, circle: {w: 40, h: 40},
++}
++const GAP_X = 52
++const GAP_Y = 48
++const PAD = 18
++const HEAD = 24
++
++interface Exit {id: string, handle: string, label?: string, insert?: FlowEdge["insert"]}
++
++interface Block {
++    nodes: FlowNode[]
++    edges: FlowEdge[]
++    w: number
++    h: number
++    cy: number
++    entry?: string
++    exits: Exit[]
++    /** The insert point of the arrow that enters this block (the start of a pipeline list). */
++    insertBefore?: FlowEdge["insert"]
++}
++
++interface Ctx {
++    t: T
++    next: () => string
++    step?: string
++    hook?: string
++}
++
++const EMPTY: Block = {nodes: [], edges: [], w: 0, h: 0, cy: 0, exits: []}
++
++function size(kind: Kind) {
++    if (kind === "if") return SIZE.if
++    if (kind === "merge") return SIZE.merge
++    if (kind === "start" || kind === "end" || kind === "fail" || kind === "person") return SIZE.circle
++    return SIZE.box
++}
++
++function leaf(ctx: Ctx, kind: Kind, title: string, extra: Partial<FlowNode> = {}): Block {
++    const {w, h} = size(kind)
++    const id = ctx.next()
++    const node: FlowNode = {id, kind, title, x: 0, y: 0, w, h, step: ctx.step, hook: ctx.hook, ...extra}
++    const terminal = kind === "end" || kind === "fail"
++    return {nodes: [node], edges: [], w, h, cy: h / 2, entry: id, exits: terminal ? [] : [{id, handle: "r"}]}
++}
++
++function shift(b: Block, dx: number, dy: number) {
++    b.nodes.forEach(n => {
++        n.x += dx
++        n.y += dy
++    })
++}
++
++function connect(exit: Exit, target: string, targetHandle = "l"): FlowEdge {
++    return {id: `${exit.id}>${target}`, source: exit.id, sourceHandle: exit.handle, target, targetHandle, label: exit.label, insert: exit.insert}
++}
++
++/** Blocks left to right on one line; the exits of each lead to the next. */
++function seq(blocks: Block[], insertAt?: (index: number) => FlowEdge["insert"]): Block {
++    const list = blocks.filter(b => b.nodes.length)
++    if (!list.length) return {...EMPTY, nodes: [], edges: [], exits: []}
++    const cy = Math.max(...list.map(b => b.cy))
++    const out: Block = {nodes: [], edges: [], w: 0, h: 0, cy, exits: []}
++    let x = 0
++    let previous: Exit[] | undefined
++    list.forEach((b, i) => {
++        shift(b, x, cy - b.cy)
++        out.nodes.push(...b.nodes)
++        out.edges.push(...b.edges)
++        out.entry = out.entry ?? b.entry
++        out.insertBefore = out.insertBefore ?? b.insertBefore
++        if (previous && b.entry) {
++            const insert = b.insertBefore ?? insertAt?.(i)
++            previous.forEach(e => out.edges.push(connect({...e, insert: e.insert ?? insert}, b.entry!)))
++        }
++        previous = b.exits
++        out.h = Math.max(out.h, cy - b.cy + b.h)
++        x += b.w + GAP_X
++    })
++    out.w = x - GAP_X
++    out.exits = previous ?? []
++    return out
++}
++
++/** If: TRUE straight on, FALSE below; both meet again in a dot unless both end the pipeline. */
++function ifBlock(ctx: Ctx, diamond: Block, then: Block, otherwise: Block, inserts?: {then?: FlowEdge["insert"], else?: FlowEdge["insert"], after?: FlowEdge["insert"]}): Block {
++    const d = diamond.nodes[0]
++    const hasThen = then.nodes.length > 0
++    const hasElse = otherwise.nodes.length > 0
++    const cy = Math.max(d.h / 2, hasThen ? then.cy : 0)
++    shift(diamond, 0, cy - d.h / 2)
++    const left = d.w + GAP_X
++    if (hasThen) shift(then, left, cy - then.cy)
++    const top = Math.max(cy + d.h / 2, hasThen ? cy - then.cy + then.h : 0)
++    if (hasElse) shift(otherwise, left, top + GAP_Y)
++    const body = Math.max(then.w, otherwise.w, 40)
++    const open = !hasThen || then.exits.length > 0 || !hasElse || otherwise.exits.length > 0
++    const out: Block = {nodes: [...diamond.nodes, ...then.nodes, ...otherwise.nodes], edges: [...then.edges, ...otherwise.edges],
++        w: left + body, h: hasElse ? top + GAP_Y + otherwise.h : top + GAP_Y / 2, cy, entry: d.id, exits: []}
++    const t = {id: d.id, handle: "r", label: "TRUE", insert: inserts?.then}
++    const f = {id: d.id, handle: "b", label: "FALSE", insert: inserts?.else}
++    let merge: FlowNode | undefined
++    if (open) {
++        const m = leaf(ctx, "merge", "", {step: ctx.step, hook: ctx.hook})
++        merge = m.nodes[0]
++        merge.x = left + body + GAP_X
++        merge.y = cy - merge.h / 2
++        out.nodes.push(merge)
++        out.w = merge.x + merge.w
++        out.exits = [{id: merge.id, handle: "r", insert: inserts?.after}]
++    }
++    if (hasThen) out.edges.push(connect(t, then.entry!))
++    else if (merge) out.edges.push(connect(t, merge.id))
++    if (hasElse) out.edges.push(connect(f, otherwise.entry!))
++    else if (merge) out.edges.push(connect(f, merge.id, "tb"))
++    if (merge) {
++        then.exits.forEach(e => out.edges.push(connect(e, merge!.id)))
++        otherwise.exits.forEach(e => out.edges.push(connect(e, merge!.id, "tb")))
++    }
++    return out
++}
++
++/** A dashed group around a block (For each, or a step that runs once per value). */
++function group(ctx: Ctx, title: string, inner: Block, extra: Partial<FlowNode> = {}): Block {
++    shift(inner, PAD, HEAD + PAD)
++    const g: FlowNode = {id: ctx.next(), kind: "group", title, x: 0, y: 0, w: inner.w + 2 * PAD, h: inner.h + HEAD + 2 * PAD,
++        step: ctx.step, hook: ctx.hook, ...extra}
++    return {nodes: [g, ...inner.nodes], edges: inner.edges, w: g.w, h: g.h, cy: inner.cy + HEAD + PAD, entry: inner.entry, exits: inner.exits}
++}
++
++// ---------------------------------------------------------------- texts
++
++/** ${ciq.REPORT_EMAIL} -> CIQ REPORT_EMAIL, ${run.X} -> X, ${step.a.b} -> a's b: references as a person reads them. */
++export function human(text: string | undefined, max = 46): string {
++    const s = String(text ?? "").replace(/\$\{([^}]*)\}/g, (_, r: string) => {
++        const p = r.trim().split(".")
++        if (p[0] === "ciq") return `CIQ ${p[1]}`
++        if (p[0] === "run" || p[0] === "activity") return p[1] ?? ""
++        if (p[0] === "order" || p[0] === "child") return `${p[0]} ${p[1]}`
++        if (p[0] === "step") return `${p[1]}'s ${p[2]}`
++        if (p[0].startsWith("secret:")) return "(secret)"
++        return p[0]
++    }).replace(/\s+/g, " ").trim()
++    return s.length > max ? s.slice(0, max - 1) + "…" : s
++}
++
++function conditionText(t: T, conditions: any[]): string {
++    return (conditions ?? []).map((c: any) => {
++        const values = Array.isArray(c.value) ? c.value : c.value === undefined ? [] : [c.value]
++        if (String(c.ref).startsWith("activity.") && (c.op === "equals" || c.op === "in")) return values.join(` ${t("cr_designer.or")} `)
++        return `${human("${" + c.ref + "}", 30)} ${t(`cr_designer.op_${c.op}`)} ${values.join(", ")}`.trim()
++    }).join(` ${t("cr_designer.and")} `) + "?"
++}
++
++function availability(t: T, when: Record<string, any>): string {
++    return Object.entries(when ?? {}).map(([path, op]: [string, any]) => {
++        const [operator, operand] = Object.entries(op ?? {})[0] ?? ["non_empty", true]
++        const what = path.split(".").slice(1).join(" ").replace(/_/g, " ")
++        const value = Array.isArray(operand) ? operand.join(` ${t("cr_designer.or")} `) : operator === "equals" ? String(operand) : ""
++        return `${what} ${t(`cr_designer.when_${operator}`)} ${value}`.trim()
++    }).join(` ${t("cr_designer.and")} `) + "?"
++}
++
++function duration(iso: string | undefined): string {
++    const m = /^P(?:(\d+)D)?(?:T(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?)?$/.exec(String(iso ?? ""))
++    if (!m) return String(iso ?? "")
++    return [[m[1], "d"], [m[2], "h"], [m[3], "min"], [m[4], "s"]].filter(([n]) => n).map(([n, u]) => `${n} ${u}`).join(" ")
++}
++
++// ---------------------------------------------------------------- pipelines
++
++/** A list of widgets as a block; `path` is where the list sits in the hook's tree (for inserting on its arrows). */
++function widgets(ctx: Ctx, list: any[], path: (string | number)[]): Block {
++    const blocks = (list ?? []).map((w, i) => widget(ctx, w, [...path, i]))
++    const insert = (index: number) => ctx.step && ctx.hook ? {step: ctx.step, hook: ctx.hook, path, index} : undefined
++    const out = seq(blocks, insert)
++    out.insertBefore = insert(0)
++    out.exits = out.exits.map(e => ({...e, insert: e.insert ?? insert(blocks.length)}))
++    return out
++}
++
++function widget(ctx: Ctx, w: any, path: (string | number)[]): Block {
++    const t = ctx.t
++    const at = {widget: w.id}
++    switch (w.widget) {
++    case "NEI": return leaf(ctx, "nei", w.label || w.step || w.action, {...at,
++        sub: `${String(w.component ?? "").toUpperCase()} · ${w.step ?? w.action}${w.on_failure === "CONTINUE" ? " · " + t("cr_designer.flow_goes_on") : ""}`})
++    case "MAIL": return leaf(ctx, "mail", w.label || t("cr_designer.widget_MAIL"), {...at, sub: `${t("cr_designer.flow_to")} ${human(w.to, 34)}`})
++    case "DECISION": return leaf(ctx, "wait", w.label || human(w.question, 40), {...at,
++        sub: w.mode === "REPLY" ? t("cr_designer.flow_reply", {mail: w.reply_to, max: duration(w.timeout)})
++            : t("cr_designer.flow_person", {max: duration(w.timeout)})})
++    case "COLLECT": return leaf(ctx, "collect", w.label || t("cr_designer.widget_COLLECT"), {...at, sub: `${t("cr_designer.flow_into")} ${w.list}`})
++    case "END": return leaf(ctx, w.status === "SUCCESS" ? "end" : "fail",
++        w.label || (w.status === "SUCCESS" ? t("cr_designer.flow_end") : t("cr_designer.flow_end_failed")), {...at, sub: human(w.message, 40)})
++    case "IF": {
++        const list = path.slice(0, -1)
++        const index = Number(path[path.length - 1])
++        const ins = ctx.step && ctx.hook ? {
++            then: {step: ctx.step, hook: ctx.hook, path: [...path, "then"], index: 0},
++            else: {step: ctx.step, hook: ctx.hook, path: [...path, "else"], index: 0},
++            after: {step: ctx.step, hook: ctx.hook, path: list, index: index + 1},
++        } : undefined
++        return ifBlock(ctx, leaf(ctx, "if", w.label || conditionText(t, w.conditions), at),
++            widgets(ctx, w.then, [...path, "then"]), widgets(ctx, w.else, [...path, "else"]), ins)
++    }
++    case "FOR_EACH": {
++        const inner = seq([leaf(ctx, "each", w.label || t("cr_designer.widget_FOR_EACH"), {...at, sub: human(w.items, 36)}),
++            widgets(ctx, w.body, [...path, "body"])])
++        const how = Number(w.concurrency ?? 1) === 0 ? t("cr_designer.flow_all_at_once") : t("cr_designer.flow_at_a_time", {n: w.concurrency ?? 1})
++        return group(ctx, `↻ ${how}`, inner, at)
++    }
++    default: return leaf(ctx, "nei", w.label || w.id, at)
++    }
++}
++
++// ---------------------------------------------------------------- outlines (the flows' own work)
++
++/** The flow's label: "A | @node B | after_nodes | node=C | ?D" as items. */
++function outline(flow: FlowInfo | undefined, key = "outline"): string[] {
++    return String(flow?.labels?.[key] ?? "").split("|").map(s => s.trim()).filter(Boolean)
++}
++
++const kindOf = (text: string): Kind => /report/i.test(text) ? "report" : "nei"
++
++function outlineItems(ctx: Ctx, step: any, items: string[]): Block[] {
++    const out: Block[] = []
++    for (let i = 0; i < items.length; i++) {
++        const item = items[i]
++        const hookCtx = (hook: string) => ({...ctx, hook})
++        if (item.startsWith("@")) {
++            const [hook, ...rest] = item.slice(1).split(" ")
++            out.push(leaf(hookCtx(hook), "each", rest.join(" "), {drill: true, sub: ctx.t("cr_designer.flow_open")}))
++        } else if (item.startsWith("?")) {
++            const rest = seq(outlineItems(ctx, step, items.slice(i + 1)))
++            out.push(ifBlock(ctx, leaf(ctx, "if", item.slice(1)), rest, EMPTY))
++            break
++        } else if (item.includes("=") && /^[a-z_]+=/.test(item)) {
++            const [hook, text] = [item.slice(0, item.indexOf("=")), item.slice(item.indexOf("=") + 1)]
++            const pipeline = step.pipelines?.[hook]
++            if (pipeline?.length) {
++                out.push(widgets(hookCtx(hook), pipeline, []))
++            } else {
++                const box = leaf(hookCtx(hook), kindOf(text), text, {sub: ctx.t("cr_designer.flow_default")})
++                const at = (index: number) => ctx.step ? {step: ctx.step, hook, path: [], index} : undefined
++                box.insertBefore = at(0)
++                box.exits = box.exits.map(e => ({...e, insert: at(1)}))
++                out.push(box)
++            }
++        } else if (/^[a-z_]+$/.test(item)) {
++            const pipeline = step.pipelines?.[item]
++            if (pipeline?.length) out.push(widgets(hookCtx(item), pipeline, []))
++        } else {
++            out.push(leaf(ctx, kindOf(item), item.replace(/\s*\(([^)]*)\)$/, ""), {sub: /\(([^)]*)\)$/.exec(item)?.[1]}))
++        }
++    }
++    return out
++}
++
++// ---------------------------------------------------------------- the main flow
++
++function counter(prefix: string) {
++    let n = 0
++    return () => `${prefix}${n++}`
++}
++
++/** One step: who starts it, when it is offered, the step, the flow's work; a step that runs per value is grouped. */
++function chain(t: T, next: () => string, step: any, flow: FlowInfo | undefined, pending: {from: string, to: string}[]): Block {
++    const ctx: Ctx = {t, next, step: step.id}
++    const tag = step.starts_order ? t("cr_designer.starts_order") : undefined
++    // the flow's first own work describes the step's box; the rest of its outline follows as boxes
++    const items = outline(flow)
++    const first = items[0] && !/^[@?]/.test(items[0]) && !/^[a-z_]+(=|$)/.test(items[0]) ? items[0] : undefined
++    const body = seq([leaf(ctx, "step", step.label, {sub: first ?? step.runs?.flow, tag}),
++        ...outlineItems(ctx, step, first ? items.slice(1) : items)])
++    const forEach = step.auto_start?.for_each
++    const work = step.auto_start
++        ? group(ctx, forEach ? `↻ ${t("cr_designer.flow_for_each_value", {input: step.inputs?.[forEach]?.label ?? forEach})}` : t("cr_designer.auto_start"), body)
++        : body
++    const parts: Block[] = []
++    if (!step.starts_order && !step.auto_start) parts.push(leaf(ctx, "person", t("cr_designer.flow_person_starts"), {sub: t("cr_designer.flow_order_tab")}))
++    if (Object.keys(step.available_when ?? {}).length) {
++        const diamond = leaf(ctx, "if", availability(t, step.available_when))
++        const d = diamond.nodes[0]
++        if (step.otherwise) pending.push({from: d.id, to: step.otherwise})
++        const cy = Math.max(d.h / 2, work.cy)
++        shift(diamond, 0, cy - d.h / 2)
++        shift(work, d.w + GAP_X, cy - work.cy)
++        parts.push({nodes: [...diamond.nodes, ...work.nodes], edges: [connect({id: d.id, handle: "r", label: "TRUE"}, work.entry!), ...work.edges],
++            w: d.w + GAP_X + work.w, h: Math.max(d.h, work.h, cy + d.h / 2 + GAP_Y / 2), cy, entry: d.id, exits: work.exits})
++    } else {
++        parts.push(work)
++    }
++    return seq(parts)
++}
++
++export function mainFlow(def: any, flows: FlowInfo[], t: T): Graph {
++    const next = counter("m")
++    const steps: any[] = def?.steps ?? []
++    const pending: {from: string, to: string}[] = []
++    const chains = new Map<string, Block>()
++    steps.forEach(s => chains.set(s.id, chain(t, next, s, flows.find(f => f.id === s.runs?.flow), pending)))
++
++    const ids = steps.map(s => s.id)
++    const preds = new Map<string, string[]>(ids.map(id => [id, (steps.find(s => s.id === id).follows ?? []).filter((f: string) => ids.includes(f) && f !== id)]))
++    const rank = new Map<string, number>()
++    const rankOf = (id: string, seen = new Set<string>()): number => {
++        if (rank.has(id)) return rank.get(id)!
++        if (seen.has(id)) return 0
++        seen.add(id)
++        const r = Math.max(-1, ...preds.get(id)!.map(p => rankOf(p, seen))) + 1
++        rank.set(id, r)
++        return r
++    }
++    ids.forEach(id => rankOf(id))
++    const columns: string[][] = []
++    ids.forEach(id => (columns[rank.get(id)!] = columns[rank.get(id)!] ?? []).push(id))
++
++    const ctx: Ctx = {t, next}
++    const start = leaf(ctx, "start", t("cr_designer.flow_start"))
++    const nodes: FlowNode[] = []
++    const edges: FlowEdge[] = []
++    let x = start.w + GAP_X
++    let height = 0
++    columns.forEach(col => {
++        let y = 0
++        const width = Math.max(...col.map(id => chains.get(id)!.w))
++        col.forEach(id => {
++            const b = chains.get(id)!
++            shift(b, x, y)
++            nodes.push(...b.nodes)
++            edges.push(...b.edges)
++            y += b.h + GAP_Y
++        })
++        height = Math.max(height, y - GAP_Y)
++        x += width + GAP_X * 1.5
++    })
++    shift(start, 0, (chains.get(columns[0]?.[0] ?? "")?.cy ?? 0) - start.cy)
++    nodes.unshift(...start.nodes)
++    const succ = new Set<string>()
++    steps.forEach(s => preds.get(s.id)!.forEach(p => succ.add(p)))
++    steps.forEach(s => {
++        const b = chains.get(s.id)!
++        if (!preds.get(s.id)!.length) edges.push(connect(start.exits[0], b.entry!))
++        preds.get(s.id)!.forEach(p => chains.get(p)!.exits.forEach(e => edges.push({...connect(e, b.entry!), id: `${e.id}>${b.entry}:${s.id}`})))
++    })
++    const end = leaf(ctx, "end", t("cr_designer.flow_end"))
++    shift(end, x, height / 2 - end.cy)
++    nodes.push(...end.nodes)
++    steps.filter(s => !succ.has(s.id)).forEach(s => chains.get(s.id)!.exits.forEach(e => edges.push(connect(e, end.entry!))))
++    pending.forEach((p, i) => {
++        const target = chains.get(p.to)
++        if (target?.entry) {
++            edges.push({id: `${p.from}>${target.entry}:else`, source: p.from, sourceHandle: "b", target: target.entry, targetHandle: "tb",
++                label: "FALSE", back: true, lane: i + 1})
++        }
++    })
++    return {nodes, edges}
++}
++
++/** A drill-down: what runs per node (the flow's outline_<hook>, with the step's pipeline in it), from start to done. */
++export function drillFlow(def: any, flows: FlowInfo[], stepId: string, hook: string, t: T): Graph {
++    const step = (def?.steps ?? []).find((s: any) => s.id === stepId)
++    if (!step) return {nodes: [], edges: []}
++    const flow = flows.find(f => f.id === step.runs?.flow)
++    const ctx: Ctx = {t, next: counter("d"), step: stepId, hook}
++    const items = outline(flow, `outline_${hook}`)
++    const middle = items.length ? outlineItems(ctx, step, items) : [widgets(ctx, step.pipelines?.[hook] ?? [], [])]
++    const all = seq([leaf(ctx, "start", t(`cr_designer.flow_drill_start_${hook}`)), ...middle, leaf(ctx, "end", t("cr_designer.flow_drill_done"))])
++    return {nodes: all.nodes, edges: all.edges}
++}
 diff --git a/ui/src/components/crdesigner/pipelineWidgets.ts b/ui/src/components/crdesigner/pipelineWidgets.ts
 new file mode 100644
-index 0000000..7a167c8
+index 0000000..14e78de
 --- /dev/null
 +++ b/ui/src/components/crdesigner/pipelineWidgets.ts
-@@ -0,0 +1,74 @@
+@@ -0,0 +1,142 @@
 +import type {InjectionKey, Ref} from "vue"
 +
 +/** The widgets of a pipeline, as the gateway's Pipeline class accepts them. */
@@ -1838,7 +3201,7 @@ index 0000000..7a167c8
 +
 +export interface PipelineContext {
 +    editable: Ref<boolean>
-+    root: Ref<any[]>
++    root: Readonly<Ref<any[]>>
 +    hook: Ref<string>
 +}
 +
@@ -1905,6 +3268,74 @@ index 0000000..7a167c8
 +        if (w.params) w.params = rewrite(w.params)
 +    }
 +}
++
++/** One box of the diagram: a branch of the pipeline's top-level If / else chain on the activity, or the rest. */
++export interface Route {conditions: any[] | null, widgets: any[], ifId?: string}
++
++const onActivity = (w: any) => w?.widget === "IF" && (w.conditions ?? []).length > 0
++    && w.conditions.every((c: any) => String(c.ref ?? "").startsWith("activity."))
++
++/** If node type and sub-activity A, else if B, ..., else the rest: each branch and the rest as its own route. */
++export function routes(list: any[]): Route[] {
++    const out: Route[] = []
++    let rest = list ?? []
++    while (rest.length === 1 && onActivity(rest[0])) {
++        out.push({conditions: rest[0].conditions, widgets: rest[0].then ?? [], ifId: rest[0].id})
++        rest = rest[0].else ?? []
++    }
++    if (rest.length) out.push({conditions: null, widgets: rest})
++    return out
++}
++
++/** A new first branch for one node type (and sub-activity): the node pipeline's branch starts with the MOP execution. */
++export function addRoute(list: any[], hook: string, nodeType: string, subActivity: string): any[] {
++    const all = [...(list ?? [])]
++    const id = nextId(all, "IF")
++    const conditions = [{ref: "activity.node_type", op: "equals", value: nodeType},
++        ...(subActivity ? [{ref: "activity.sub_activity", op: "equals", value: subActivity}] : [])]
++    const then = hook === "node" ? [{...blank("NEI", nextId(all, "NEI")), label: "MOP execution"}] : []
++    return [{id, widget: "IF", label: [nodeType, subActivity].filter(Boolean).join(" "), conditions, then, else: all}]
++}
++
++/** The widget list at `path` in a hook's tree: [] = the hook's list, [2, "then"] = the then of its third widget. */
++export function listAt(root: any[], path: (string | number)[]): any[] | undefined {
++    let cur: any = root
++    for (const p of path) {
++        cur = cur?.[p]
++        if (cur === undefined) return undefined
++    }
++    return Array.isArray(cur) ? cur : undefined
++}
++
++/**
++ * A new widget of `type` in the step's `hook` pipeline, in the list at `path` before `index`. An empty per-node
++ * pipeline first gets the MOP execution it replaces, so adding a box never drops the node's MOP. Returns its id.
++ */
++export function insertWidget(step: any, hook: string, path: (string | number)[], index: number, type: string): string {
++    step.pipelines = step.pipelines ?? {}
++    if (!step.pipelines[hook]?.length) {
++        step.pipelines[hook] = hook === "node" ? [{...blank("NEI", "main"), label: "MOP execution"}] : []
++    }
++    const root = step.pipelines[hook]
++    const list = listAt(root, path) ?? root
++    const w = blank(type, nextId(root, type))
++    list.splice(Math.max(0, Math.min(index, list.length)), 0, w)
++    normalize(root)
++    return w.id
++}
++
++/** Removes a widget (and what it holds) from the hook's tree; true when found. */
++export function removeWidget(list: any[], id: string): boolean {
++    const i = (list ?? []).findIndex(w => w.id === id)
++    if (i >= 0) {
++        list.splice(i, 1)
++        return true
++    }
++    return (list ?? []).some(w => removeWidget(w.then, id) || removeWidget(w.else, id) || removeWidget(w.body, id))
++}
++
++/** A function the Flow view's arrows call to insert a widget where they are. */
++export const FLOW_INSERT: InjectionKey<(insert: {step: string, hook: string, path: (string | number)[], index: number}, type: string) => void> = Symbol("cr-flow-insert")
 diff --git a/ui/src/components/crdesigner/useVersioned.ts b/ui/src/components/crdesigner/useVersioned.ts
 new file mode 100644
 index 0000000..c3aeddf
@@ -2014,6 +3445,143 @@ index 0000000..c3aeddf
 +
 +    return {versions, selected, loaded, content, busy, error, message, problems, dirty, loadVersions, leaveConfirmed, ask, handlers}
 +}
+diff --git a/ui/src/components/crorders/CrOrders.vue b/ui/src/components/crorders/CrOrders.vue
+new file mode 100644
+index 0000000..2f30ae3
+--- /dev/null
++++ b/ui/src/components/crorders/CrOrders.vue
+@@ -0,0 +1,131 @@
++<template>
++    <TopNavBar :title="routeInfo.title" />
++    <section class="container cr-orders" data-test="cr-orders">
++        <div class="search-row">
++            <KsInput
++                v-model="id"
++                clearable
++                :placeholder="$t('cr_orders.search')"
++                data-test="cr-orders-search"
++                @keyup.enter="load"
++                @clear="load"
++            />
++            <KsCheckbox v-model="waiting" data-test="cr-orders-waiting" @change="load">
++                {{ $t("cr_orders.waiting_only") }}
++            </KsCheckbox>
++            <KsButton type="primary" @click="load">
++                {{ $t("cr_orders.find") }}
++            </KsButton>
++        </div>
++        <KsAlert v-if="error" type="error" :closable="false">
++            {{ error }}
++        </KsAlert>
++        <KsTable v-else v-ks-loading="loading" :data="rows" data-test="cr-orders-table">
++            <template #empty>
++                <KsEmpty :description="$t('cr_orders.none')" />
++            </template>
++            <KsTableColumn prop="req_id" :label="$t('id')" width="100" />
++            <KsTableColumn :label="$t('cr_orders.kind')" width="190">
++                <template #default="{row}">
++                    {{ row.kind === "CHILD" ? $t("cr_orders.child_of", {order: row.parent_req_id}) : $t("cr_orders.order") }}
++                </template>
++            </KsTableColumn>
++            <KsTableColumn prop="cr_name" :label="$t('cr_orders.cr')" width="110" />
++            <KsTableColumn :label="$t('cr_orders.activity')">
++                <template #default="{row}">
++                    {{ row.node_type }} {{ row.activity }}
++                </template>
++            </KsTableColumn>
++            <KsTableColumn :label="$t('cr_orders.stage')" width="300">
++                <template #default="{row}">
++                    <KsTag size="small" :type="row.waiting ? 'warning' : 'info'">
++                        {{ row.stage }}
++                    </KsTag>
++                    <span v-if="row.waiting" class="hint">{{ $t("cr_orders.waiting") }}</span>
++                </template>
++            </KsTableColumn>
++            <KsTableColumn prop="updated_at" :label="$t('cr_orders.updated')" width="210" />
++            <KsTableColumn width="130">
++                <template #default="{row}">
++                    <KsButton size="small" :disabled="!row.execution_id" :data-test="`cr-orders-open-${row.req_id}`" @click="open(row)">
++                        {{ row.waiting ? $t("cr_orders.continue") : $t("cr_orders.open") }}
++                    </KsButton>
++                </template>
++            </KsTableColumn>
++        </KsTable>
++    </section>
++</template>
++
++<script setup lang="ts">
++    import {computed, onMounted, ref} from "vue"
++    import {useRoute, useRouter} from "vue-router"
++    import {useI18n} from "vue-i18n"
++    import {useClient} from "@kestra-io/kestra-sdk"
++    import {apiUrl} from "override/utils/route"
++    import useRouteContext from "../../composables/useRouteContext"
++    import TopNavBar from "../layout/TopNavBar.vue"
++    import {gateway} from "../crdesigner/crApi"
++
++    interface OrderRow {req_id: number, parent_req_id?: number, kind: string, cr_name?: string, stage: string,
++                        node_type?: string, activity?: string, execution_id?: string, updated_at: string, waiting: boolean}
++
++    const {t} = useI18n()
++    const route = useRoute()
++    const router = useRouter()
++    const http = useClient()
++
++    const routeInfo = computed(() => ({title: t("cr_orders.title")}))
++    useRouteContext(routeInfo)
++
++    const id = ref(String(route.query.id ?? ""))
++    const waiting = ref(route.query.waiting === "true")
++    const rows = ref<OrderRow[]>([])
++    const loading = ref(false)
++    const error = ref("")
++
++    async function load() {
++        loading.value = true
++        error.value = ""
++        router.replace({query: {...(id.value.trim() ? {id: id.value.trim()} : {}), ...(waiting.value ? {waiting: "true"} : {})}})
++        try {
++            const query = new URLSearchParams({...(id.value.trim() ? {id: id.value.trim()} : {}), waiting: String(waiting.value)})
++            rows.value = (await gateway<{orders: OrderRow[]}>(`/cr/api/orders?${query}`)).orders
++        } catch (e: any) {
++            error.value = e?.message ?? String(e)
++        } finally {
++            loading.value = false
++        }
++    }
++
++    /** The execution that created the order or child: its Order tab shows what can be done next. */
++    async function open(row: OrderRow) {
++        const e: any = (await http.get(`${apiUrl()}/executions/${row.execution_id}`)).data
++        router.push({
++            name: "executions/update/order",
++            params: {tenant: route.params.tenant, namespace: e.namespace, flowId: e.flowId, id: row.execution_id},
++        })
++    }
++
++    onMounted(load)
++</script>
++
++<style scoped lang="scss">
++    .cr-orders {
++        display: flex;
++        flex-direction: column;
++        gap: var(--ks-spacing-3);
++    }
++
++    .search-row {
++        display: flex;
++        gap: var(--ks-spacing-3);
++        align-items: center;
++        max-width: 48rem;
++    }
++
++    .hint {
++        margin-left: var(--ks-spacing-2);
++        color: var(--ks-text-secondary);
++        font-size: var(--ks-font-size-xs);
++    }
++</style>
 diff --git a/ui/src/components/executions/Executions.vue b/ui/src/components/executions/Executions.vue
 index dd7664b..9952d27 100644
 --- a/ui/src/components/executions/Executions.vue
@@ -2344,10 +3912,10 @@ index 0000000..454826b
 +</style>
 diff --git a/ui/src/components/executions/OrderPanel.vue b/ui/src/components/executions/OrderPanel.vue
 new file mode 100644
-index 0000000..3fbe32d
+index 0000000..757ce3e
 --- /dev/null
 +++ b/ui/src/components/executions/OrderPanel.vue
-@@ -0,0 +1,446 @@
+@@ -0,0 +1,489 @@
 +<template>
 +    <div class="order">
 +        <div v-if="!orderId" class="order-empty">
@@ -2373,7 +3941,10 @@ index 0000000..3fbe32d
 +                        <dt>{{ $t("cr_order.process") }}</dt>
 +                        <dd>{{ next.process.project }} v{{ next.process.version }} ({{ next.process.state }})</dd>
 +                        <dt>{{ $t("cr_order.activity_config") }}</dt>
-+                        <dd v-if="next.activity">
++                        <dd v-if="next.activity?.layers?.length">
++                            {{ next.activity.layers.join(" · ") }}
++                        </dd>
++                        <dd v-else-if="next.activity">
 +                            {{ next.activity.node_type }}/{{ next.activity.sub_activity }} v{{ next.activity.version }} ({{ next.activity.state }})
 +                        </dd>
 +                        <dd v-else>{{ $t("cr_order.no_activity_config") }}</dd>
@@ -2465,6 +4036,15 @@ index 0000000..3fbe32d
 +                <p v-if="actionError" class="order-error">{{ actionError }}</p>
 +            </section>
 +
++            <section v-if="childId && next?.running?.length" class="order-card" data-test="order-stop">
++                <h3>{{ $t("cr_order.running_now", {child: childId}) }}</h3>
++                <p class="order-hint">{{ $t("cr_order.stop_hint") }}</p>
++                <button v-if="next.can_execute" type="button" class="order-run" :disabled="busy" data-test="stop-child" @click="stop">
++                    {{ $t("cr_order.stop") }}
++                </button>
++                <p v-if="stopError" class="order-error">{{ stopError }}</p>
++            </section>
++
 +            <section v-if="next?.decisions?.length" class="order-card" data-test="order-decisions">
 +                <h3>
 +                    {{ $t("cr_order.decisions") }}
@@ -2488,6 +4068,14 @@ index 0000000..3fbe32d
 +                </div>
 +                <p v-if="decisionError" class="order-error">{{ decisionError }}</p>
 +            </section>
++
++            <section v-if="next?.auto_starts?.length" class="order-card" data-test="order-auto-starts">
++                <h3>{{ $t("cr_order.auto_starts") }}</h3>
++                <div v-for="a in next.auto_starts" :key="`${a.step_id}-${a.child_id}-${a.item}`" class="order-hint">
++                    {{ $t("cr_order.auto_start_row", {step: a.step_id, item: a.item, state: a.state}) }}
++                    <span v-if="a.message"> - {{ a.message }}</span>
++                </div>
++            </section>
 +        </template>
 +    </div>
 +</template>
@@ -2505,18 +4093,24 @@ index 0000000..3fbe32d
 +    import {useClient} from "@kestra-io/kestra-sdk"
 +    import {apiUrl} from "override/utils/route"
 +    import {useExecutionsStore} from "../../stores/executions"
++    import {useI18n} from "vue-i18n"
++    import {useToast} from "../../utils/toast"
 +
 +    interface StepInput {name: string, type: string, label: string, required: boolean, default: any,
 +                         options?: {value: string, label: string}[], all_value?: string}
 +    interface Step {id: string, label: string, description?: string, inputs: StepInput[]}
 +    interface Decision {decision_id: number, child_id: string, node?: string, item?: string, mode: string, question: string,
 +                        options: string[], waiting_since: string, can_decide: boolean}
++    interface AutoStart {step_id: string, child_id: number, item: string, state: string, message?: string}
 +    interface Next {continuable: boolean, reason?: string, can_execute: boolean, steps: Step[], decisions?: Decision[],
++                    auto_starts?: AutoStart[], running?: string[],
 +                    process?: {project: string, version: number, state: string},
-+                    activity?: {node_type: string, sub_activity: string, version: number, state: string}}
++                    activity?: {node_type: string, sub_activity: string, version: number, state: string, layers?: string[]}}
 +    interface StepForm {values: Record<string, any>, all: Record<string, boolean>, files: Record<string, File | undefined>}
 +
 +    const executionsStore = useExecutionsStore()
++    const {t} = useI18n()
++    const toast = useToast()
 +    const router = useRouter()
 +    const route = useRoute()
 +    const http = useClient()
@@ -2637,6 +4231,23 @@ index 0000000..3fbe32d
 +        } finally {
 +            busy.value = false
 +        }
++    }
++
++    const stopError = ref("")
++
++    function stop() {
++        toast.confirm(t("cr_order.stop_confirm", {child: childId.value}), async () => {
++            busy.value = true
++            stopError.value = ""
++            try {
++                await gateway(`/cr/api/orders/${encodeURIComponent(orderId.value!)}/stop?child=${encodeURIComponent(childId.value!)}`, {method: "POST"})
++            } catch (e: any) {
++                stopError.value = e?.message ?? String(e)
++            } finally {
++                busy.value = false
++                await load()
++            }
++        })
 +    }
 +
 +    async function decide(d: Decision, option: string) {
@@ -2848,21 +4459,33 @@ index e805817..501b87c 100644
          name: `${EXECUTION_PARENT_ROUTE}/outputs`,
          path: "outputs",
 diff --git a/ui/src/override/components/useLeftMenu.ts b/ui/src/override/components/useLeftMenu.ts
-index 0afc065..f4294cd 100644
+index 0afc065..ff552d0 100644
 --- a/ui/src/override/components/useLeftMenu.ts
 +++ b/ui/src/override/components/useLeftMenu.ts
-@@ -15,6 +15,7 @@ import ChartLineVariant from "vue-material-design-icons/ChartLineVariant.vue"
+@@ -15,6 +15,8 @@ import ChartLineVariant from "vue-material-design-icons/ChartLineVariant.vue"
  import FileTreeOutline from "vue-material-design-icons/FileTreeOutline.vue"
  import LayersTripleOutline from "vue-material-design-icons/LayersTripleOutline.vue"
  import PlayOutline from "vue-material-design-icons/PlayOutline.vue"
 +import SitemapOutline from "vue-material-design-icons/SitemapOutline.vue"
++import ClipboardListOutline from "vue-material-design-icons/ClipboardListOutline.vue"
  import FileDocumentOutline from "vue-material-design-icons/FileDocumentOutline.vue"
  import FlaskOutline from "vue-material-design-icons/FlaskOutline.vue"
  import PackageVariantClosed from "vue-material-design-icons/PackageVariantClosed.vue"
-@@ -140,6 +141,17 @@ export function useLeftMenu() {
+@@ -140,6 +142,28 @@ export function useLeftMenu() {
                              element: PlayOutline,
                          },
                      },
++                    {
++                        id: "cr-orders",
++                        title: t("cr_orders.title"),
++                        routes: routeStartWith("cr/orders"),
++                        href: {
++                            name: "cr/orders",
++                        },
++                        icon: {
++                            element: ClipboardListOutline,
++                        },
++                    },
 +                    {
 +                        id: "cr-designer",
 +                        title: t("cr_designer.title"),
@@ -2878,23 +4501,24 @@ index 0afc065..f4294cd 100644
                          id: "logs",
                          title: t("logs"),
 diff --git a/ui/src/routes/routes.ts b/ui/src/routes/routes.ts
-index e243b34..98af7e7 100644
+index e243b34..de41337 100644
 --- a/ui/src/routes/routes.ts
 +++ b/ui/src/routes/routes.ts
-@@ -41,6 +41,8 @@ const routes: KestraRouteRecord[] = [
+@@ -41,6 +41,9 @@ const routes: KestraRouteRecord[] = [
      },
      EXECUTION_ROUTE,
  
 +    {name: "cr/designer", path: "/:tenant?/cr-designer/:tab?", component: () => import("../components/crdesigner/CrDesigner.vue")},
++    {name: "cr/orders", path: "/:tenant?/cr-orders", component: () => import("../components/crorders/CrOrders.vue")},
 +
      //KV
      {name: "kv/list", path: "/:tenant?/kv", component: () => import("../components/kv/KVs.vue")},
  
 diff --git a/ui/src/translations/en.json b/ui/src/translations/en.json
-index f4a164d..46145bc 100644
+index f4a164d..aa4aa82 100644
 --- a/ui/src/translations/en.json
 +++ b/ui/src/translations/en.json
-@@ -199,6 +199,187 @@
+@@ -199,6 +199,278 @@
      "details": "Details",
      "overview": "Overview",
      "gantt": "Gantt",
@@ -2925,7 +4549,31 @@ index f4a164d..46145bc 100644
 +      "decision_about": "Child {child}, node {node}, item {item} - waiting since {since}",
 +      "waiting_reply": "Decided by the reply to the mail - nothing to do here.",
 +      "comment": "Comment (optional)",
-+      "decision_view_only": "Order executors and admins take this decision."
++      "decision_view_only": "Order executors and admins take this decision.",
++      "running_now": "Child order {child} is running",
++      "stop_hint": "Stop kills what runs for it now: the running nodes stop, no summary report is made, failure reports already written stay, and the child becomes STOPPED. It can be executed again later.",
++      "stop": "Stop child order",
++      "stop_confirm": "Stop child order {child} now?",
++      "auto_starts": "Started by itself",
++      "auto_start_row": "{step} {item}: {state}",
++      "auto_start_by": "started by the process"
++    },
++    "cr_orders": {
++      "title": "Orders",
++      "search": "Order or child order id",
++      "waiting_only": "Only child orders waiting for their MOP execution",
++      "find": "Find",
++      "none": "No order found.",
++      "kind": "Kind",
++      "order": "Order",
++      "child_of": "Child of order {order}",
++      "cr": "CR",
++      "activity": "Activity",
++      "stage": "Stage",
++      "waiting": "waiting for execution",
++      "updated": "Updated",
++      "open": "Open",
++      "continue": "Continue"
 +    },
 +    "cr_designer": {
 +      "title": "Process designer",
@@ -2948,7 +4596,45 @@ index f4a164d..46145bc 100644
 +      "confirm_discard": "Discard draft version {version}? Its changes are lost.",
 +      "confirm_retire": "Retire version {version}? New orders can no longer use it.",
 +      "confirm_leave": "You have unsaved changes. Leave and lose them?",
-+      "diagram": "Diagram",
++      "diagram": "Steps (cards)",
++      "flow_tab": "Flow",
++      "flow_main": "Main flow",
++      "flow_main_hint": "What happens to an order, start to end - generated from the process. Click a box to edit it; double-click a box marked \"open\" to see inside.",
++      "flow_drill_hint": "What runs inside that box. Click a box to edit it.",
++      "flow_select_hint": "Click a box in the flow to see and edit its step.",
++      "flow_legend": "Hexagon = NEI call (CLICR / FileCR) · diamond = If, TRUE straight on, FALSE below · envelope = mail · pause = waits for a reply or a person · loop = for each · green = collect / report · red = end FAILED · dashed arrow = where a step goes back to while it is not offered",
++      "flow_zoom_in": "Zoom in",
++      "flow_zoom_out": "Zoom out",
++      "flow_fit": "Fit the whole flow",
++      "flow_export": "Save the picture as PNG",
++      "flow_insert": "Insert a box here",
++      "flow_branch_hint": "Its arrows hold their own boxes: use + on the TRUE / FALSE (or loop) arrows to add them.",
++      "flow_widget_gone": "This box is no longer in the pipeline.",
++      "flow_start": "START",
++      "flow_end": "END",
++      "flow_end_failed": "End FAILED",
++      "flow_open": "open (double-click)",
++      "flow_default": "when no pipeline is set",
++      "flow_person_starts": "A person continues",
++      "flow_order_tab": "Order tab or Orders page",
++      "flow_for_each_value": "for each {input} - starts by itself",
++      "flow_goes_on": "goes on if it fails",
++      "flow_to": "to",
++      "flow_into": "into",
++      "flow_reply": "reply to {mail} · at most {max}",
++      "flow_person": "a person decides · at most {max}",
++      "flow_all_at_once": "all at once",
++      "flow_at_a_time": "{n} at a time",
++      "flow_drill_start_node": "each node",
++      "flow_drill_start_after_nodes": "after all nodes",
++      "flow_drill_start_after_step": "after the step",
++      "flow_drill_done": "done",
++      "and": "and",
++      "when_in": "is",
++      "when_not_in": "is not",
++      "when_equals": "is",
++      "when_non_empty": "is there",
++      "when_empty": "is missing",
 +      "json": "JSON",
 +      "form": "Form",
 +      "apply_json": "Apply JSON",
@@ -3001,14 +4687,41 @@ index f4a164d..46145bc 100644
 +      "group_grc": "GRC",
 +      "group_grc_hint": "Replaces values of the generated rc file.",
 +      "add_key": "Add value",
++      "known_params": "Sent today (click to change it here):",
++      "known_login": "The project's login today (click to change it here):",
++      "known_grc": "The project's GRC today (click to change it here):",
++      "known_value": "Today: {value}",
 +      "secret_hint": "This looks like a secret: write it as ${'{'}secret:NAME{'}'} (a Kestra secret), never as its value.",
 +      "pipelines": "Pipelines",
 +      "pipelines_hint": "Widgets that run inside this step's flow, per node or after all nodes. If / else on the activity is how one node type or sub-activity gets its own path.",
 +      "hook_node": "Per node",
 +      "hook_after_nodes": "After all nodes",
++      "hook_after_step": "After the flow's step",
++      "hook_after_step_hint": "Runs once, right after the flow's own NEI step (for a child order: the MOP generation), with its result as ${'{'}run.X{'}'} - e.g. the MOP mailed to the CR's address.",
 +      "hook_node_hint": "Runs for each chosen node instead of the flow's own MOP execution. Use If / else on the activity to give one node type or sub-activity its own path; End FAILED stops the node.",
 +      "hook_after_nodes_hint": "Runs once, after all chosen nodes and the summary report, e.g. a post-completion over values the nodes collected.",
 +      "widget_count": "{count} widget(s)",
++      "execution": "How the nodes run",
++      "execution_hint": "Used when the person executing the MOP leaves it to the configuration (the default). A node pattern of the most specific level wins, then the mode of the most specific level (node type + sub-activity, then node type, then the whole project), else parallel.",
++      "execution_mode": "Nodes of this level run",
++      "mode_unset": "not set here",
++      "mode_PARALLEL": "Parallel - all at once",
++      "mode_QUEUED": "Queued - one after the other",
++      "whole_project": "Whole project (every node type and sub-activity)",
++      "all_sub_activities": "{nodeType} - every sub-activity",
++      "declare_levels_hint": "Use * for all: node type * and sub-activity * is the whole project; a node type with sub-activity * is every sub-activity of it. An order uses all levels that fit it, the most specific last.",
++      "or": "or",
++      "every_activity": "Every activity",
++      "every_other_activity": "Every other activity",
++      "add_extra": "Add an extra step for an activity",
++      "add_extra_hint": "A new box for one node type, or one node type and sub-activity: its own widgets run instead of the shared ones for these orders (a per-node box starts with the MOP execution). The other activities keep what they have.",
++      "extra_sub_activity": "Sub-activity (empty: every one)",
++      "auto_start": "Starts by itself",
++      "auto_start_on": "Start this step without a person as soon as it is offered",
++      "auto_start_hint": "The gateway starts it once - or once for each value of the chosen input - using the inputs' defaults. A person may still start it again.",
++      "auto_for_each": "Once for each value of",
++      "auto_once": "once",
++      "auto_max_running": "At most running at once (0 = no limit)",
 +      "edit_pipeline": "Edit pipeline",
 +      "view_pipeline": "View pipeline",
 +      "pipeline_title": "{hook} pipeline of {step}",
@@ -3018,6 +4731,7 @@ index f4a164d..46145bc 100644
 +      "ref_activity": "the order's node type and sub-activity",
 +      "ref_node": "the node this pipeline runs for",
 +      "ref_run": "the nodes of this run that failed / succeeded",
++      "ref_run_step": "the flow's step: step, status, statusText, message and each NEI result, e.g. ${'{'}run.ACTIVITY_CR_MOP{'}'}",
 +      "ref_item": "the current item, inside For each",
 +      "ref_step": "a result of an earlier widget: NEI results, MESSAGE_ID of a mail; a decision gives decision, comment, decided_by, from, received_at, subject",
 +      "ref_secret": "a Kestra secret and the step's folder - NEI parameters and mail fields only",
@@ -3046,6 +4760,7 @@ index f4a164d..46145bc 100644
 +      "mode_REPLY": "From a mail reply",
 +      "on_failure_STOP": "Stop",
 +      "on_failure_CONTINUE": "Continue",
++      "f_id": "Id (other boxes read its results by it)",
 +      "f_component": "NEI package",
 +      "f_action": "Action",
 +      "f_step": "Recorded as step",

@@ -1,0 +1,145 @@
+id: cr_mop_execution_node
+namespace: cr_automation
+description: |
+  One node of a MOP execution - started only by cr_mop_execution (once per node, in parallel or queued), never on
+  its own: the node's pipeline from the process designer when the order's process version has one, else CLICR
+  MOP_EXECUTION; then the failure report when the node failed. The node's result is recorded in the request store
+  (latest MOP_EXECUTION or NODE_PIPELINE row); this execution ends FAILED for a failed node, which cr_mop_execution
+  does not pass on, so the other nodes - and a queue - go on.
+
+labels:
+  project: CR_AUTOMATION
+  order_type: CHILD
+  action: MOP_EXECUTION_NODE
+
+inputs:
+  - id: order_id
+    type: STRING
+  - id: child_id
+    type: STRING
+  - id: node
+    type: STRING
+  - id: pipeline
+    type: STRING
+    required: false
+    description: The node pipeline flow of the order's process version ("" = the plain MOP_EXECUTION)
+  - id: folder
+    type: STRING
+  - id: json_file
+    type: STRING
+  - id: cr_name
+    type: STRING
+  - id: node_type
+    type: STRING
+  - id: activity
+    type: STRING
+  - id: node_version
+    type: STRING
+
+tasks:
+  - id: node_pipeline
+    type: io.kestra.plugin.core.flow.Subflow
+    description: The node's pipeline from the process designer, instead of the MOP_EXECUTION below
+    runIf: "{{ (inputs.pipeline ?? '') is not empty }}"
+    namespace: "{{ flow.namespace }}"
+    flowId: "{{ inputs.pipeline }}"
+    inputs:
+      order_id: "{{ inputs.order_id }}"
+      child_id: "{{ inputs.child_id }}"
+      node: "{{ inputs.node }}"
+    labels:
+      order_id: "{{ inputs.order_id }}"
+      req_id: "{{ inputs.child_id }}"
+      node: "{{ inputs.node }}"
+    wait: true
+    transmitFailed: false
+
+  - id: mop_execution
+    type: io.kestra.plugin.scripts.shell.Commands
+    description: CLICR NEI, ACTION=MOP_EXECUTION, NODE_NAME=<node> (when the node has no pipeline)
+    runIf: "{{ (inputs.pipeline ?? '') is empty }}"
+    taskRunner:
+      type: io.kestra.plugin.core.runner.Process
+    namespaceFiles:
+      enabled: true
+      include: [bin/**, wrappers/**, lib/**, nei/clicr/**, templates/clicr/**, config/**]
+    outputFiles:
+      - out/**
+    env:
+      ORDER_DIR: "{{ inputs.folder }}"
+      NODE: "{{ inputs.node }}"
+      NEI_GRC_REPO_PASSWORD: "{{ secret('CLICR_REPO_PASSWORD') }}"
+      NEI_LOGIN_M2MPASSWORD1: "{{ secret('CLICR_M2MPASSWORD1') }}"
+      SHARED_DATA_DIR: "{{ kv('SHARED_DATA_DIR') }}"
+      STORE_JDBC_PASSWORD: "{{ secret('CR_DB_PASSWORD') }}"
+      STORE_REQ_ID: "{{ inputs.child_id }}"
+      STORE_STEP: MOP_EXECUTION
+      STORE_NODE: "{{ inputs.node }}"
+      EXECUTION_ID: "{{ execution.id }}"
+    commands:
+      - >-
+        sh bin/nei.sh clicr "mop_execution_$NODE"
+        --param REQ_TYPE=1
+        --param ACTION=MOP_EXECUTION
+        --param "INPUT_JSON_FILE_NAME={{ inputs.json_file }}"
+        --param "OUTPUT_LOGS_FILE_LOCATION=$ORDER_DIR/LOGS"
+        --param "OUTPUT_JSON_REPORT_LOCATION=$ORDER_DIR/REPORT"
+        --param "CR_NAME={{ inputs.cr_name }}"
+        --param "NODE_NAME=$NODE"
+        --param "NODE_TYPE={{ inputs.node_type }}"
+        --param "SUB_ACTIVITY_NAME={{ inputs.activity }}"
+        --param "NODE_VERSION={{ inputs.node_version }}"
+        --param ROLLBACK_ONLY=false
+        --param "IL_TASK_GROUP=ACTIVITY_EXECUTION_$NODE"
+        --param "ORDER_NO={{ inputs.order_id }}"
+        --param "PARENT_REQ_ID={{ inputs.order_id }}"
+        --param "CHILD_REQ_ID={{ inputs.child_id }}"
+        --param "REQ_ID={{ inputs.child_id }}"
+
+  - id: node_failed
+    type: io.kestra.plugin.core.debug.Return
+    description: Whether the node failed - its MOP_EXECUTION status, or its pipeline's state
+    format: >-
+      {{ (inputs.pipeline ?? '') is empty ? (outputs.mop_execution.vars.status != 0)
+      : (outputs.node_pipeline.state != 'SUCCESS') }}
+
+  - id: failure_report
+    type: io.kestra.plugin.scripts.shell.Commands
+    description: Failed node only - FileCR NEI, ACTION=GENERATE_REPORT, NODE_FAILURE_REPORT=TRUE
+    runIf: "{{ outputs.node_failed.value == 'true' }}"
+    taskRunner:
+      type: io.kestra.plugin.core.runner.Process
+    namespaceFiles:
+      enabled: true
+      include: [bin/**, wrappers/**, lib/**, nei/filecr/**, templates/**, config/**]
+    outputFiles:
+      - out/**
+    env:
+      ORDER_DIR: "{{ inputs.folder }}"
+      NODE: "{{ inputs.node }}"
+      SHARED_DATA_DIR: "{{ kv('SHARED_DATA_DIR') }}"
+      STORE_JDBC_PASSWORD: "{{ secret('CR_DB_PASSWORD') }}"
+      STORE_REQ_ID: "{{ inputs.child_id }}"
+      STORE_STEP: FAILURE_REPORT
+      STORE_NODE: "{{ inputs.node }}"
+      EXECUTION_ID: "{{ execution.id }}"
+    commands:
+      - >-
+        sh bin/nei.sh filecr "failure_report_$NODE"
+        --param REQ_TYPE=1
+        --param ACTION=GENERATE_REPORT
+        --param NODE_FAILURE_REPORT=TRUE
+        --param "NODE_NAME=$NODE"
+        --param "CR_NAME={{ inputs.cr_name }}"
+        --param "NODE_TYPE={{ inputs.node_type }}"
+        --param "SUB_ACTIVITY_NAME={{ inputs.activity }}"
+        --param "OUTPUT_REPORT_LOCATION=$ORDER_DIR/REPORT"
+        --param "FAILURE_REPORT_LOCATION=$ORDER_DIR/REPORT"
+        --param "PARENT_REQ_ID={{ inputs.order_id }}"
+        --param "CHILD_REQ_ID={{ inputs.child_id }}"
+        --param "REQ_ID={{ inputs.child_id }}"
+
+  - id: node_result
+    type: io.kestra.plugin.core.execution.Fail
+    runIf: "{{ outputs.node_failed.value == 'true' }}"
+    errorMessage: "Node {{ inputs.node }} of child {{ inputs.child_id }} failed - see its failure report in {{ inputs.folder }}/REPORT/"

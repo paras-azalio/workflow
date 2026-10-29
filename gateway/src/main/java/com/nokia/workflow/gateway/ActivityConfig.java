@@ -22,6 +22,10 @@ import java.util.regex.Pattern;
  *                                        "SOUTH*": {"grc": {"NIAM_IP": "10.0.0.2"}}}}}}
  * </pre>
  * Section {@code *} applies to every step; node patterns use {@code *} and {@code ?}; later entries win.
+ * {@code "execution": {"mode": "QUEUED", "nodes": {"SOUTH*": "PARALLEL"}}} says how the nodes of a MOP execution run
+ * when the person leaves it to the configuration: a node pattern of the most specific level first, then the mode of
+ * the most specific level, else PARALLEL. Levels (each its own declaration, general to specific): node type * and
+ * sub-activity * (the whole project), a node type with sub-activity *, a node type with its sub-activity.
  * References: {@code ${order.X}}, {@code ${child.X}}, {@code ${node}}, {@code ${ciq.X}}, {@code ${secret:NAME}},
  * {@code ${WORKDIR}}.
  */
@@ -39,6 +43,7 @@ final class ActivityConfig {
             + "|secret:[A-Za-z0-9_]+|WORKDIR");
     private static final Set<String> SECTION_KEYS = Set.of("params", "login", "grc", "nodes");
     private static final Set<String> NODE_KEYS = Set.of("params", "login", "grc");
+    static final Set<String> MODES = Set.of("PARALLEL", "QUEUED");
 
     private ActivityConfig() {
     }
@@ -51,10 +56,11 @@ final class ActivityConfig {
             return List.of("The configuration must be a JSON object.");
         }
         for (Object k : root.keySet()) {
-            if (!"description".equals(k) && !"steps".equals(k)) {
-                p.add("Unknown key '" + k + "' (use description, steps).");
+            if (!"description".equals(k) && !"steps".equals(k) && !"execution".equals(k)) {
+                p.add("Unknown key '" + k + "' (use description, steps, execution).");
             }
         }
+        execution(root.get("execution"), p);
         Object steps = root.get("steps");
         if (steps != null && !(steps instanceof Map)) {
             p.add("'steps' must be an object of step name -> settings.");
@@ -88,6 +94,39 @@ final class ActivityConfig {
             }
         }
         return p;
+    }
+
+    private static void execution(Object o, List<String> p) {
+        if (o == null) {
+            return;
+        }
+        if (!(o instanceof Map<?, ?> e)) {
+            p.add("'execution' must be an object {mode, nodes}.");
+            return;
+        }
+        for (Map.Entry<?, ?> x : e.entrySet()) {
+            String k = String.valueOf(x.getKey());
+            if ("mode".equals(k)) {
+                if (!MODES.contains(String.valueOf(x.getValue()))) {
+                    p.add("execution.mode must be PARALLEL or QUEUED.");
+                }
+            } else if ("nodes".equals(k)) {
+                if (!(x.getValue() instanceof Map<?, ?> nodes)) {
+                    p.add("execution.nodes must be an object of node pattern -> PARALLEL or QUEUED.");
+                    continue;
+                }
+                for (Map.Entry<?, ?> n : nodes.entrySet()) {
+                    if (!NODE.matcher(String.valueOf(n.getKey())).matches()) {
+                        p.add("execution.nodes." + n.getKey() + ": a node pattern is letters, digits, _ . - and the wildcards * ?.");
+                    }
+                    if (!MODES.contains(String.valueOf(n.getValue()))) {
+                        p.add("execution.nodes." + n.getKey() + " must be PARALLEL or QUEUED.");
+                    }
+                }
+            } else {
+                p.add("execution: unknown key '" + k + "' (use mode, nodes).");
+            }
+        }
     }
 
     @SuppressWarnings("unchecked")
