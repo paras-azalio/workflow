@@ -72,6 +72,24 @@ public class ProcessStoreIT {
     }
 
     @Test
+    public void aDeletedProjectIsHiddenNotErasedAndCanBeRestored() throws Exception {
+        store.createProject("CR_AUTOMATIONS", "copy", "cr_automations", P, "admin");
+        store.hide("CR_AUTOMATIONS", "admin");
+        assertTrue(store.hidden("CR_AUTOMATIONS"));
+        assertFalse(store.processes(false).stream().anyMatch(p -> "CR_AUTOMATIONS".equals(p.get("project"))), "not listed");
+        assertTrue(store.processes(true).stream().anyMatch(p -> "CR_AUTOMATIONS".equals(p.get("project")) && p.get("hidden_at") != null));
+        assertFalse(store.namespaces().contains("cr_automations"), "executors may no longer run its flows");
+        assertEquals(1, store.version("CR_AUTOMATIONS", 1).version(), "its versions stay");
+        UserStore.Rejected taken = assertThrows(UserStore.Rejected.class, () -> store.createProject("OTHER", "x", "cr_automations", null, "admin"));
+        assertTrue(taken.getMessage().contains("restore it instead"), taken.getMessage());
+        assertEquals(409, assertThrows(UserStore.Rejected.class, () -> store.hide("CR_AUTOMATIONS", "admin")).status);
+        store.restore("CR_AUTOMATIONS", "admin");
+        assertFalse(store.hidden("CR_AUTOMATIONS"));
+        assertTrue(store.namespaces().contains("cr_automations"));
+        assertEquals(404, assertThrows(UserStore.Rejected.class, () -> store.hide("NOPE", "admin")).status);
+    }
+
+    @Test
     public void theShippedDefinitionIsSeededOnceAsPublishedVersion1() throws Exception {
         assertFalse(store.seed(P, "again", shipped));
         ProcessStore.Version v = store.latestPublished(P);

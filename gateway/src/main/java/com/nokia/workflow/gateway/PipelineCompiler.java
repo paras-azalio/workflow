@@ -22,6 +22,13 @@ final class PipelineCompiler {
     record Compiled(String flowId, String yaml) {
     }
 
+    /**
+     * A registered component a NEI box calls instead of a built-in NEI (nei/&lt;component&gt;): its published version's
+     * folder, where its files are, its kind and its actions' parameter defaults.
+     */
+    record ComponentRef(String dir, String home, String kind, Map<String, Map<String, String>> defaults) {
+    }
+
     private static final String SHELL = "io.kestra.plugin.scripts.shell.Commands";
     private static final List<String> BASE_FILES = List.of("bin/**", "wrappers/**", "lib/**", "config/**");
 
@@ -30,8 +37,11 @@ final class PipelineCompiler {
     private final int version;
     private final String stepId;
     private final Pipeline pipeline;
+    private final Map<String, ComponentRef> components;
 
-    private PipelineCompiler(String namespace, String project, int version, String stepId, Pipeline pipeline) {
+    private PipelineCompiler(String namespace, String project, int version, String stepId, Pipeline pipeline,
+                             Map<String, ComponentRef> components) {
+        this.components = components;
         this.namespace = namespace;
         this.project = project;
         this.version = version;
@@ -44,7 +54,13 @@ final class PipelineCompiler {
     }
 
     static Compiled compile(String namespace, String project, int version, String stepId, Pipeline pipeline) {
-        PipelineCompiler c = new PipelineCompiler(namespace, project, version, stepId, pipeline);
+        return compile(namespace, project, version, stepId, pipeline, Map.of());
+    }
+
+    /** @param components the registered components a NEI box may name, by name (the rest are built-in NEIs) */
+    static Compiled compile(String namespace, String project, int version, String stepId, Pipeline pipeline,
+                            Map<String, ComponentRef> components) {
+        PipelineCompiler c = new PipelineCompiler(namespace, project, version, stepId, pipeline, components);
         String id = flowId(project, version, stepId, pipeline.hook);
         return new Compiled(id, Yaml.write(c.flow(id)));
     }
@@ -113,7 +129,14 @@ final class PipelineCompiler {
 
     private List<Object> nei(Pipeline.Nei n, int loops) {
         boolean node = pipeline.hook == Pipeline.Hook.NODE;
+        ComponentRef ref = components.get(n.component());
         Map<String, String> params = new LinkedHashMap<>();
+        if (ref != null && "STANDALONE".equals(ref.kind())) {
+            return call(n, ref, loops);
+        }
+        if (ref != null) {
+            params.putAll(ref.defaults().getOrDefault(n.action(), Map.of()));
+        }
         params.put("REQ_TYPE", "1");
         params.put("ACTION", n.action());
         params.put("INPUT_JSON_FILE_NAME", "${child.json_file}");
@@ -136,18 +159,53 @@ final class PipelineCompiler {
         params.put("REQ_ID", "${child.id}");
 
         Map<String, Object> env = recordEnv(n.step(), loops, n.id());
-        StringBuilder cmd = new StringBuilder("sh bin/nei.sh " + n.component() + " \"$LOG_NAME\"");
+        StringBuilder cmd = new StringBuilder(ref == null ? "sh bin/nei.sh " + n.component() + " \"$LOG_NAME\""
+                : "sh bin/component.sh " + ref.dir() + " \"$LOG_NAME\"");
         int i = 0;
         for (Map.Entry<String, String> p : params.entrySet()) {
             env.put("P_" + ++i, template(p.getValue(), loops));
             cmd.append(" --param \"").append(p.getKey()).append("=$P_").append(i).append('"');
         }
         List<String> files = new ArrayList<>(BASE_FILES);
-        files.add("nei/" + n.component() + "/**");
+        if (ref == null) {
+            files.add("nei/" + n.component() + "/**");
+        } else {
+            files.add(ref.dir() + "/**");
+            if (!ref.home().equals(ref.dir())) {
+                files.add(ref.home() + "/**");
+            }
+        }
         files.add("templates/**");
         List<Object> out = new ArrayList<>();
         out.add(shell(n.id(), describe(n, "NEI " + n.component().toUpperCase(Locale.ROOT) + ", ACTION=" + n.action()),
                 files, env, List.of(cmd.toString()), true));
+        if (!n.continueOnFailure()) {
+            out.addAll(fail(n.id() + "__stop", "{{ outputs." + n.id() + ".vars.status == 9 }}",
+                    "{{ '" + escape(describe(n, n.id())) + " failed: ' ~ (outputs." + n.id() + ".vars.message ?? '') }}"));
+        }
+        return out;
+    }
+
+    /** A standalone component: its action's defaults, the box's parameters and the order's ids, nothing NEI-specific. */
+    private List<Object> call(Pipeline.Nei n, ComponentRef ref, int loops) {
+        Map<String, String> params = new LinkedHashMap<>(ref.defaults().getOrDefault(n.action(), Map.of()));
+        params.putAll(n.params());
+        params.put("ACTION", n.action());
+        context(params, loops);
+        Map<String, Object> env = recordEnv(n.step(), loops, n.id());
+        StringBuilder cmd = new StringBuilder("sh bin/component.sh " + ref.dir() + " \"$LOG_NAME\"");
+        int i = 0;
+        for (Map.Entry<String, String> p : params.entrySet()) {
+            env.put("P_" + ++i, template(p.getValue(), loops));
+            cmd.append(" --param \"").append(p.getKey()).append("=$P_").append(i).append('"');
+        }
+        List<String> files = new ArrayList<>(BASE_FILES);
+        files.add(ref.dir() + "/**");
+        if (!ref.home().equals(ref.dir())) {
+            files.add(ref.home() + "/**");
+        }
+        List<Object> out = new ArrayList<>();
+        out.add(shell(n.id(), describe(n, n.component() + " " + n.action()), files, env, List.of(cmd.toString()), true));
         if (!n.continueOnFailure()) {
             out.addAll(fail(n.id() + "__stop", "{{ outputs." + n.id() + ".vars.status == 9 }}",
                     "{{ '" + escape(describe(n, n.id())) + " failed: ' ~ (outputs." + n.id() + ".vars.message ?? '') }}"));

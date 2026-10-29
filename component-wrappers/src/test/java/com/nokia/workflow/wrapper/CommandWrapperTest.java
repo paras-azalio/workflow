@@ -37,7 +37,8 @@ public class CommandWrapperTest {
         } catch (java.net.URISyntaxException e) {
             throw new IOException(e);
         }
-        s.write(("command.probe=" + java + " -cp " + cp + " " + CommandProbe.class.getName() + "\n" + config)
+        s.write(("command.probe=" + java + " -cp " + cp + " " + CommandProbe.class.getName() + "\n"
+                + "command.echo=" + java + " -cp " + cp + " " + com.nokia.workflow.wrapper.command.EchoProbe.class.getName() + "\n" + config)
                 .replace("\\", "\\\\").getBytes(StandardCharsets.UTF_8));
         s.close();
         String[] args = new String[6 + 2 * params.length];
@@ -73,6 +74,34 @@ public class CommandWrapperTest {
         int code = run(new HashMap<String, String>(), "", "COMMAND=probe", "EXIT=3");
         assertEquals(9, code, out);
         assertTrue(out.contains("ended with exit code 3"), out);
+    }
+
+    @Test
+    public void argumentsGoInAsSeparateValuesAndTheLastJsonLineComesBack() throws IOException {
+        int code = run(new HashMap<String, String>(), "command.echo.input=ARGS\ncommand.echo.args=--imsi {IMSI} {MODE}x\n"
+                + "command.echo.output=STDOUT_JSON\n", "COMMAND=echo", "IMSI=40401; rm -rf /", "MODE=post");
+        assertEquals(0, code, out);
+        assertTrue(out.contains("RESULT=--imsi"), "the JSON line is the result: " + out);
+        assertTrue(out.contains("ARGS=3"), "three arguments, the value with spaces is one of them: " + out);
+        assertFalse(out.contains("ARG1="), "with STDOUT_JSON only the JSON line counts: " + out);
+    }
+
+    @Test
+    public void environmentValuesAndKeyValueLinesWithASuccessRule() throws IOException {
+        String cfg = "command.echo.input=ENV\ncommand.echo.output=STDOUT_KEYVALUE\ncommand.echo.success_key=ENV_RESULT\n"
+                + "command.echo.success_value=OK\n";
+        int code = run(new HashMap<String, String>(), cfg, "COMMAND=echo", "RESULT=OK", "NODE=NORTH1");
+        assertEquals(0, code, out);
+        assertTrue(out.contains("ENV_NODE=NORTH1"), out);
+        code = run(new HashMap<String, String>(), cfg, "COMMAND=echo", "RESULT=NOT_OK");
+        assertEquals(9, code, "the success rule decides, not the exit code: " + out);
+    }
+
+    @Test
+    public void aWrongModeIsReported() throws IOException {
+        int code = run(new HashMap<String, String>(), "command.echo.input=ARGS\ncommand.echo.output=RESPONSE_FILE\n", "COMMAND=echo");
+        assertEquals(9, code, out);
+        assertTrue(out.contains("RESPONSE_FILE (with input REQUEST_FILE)"), out);
     }
 
     @Test

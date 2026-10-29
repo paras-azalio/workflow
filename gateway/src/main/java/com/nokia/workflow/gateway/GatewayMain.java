@@ -30,6 +30,8 @@ import java.util.concurrent.Executors;
  *                                                            with its own namespace
  *   GATEWAY_KNOWN_STEPS          NEI step names an activity configuration may name before any flow recorded them
  *   GATEWAY_AUTO_START_SECONDS   15     how often automatic steps (auto_start) are looked for; 0 = never
+ *   GATEWAY_RUNTIMES             python3=python3,java=java,java8=/opt/java8/bin/java,shell=sh
+ *                                       the programs behind a standalone component's {runtime}
  *   GATEWAY_AUTO_START_WINDOW_MINUTES 60   orders changed within this time are looked at
  * </pre>
  */
@@ -72,6 +74,14 @@ public final class GatewayMain {
             autoStarter.start(steps, autoSeconds, Integer.parseInt(env.getOrDefault("GATEWAY_AUTO_START_WINDOW_MINUTES", "60")));
         }
 
+        Map<String, String> runtimes = new java.util.LinkedHashMap<>();
+        for (String r : env.getOrDefault("GATEWAY_RUNTIMES", "python3=python3,java=java,java8=/opt/java8/bin/java,shell=sh").split(",")) {
+            if (r.contains("=")) {
+                runtimes.put(r.substring(0, r.indexOf('=')).trim(), r.substring(r.indexOf('=') + 1).trim());
+            }
+        }
+        ComponentStore components = new ComponentStore(db, schema, project, users, kestra, runtimes);
+        components.ensureSchema();
         java.util.function.Predicate<String> isProjectNamespace = ns -> {
             try {
                 return processes.namespaces().contains(ns);
@@ -82,7 +92,7 @@ public final class GatewayMain {
         HttpServer server = HttpServer.create(new InetSocketAddress(port), 256);
         Decisions decisions = new Decisions(db, schema, kestra, users);
         server.createContext("/", new Gateway(users, processes, activities, steps, decisions,
-                new OrderSearch(db, schema), kestra, new Rules(isProjectNamespace), isProjectNamespace, project));
+                new OrderSearch(db, schema), components, kestra, new Rules(isProjectNamespace), isProjectNamespace, project));
         server.setExecutor(Executors.newVirtualThreadPerTaskExecutor());
         server.start();
         System.out.println("gateway: listening on " + port + ", Kestra at " + env.getOrDefault("KESTRA_INTERNAL_URL", "http://kestra:8080"));

@@ -407,12 +407,536 @@ index 0000000..85e80ed
 +        margin: 0;
 +    }
 +</style>
+diff --git a/ui/src/components/crdesigner/ComponentDesigner.vue b/ui/src/components/crdesigner/ComponentDesigner.vue
+new file mode 100644
+index 0000000..66e75f5
+--- /dev/null
++++ b/ui/src/components/crdesigner/ComponentDesigner.vue
+@@ -0,0 +1,518 @@
++<template>
++    <div class="designer" data-test="component-designer">
++        <div class="designer-top">
++            <KsSelect :modelValue="project" class="project-select" :placeholder="$t('cr_designer.project')" data-test="component-project-select" @update:model-value="selectProject">
++                <KsOption v-for="p in projectList" :key="p.project" :label="p.project" :value="p.project" />
++            </KsSelect>
++            <KsSelect :modelValue="name" filterable class="activity-select" :placeholder="$t('cr_designer.comp_pick')" data-test="component-select" @update:model-value="selectComponent">
++                <KsOption v-for="c in list" :key="c.name" :label="c.name" :value="c.name">
++                    <span>{{ c.name }}</span>
++                    <span class="hint"> {{ c.kind }}{{ c.published_version ? ` v${c.published_version}` : "" }}{{ c.draft_version ? ` · ${$t("cr_designer.draft")} v${c.draft_version}` : "" }}</span>
++                </KsOption>
++            </KsSelect>
++            <KsButton v-if="me.can.admin" :icon="Plus" data-test="declare-component" @click="declaring = true">
++                {{ $t("cr_designer.comp_declare") }}
++            </KsButton>
++            <VersionBar
++                v-if="name"
++                class="designer-bar"
++                :versions="versions"
++                :selected="selected"
++                :admin="me.can.admin"
++                :dirty="dirty"
++                :busy="busy"
++                :error="error"
++                :message="message"
++                :problems="problems"
++                v-on="handlers"
++            />
++        </div>
++        <KsEmpty v-if="!list.length" :description="$t('cr_designer.comp_none')" />
++        <p v-if="!name && list.length" class="hint">{{ $t("cr_designer.comp_hint") }}</p>
++
++        <KsTabs v-if="spec" v-model="view">
++            <KsTabPane name="form" :label="$t('cr_designer.form')">
++                <div class="config-form">
++                    <div class="section-head">
++                        <KsTag :type="spec.kind === 'WRAPPED' ? 'primary' : 'success'">{{ $t(`cr_designer.comp_kind_${spec.kind}`) }}</KsTag>
++                        <span class="hint">{{ $t(`cr_designer.comp_kind_${spec.kind}_hint`) }}</span>
++                    </div>
++                    <label class="field">
++                        <span>{{ $t("description") }}</span>
++                        <KsInput v-model="spec.description" :disabled="!editable" />
++                    </label>
++
++                    <KsCard class="section" data-test="component-files">
++                        <h5>{{ $t("cr_designer.comp_files") }}</h5>
++                        <div class="section-head">
++                            <KsSelect v-model="spec.location" :disabled="!editable" class="pattern-input" data-test="component-location">
++                                <KsOption value="UPLOADED" :label="$t('cr_designer.comp_location_UPLOADED')" />
++                                <KsOption value="FOLDER" :label="$t('cr_designer.comp_location_FOLDER')" />
++                            </KsSelect>
++                            <KsInput v-if="spec.location === 'FOLDER'" v-model="spec.folder" :disabled="!editable" placeholder="nei/clicr" class="pattern-input" />
++                        </div>
++                        <p class="hint">{{ spec.location === "FOLDER" ? $t("cr_designer.comp_folder_hint") : $t("cr_designer.comp_upload_hint", {dir}) }}</p>
++                        <div v-for="f in files" :key="f.name" class="file-row" :data-test="`component-file-${f.name}`">
++                            <code>{{ f.name }}</code>
++                            <span class="hint">{{ size(f.size) }}</span>
++                            <KsButton
++                                v-if="editable && spec.location !== 'FOLDER' && f.name !== 'component.properties'"
++                                :icon="Delete"
++                                size="small"
++                                :aria-label="$t('delete')"
++                                @click="removeFile(f.name)"
++                            />
++                        </div>
++                        <p v-if="!files.length" class="hint">{{ $t("cr_designer.comp_no_files") }}</p>
++                        <div v-if="editable && spec.location !== 'FOLDER'" class="section-head">
++                            <KsUpload :autoUpload="false" :showFileList="false" :onChange="(f: any) => pick(f.raw)" data-test="component-upload">
++                                <KsButton :icon="Upload">{{ $t("cr_designer.comp_choose_file") }}</KsButton>
++                            </KsUpload>
++                            <KsInput v-model="uploadPath" :placeholder="$t('cr_designer.comp_upload_path')" class="pattern-input" data-test="component-upload-path" />
++                            <KsCheckbox v-if="pending?.name.endsWith('.zip')" v-model="unzip">{{ $t("cr_designer.comp_unzip") }}</KsCheckbox>
++                            <KsButton type="primary" :disabled="!pending || uploading" data-test="component-upload-go" @click="upload">
++                                {{ uploading ? $t("cr_designer.comp_uploading") : $t("cr_designer.comp_upload") }}
++                            </KsButton>
++                        </div>
++                        <KsAlert v-if="fileError" type="error" :closable="false">{{ fileError }}</KsAlert>
++                        <KsAlert v-else-if="uploadNote" type="success" :closable="false" data-test="component-upload-note">{{ uploadNote }}</KsAlert>
++                    </KsCard>
++
++                    <KsCard v-if="spec.kind === 'WRAPPED'" class="section" data-test="component-wrapped">
++                        <h5>{{ $t("cr_designer.comp_how_wrapped") }}</h5>
++                        <div class="field-row">
++                            <label class="field"><span>{{ $t("cr_designer.comp_ne_type") }}</span><KsInput v-model="spec.wrapped.ne_type" :disabled="!editable" placeholder="CLICR" /></label>
++                            <label class="field"><span>{{ $t("cr_designer.comp_product") }}</span><KsInput v-model="spec.wrapped.product" :disabled="!editable" placeholder="ANY" /></label>
++                            <label class="field"><span>{{ $t("cr_designer.comp_version") }}</span><KsInput v-model="spec.wrapped.version" :disabled="!editable" placeholder="V1" /></label>
++                            <label class="field"><span>{{ $t("cr_designer.comp_config_dir") }}</span><KsInput v-model="spec.wrapped.config_dir" :disabled="!editable" placeholder="config" /></label>
++                        </div>
++                        <p class="hint">{{ $t("cr_designer.comp_class", {cls: `macro_${spec.wrapped.ne_type || "?"}_${spec.wrapped.product || "ANY"}_${spec.wrapped.version || "V1"}`}) }}</p>
++                        <KeyValues v-model="spec.wrapped.grc" group="grc" :editable="editable" />
++                        <KeyValues v-model="spec.wrapped.login" group="login" :editable="editable" />
++                    </KsCard>
++
++                    <KsCard v-else class="section" data-test="component-standalone">
++                        <h5>{{ $t("cr_designer.comp_how_standalone") }}</h5>
++                        <div class="field-row">
++                            <label class="field narrow"><span>{{ $t("cr_designer.comp_runtime") }}</span>
++                                <KsSelect v-model="spec.standalone.runtime" :disabled="!editable">
++                                    <KsOption v-for="r in RUNTIMES" :key="r" :label="r" :value="r" />
++                                </KsSelect>
++                            </label>
++                            <label class="field"><span>{{ $t("cr_designer.comp_command") }}</span>
++                                <KsInput v-model="spec.standalone.command" :disabled="!editable" placeholder="{runtime} {file:check.py}" data-test="component-command" />
++                            </label>
++                        </div>
++                        <p class="hint">{{ $t("cr_designer.comp_command_hint") }}</p>
++                        <div class="field-row">
++                            <label class="field"><span>{{ $t("cr_designer.comp_input") }}</span>
++                                <KsSelect v-model="spec.standalone.input" :disabled="!editable" data-test="component-input">
++                                    <KsOption v-for="i in INPUTS" :key="i" :label="$t(`cr_designer.comp_input_${i}`)" :value="i" />
++                                </KsSelect>
++                            </label>
++                            <label class="field"><span>{{ $t("cr_designer.comp_output") }}</span>
++                                <KsSelect v-model="spec.standalone.output" :disabled="!editable" data-test="component-output">
++                                    <KsOption v-for="o in OUTPUTS" :key="o" :label="$t(`cr_designer.comp_output_${o}`)" :value="o" />
++                                </KsSelect>
++                            </label>
++                        </div>
++                        <label v-if="spec.standalone.input === 'ARGS'" class="field"><span>{{ $t("cr_designer.comp_args") }}</span>
++                            <KsInput v-model="spec.standalone.args" :disabled="!editable" placeholder="--imsi {IMSI} --mode {MODE}" data-test="component-args" />
++                        </label>
++                        <div class="field-row">
++                            <label class="field"><span>{{ $t("cr_designer.comp_success_key") }}</span><KsInput v-model="spec.standalone.success_key" :disabled="!editable" :placeholder="$t('cr_designer.comp_success_default')" /></label>
++                            <label class="field"><span>{{ $t("cr_designer.comp_success_value") }}</span><KsInput v-model="spec.standalone.success_value" :disabled="!editable || !spec.standalone.success_key" placeholder="SUCCESS" /></label>
++                            <label class="field narrow"><span>{{ $t("cr_designer.comp_timeout") }}</span>
++                                <KsInputNumber :modelValue="Number(spec.standalone.timeout_sec ?? 300)" :min="1" :max="86400" :disabled="!editable" @update:model-value="(v: number | undefined) => setTimeout(v)" />
++                            </label>
++                        </div>
++                    </KsCard>
++
++                    <KsCard class="section" data-test="component-actions">
++                        <h5>{{ $t("cr_designer.comp_actions") }}</h5>
++                        <p class="hint">{{ $t("cr_designer.comp_actions_hint") }}</p>
++                        <div v-for="(a, i) in spec.actions" :key="i" class="node-block" :data-test="`component-action-${a.name}`">
++                            <div class="section-head">
++                                <KsInput v-model="a.name" :disabled="!editable" placeholder="CR_CIQ_PROCESSOR" class="pattern-input" />
++                                <KsInput v-model="a.description" :disabled="!editable" :placeholder="$t('description')" class="grow" />
++                                <KsButton v-if="editable" :icon="Delete" size="small" :aria-label="$t('delete')" @click="spec.actions.splice(i, 1)" />
++                            </div>
++                            <strong>{{ $t("cr_designer.comp_params") }}</strong>
++                            <div v-for="(prm, j) in a.params" :key="`p${j}`" class="section-head">
++                                <KsInput v-model="prm.name" :disabled="!editable" placeholder="NAME" class="pattern-input" />
++                                <KsInput v-model="prm.default" :disabled="!editable" :placeholder="$t('cr_designer.default')" class="pattern-input" />
++                                <KsInput v-model="prm.description" :disabled="!editable" :placeholder="$t('description')" class="grow" />
++                                <KsCheckbox v-model="prm.required" :disabled="!editable">{{ $t("cr_designer.required") }}</KsCheckbox>
++                                <KsButton v-if="editable" :icon="Close" size="small" :aria-label="$t('delete')" @click="a.params.splice(j, 1)" />
++                            </div>
++                            <KsButton v-if="editable" :icon="Plus" size="small" @click="a.params.push({name: '', required: false, default: '', description: ''})">
++                                {{ $t("cr_designer.comp_add_param") }}
++                            </KsButton>
++                            <strong>{{ $t("cr_designer.comp_results") }}</strong>
++                            <div v-for="(res, j) in a.results" :key="`r${j}`" class="section-head">
++                                <KsInput v-model="res.name" :disabled="!editable" placeholder="RESULT_KEY" class="pattern-input" />
++                                <KsInput v-model="res.description" :disabled="!editable" :placeholder="$t('description')" class="grow" />
++                                <KsButton v-if="editable" :icon="Close" size="small" :aria-label="$t('delete')" @click="a.results.splice(j, 1)" />
++                            </div>
++                            <KsButton v-if="editable" :icon="Plus" size="small" @click="a.results.push({name: '', description: ''})">
++                                {{ $t("cr_designer.comp_add_result") }}
++                            </KsButton>
++                        </div>
++                        <KsButton v-if="editable" :icon="Plus" data-test="component-add-action" @click="spec.actions.push({name: '', description: '', params: [], results: []})">
++                            {{ $t("cr_designer.comp_add_action") }}
++                        </KsButton>
++                    </KsCard>
++
++                    <KsCard v-if="me.can.admin" class="section" data-test="component-try">
++                        <h5>{{ $t("cr_designer.comp_try") }}</h5>
++                        <p class="hint">{{ dirty ? $t("cr_designer.comp_try_save_first") : $t("cr_designer.comp_try_hint") }}</p>
++                        <div class="section-head">
++                            <KsSelect v-model="tryAction" :placeholder="$t('cr_designer.comp_action')" class="pattern-input" data-test="component-try-action">
++                                <KsOption v-for="a in spec.actions" :key="a.name" :label="a.name" :value="a.name" />
++                            </KsSelect>
++                        </div>
++                        <div v-for="prm in tryParams" :key="prm.name" class="section-head">
++                            <code class="pattern-input">{{ prm.name }}{{ prm.required ? " *" : "" }}</code>
++                            <KsInput v-model="tryValues[prm.name]" :type="/password|passwd|secret|token/i.test(prm.name) ? 'password' : 'text'" class="grow" :data-test="`component-try-${prm.name}`" />
++                        </div>
++                        <KsButton type="primary" :icon="Play" :disabled="!tryAction || dirty || trying" data-test="component-try-run" @click="runTry">
++                            {{ trying ? $t("cr_designer.comp_trying") : $t("cr_designer.comp_try_run") }}
++                        </KsButton>
++                        <template v-if="tryResult">
++                            <div class="section-head" data-test="component-try-result">
++                                <KsTag :type="tryResult.result?.statusText === 'SUCCESS' ? 'success' : tryResult.result?.statusText === 'WARNING' ? 'warning' : 'danger'">
++                                    {{ tryResult.result?.statusText ?? tryResult.state }}
++                                </KsTag>
++                                <span>{{ tryResult.result?.message }}</span>
++                            </div>
++                            <div v-for="(value, key) in tryResult.result?.results ?? {}" :key="key" class="file-row">
++                                <code>{{ key }}</code><span>{{ value }}</span>
++                            </div>
++                            <KsCollapse>
++                                <KsCollapseItem :title="$t('cr_designer.comp_try_request')">
++                                    <pre class="log">{{ JSON.stringify(tryResult.result?.request ?? {}, null, 2) }}</pre>
++                                </KsCollapseItem>
++                                <KsCollapseItem :title="$t('cr_designer.comp_try_log')">
++                                    <pre class="log">{{ [...(tryResult.result?.log ?? []), ...tryResult.log].join("\n") }}</pre>
++                                </KsCollapseItem>
++                            </KsCollapse>
++                        </template>
++                        <KsAlert v-if="tryError" type="error" :closable="false">{{ tryError }}</KsAlert>
++                    </KsCard>
++                </div>
++            </KsTabPane>
++            <KsTabPane name="json" :label="$t('cr_designer.json')">
++                <JsonView :value="spec" :editable="editable" @apply="(v: any) => spec = normalize(v)" />
++            </KsTabPane>
++        </KsTabs>
++
++        <KsDialog v-model="declaring" :title="$t('cr_designer.comp_declare')" :beforeClose="beforeClose" width="34rem">
++            <KsForm labelPosition="top" @submit.prevent="declare">
++                <KsFormItem :label="$t('cr_designer.comp_name')" required>
++                    <KsInput v-model="draft.name" placeholder="hlr_check" data-test="declare-component-name" />
++                </KsFormItem>
++                <KsFormItem :label="$t('cr_designer.comp_kind')" required>
++                    <KsRadioGroup v-model="draft.kind" data-test="declare-component-kind">
++                        <KsRadio value="STANDALONE">{{ $t("cr_designer.comp_kind_STANDALONE") }}</KsRadio>
++                        <KsRadio value="WRAPPED">{{ $t("cr_designer.comp_kind_WRAPPED") }}</KsRadio>
++                    </KsRadioGroup>
++                </KsFormItem>
++                <p class="hint">{{ $t(`cr_designer.comp_kind_${draft.kind}_hint`) }}</p>
++                <KsFormItem :label="$t('description')">
++                    <KsInput v-model="draft.description" />
++                </KsFormItem>
++            </KsForm>
++            <KsAlert v-if="declareError" type="error" :closable="false">{{ declareError }}</KsAlert>
++            <template #footer>
++                <KsButton @click="closeDeclare">{{ $t("cancel") }}</KsButton>
++                <KsButton type="primary" :disabled="!draft.name" data-test="declare-component-go" @click="declare">{{ $t("cr_designer.comp_declare") }}</KsButton>
++            </template>
++        </KsDialog>
++    </div>
++</template>
++
++<script setup lang="ts">
++    import {computed, onMounted, reactive, ref, watch} from "vue"
++    import {useI18n} from "vue-i18n"
++    import {useRoute, useRouter} from "vue-router"
++    import Plus from "vue-material-design-icons/Plus.vue"
++    import Delete from "vue-material-design-icons/Delete.vue"
++    import Close from "vue-material-design-icons/Close.vue"
++    import Upload from "vue-material-design-icons/Upload.vue"
++    import Play from "vue-material-design-icons/Play.vue"
++    import VersionBar from "./VersionBar.vue"
++    import KeyValues from "./KeyValues.vue"
++    import JsonView from "./JsonView.vue"
++    import {gateway, projectUrl, projects, GatewayError} from "./crApi"
++    import type {Me, ProjectInfo} from "./crApi"
++    import {useVersioned} from "./useVersioned"
++    import {useDiscardGuard} from "../../composables/useDiscardGuard"
++
++    interface ComponentRow {name: string, kind?: string, description?: string, published_version?: number, draft_version?: number}
++    interface FileRow {name: string, path: string, size?: number}
++
++    const RUNTIMES = ["python3", "java", "java8", "shell"]
++    const INPUTS = ["REQUEST_FILE", "ARGS", "ENV"]
++    const OUTPUTS = ["RESPONSE_FILE", "STDOUT_KEYVALUE", "STDOUT_JSON", "EXIT_CODE"]
++
++    const props = defineProps<{me: Me}>()
++    const route = useRoute()
++    const router = useRouter()
++    const {t} = useI18n()
++
++    const projectList = ref<ProjectInfo[]>([])
++    const project = ref("")
++    const list = ref<ComponentRow[]>([])
++    const name = ref("")
++    const view = ref("form")
++    const files = ref<FileRow[]>([])
++
++    const base = () => `${projectUrl(project.value)}/components/${encodeURIComponent(name.value)}`
++    const {versions, selected, loaded, content: spec, busy, error, message, problems, dirty, loadVersions, leaveConfirmed, handlers} = useVersioned({
++        base,
++        field: "spec",
++        normalize,
++        onLoaded: async () => {
++            files.value = (loaded.value as any)?.files ?? []
++            tryResult.value = undefined
++            await refreshList()
++        },
++    })
++
++    const editable = computed(() => props.me.can.admin && loaded.value?.state === "DRAFT")
++    const dir = computed(() => (loaded.value as any)?.dir ?? "")
++
++    function normalize(s: any) {
++        const out = s ?? {}
++        out.location = out.location ?? "UPLOADED"
++        // the gateway sends JSON booleans back as text
++        const yes = (v: any) => v === true || v === "true"
++        const param = (p: any) => ({...p, required: yes(p.required), ...(p.secret !== undefined ? {secret: yes(p.secret)} : {})})
++        out.actions = (out.actions ?? []).map((a: any) => ({...a, results: a.results ?? [], params: (a.params ?? []).map(param)}))
++        if (out.kind === "WRAPPED") out.wrapped = {grc: {}, login: {}, ...(out.wrapped ?? {})}
++        else out.standalone = {runtime: "python3", command: "", input: "ARGS", output: "STDOUT_KEYVALUE", ...(out.standalone ?? {})}
++        return out
++    }
++
++    const size = (n?: number) => n === undefined ? "" : n > 1048576 ? `${(n / 1048576).toFixed(1)} MB` : `${Math.ceil(n / 1024)} KB`
++
++    // KsInputNumber emits once on mount and the gateway sends numbers back as text: only a real change is written
++    function setTimeout(v: number | undefined) {
++        if (String(spec.value.standalone.timeout_sec ?? "") !== String(v ?? "")) spec.value.standalone.timeout_sec = v
++    }
++
++    async function refreshList() {
++        list.value = (await gateway<{components: ComponentRow[]}>(`${projectUrl(project.value)}/components`)).components
++    }
++
++    async function selectProject(p: string) {
++        if (!await leaveConfirmed()) return
++        project.value = p
++        router.replace({query: {...route.query, project: p}})
++        name.value = ""
++        spec.value = undefined
++        await refreshList()
++    }
++
++    async function selectComponent(n: string) {
++        if (!await leaveConfirmed()) return
++        name.value = n
++        await loadVersions()
++    }
++
++    // ---------------------------------------------------------------- files
++
++    const pending = ref<File>()
++    const uploadPath = ref("")
++    const unzip = ref(true)
++    const uploading = ref(false)
++    const fileError = ref("")
++    const uploadNote = ref("")
++
++    function pick(f: File) {
++        pending.value = f
++        uploadPath.value = f.name.endsWith(".zip") ? "" : f.name
++    }
++
++    async function upload() {
++        if (!pending.value) return
++        uploading.value = true
++        fileError.value = ""
++        uploadNote.value = ""
++        try {
++            const zip = pending.value.name.endsWith(".zip") && unzip.value
++            const query = new URLSearchParams({path: uploadPath.value, ...(zip ? {unzip: "true"} : {})})
++            const response = await fetch(`${base()}/versions/${selected.value}/files?${query}`, {method: "PUT", body: pending.value, credentials: "same-origin"})
++            const body = await response.json().catch(() => ({}))
++            if (!response.ok) throw new GatewayError(body.message ?? response.statusText, response.status)
++            uploadNote.value = body.dropped_folder
++                ? t("cr_designer.comp_uploaded_dropped", {count: body.written.length, folder: body.dropped_folder})
++                : t("cr_designer.comp_uploaded", {count: body.written.length})
++            pending.value = undefined
++            uploadPath.value = ""
++            await refreshFiles()
++        } catch (e: any) {
++            fileError.value = e?.message ?? String(e)
++        } finally {
++            uploading.value = false
++        }
++    }
++
++    async function removeFile(path: string) {
++        fileError.value = ""
++        try {
++            await gateway(`${base()}/versions/${selected.value}/files?${new URLSearchParams({path})}`, {method: "DELETE"})
++            await refreshFiles()
++        } catch (e: any) {
++            fileError.value = e?.message ?? String(e)
++        }
++    }
++
++    async function refreshFiles() {
++        files.value = (await gateway<{files: FileRow[]}>(`${base()}/versions/${selected.value}/files`)).files
++    }
++
++    // ---------------------------------------------------------------- try it
++
++    const tryAction = ref("")
++    const tryValues = reactive<Record<string, string>>({})
++    const tryResult = ref<any>()
++    const tryError = ref("")
++    const trying = ref(false)
++    const tryParams = computed<any[]>(() => spec.value?.actions?.find((a: any) => a.name === tryAction.value)?.params ?? [])
++
++    watch(tryParams, params => {
++        for (const p of params) if (!(p.name in tryValues)) tryValues[p.name] = p.default ?? ""
++    })
++
++    async function runTry() {
++        trying.value = true
++        tryError.value = ""
++        tryResult.value = undefined
++        try {
++            const params = Object.fromEntries(tryParams.value.map((p: any) => [p.name, tryValues[p.name] ?? ""]))
++            tryResult.value = await gateway(`${base()}/versions/${selected.value}/try`, {method: "POST", json: {action: tryAction.value, params}})
++        } catch (e: any) {
++            tryError.value = e?.message ?? String(e)
++        } finally {
++            trying.value = false
++        }
++    }
++
++    // ---------------------------------------------------------------- declare
++
++    const declaring = ref(false)
++    const draft = ref({name: "", kind: "STANDALONE", description: ""})
++    const declareError = ref("")
++    const {guardedClose} = useDiscardGuard(() => !!(draft.value.name || draft.value.description))
++    const beforeClose = (done: () => void) => guardedClose(() => {
++        closeDeclare()
++        done()
++    })
++
++    function closeDeclare() {
++        declaring.value = false
++        draft.value = {name: "", kind: "STANDALONE", description: ""}
++        declareError.value = ""
++    }
++
++    async function declare() {
++        try {
++            const made = await gateway<{name: string}>(`${projectUrl(project.value)}/components`, {method: "POST", json: draft.value})
++            closeDeclare()
++            await refreshList()
++            await selectComponent(made.name)
++        } catch (e: any) {
++            declareError.value = e?.message ?? String(e)
++        }
++    }
++
++    onMounted(async () => {
++        const {list: all, first} = await projects(route.query.project)
++        projectList.value = all
++        if (first) await selectProject(first)
++    })
++</script>
++
++<style scoped lang="scss">
++    .designer, .config-form {
++        display: flex;
++        flex-direction: column;
++        gap: var(--ks-spacing-3);
++    }
++
++    .designer-top, .section-head, .field-row, .file-row {
++        display: flex;
++        flex-wrap: wrap;
++        gap: var(--ks-spacing-2);
++        align-items: center;
++    }
++
++    .project-select {
++        width: 14rem;
++    }
++
++    .activity-select {
++        width: 20rem;
++    }
++
++    .designer-bar {
++        flex: 1;
++    }
++
++    .pattern-input {
++        width: 14rem;
++    }
++
++    .grow {
++        flex: 1;
++        min-width: 12rem;
++    }
++
++    .section {
++        display: flex;
++        flex-direction: column;
++        gap: var(--ks-spacing-2);
++    }
++
++    .node-block {
++        display: flex;
++        flex-direction: column;
++        gap: var(--ks-spacing-2);
++        padding: var(--ks-spacing-3);
++        border: 1px solid var(--ks-border-subtle);
++        border-radius: var(--ks-spacing-1);
++    }
++
++    .field {
++        display: flex;
++        flex: 1;
++        flex-direction: column;
++        gap: var(--ks-spacing-1);
++        min-width: 10rem;
++        color: var(--ks-text-secondary);
++        font-size: var(--ks-font-size-sm);
++    }
++
++    .field.narrow {
++        flex: 0 0 10rem;
++    }
++
++    .hint {
++        margin: 0;
++        color: var(--ks-text-secondary);
++        font-size: var(--ks-font-size-xs);
++    }
++
++    .log {
++        max-height: 20rem;
++        overflow: auto;
++        margin: 0;
++        font-size: var(--ks-font-size-xs);
++        white-space: pre-wrap;
++    }
++
++    h5 {
++        margin: 0;
++    }
++</style>
 diff --git a/ui/src/components/crdesigner/CrDesigner.vue b/ui/src/components/crdesigner/CrDesigner.vue
 new file mode 100644
-index 0000000..faea362
+index 0000000..074b37d
 --- /dev/null
 +++ b/ui/src/components/crdesigner/CrDesigner.vue
-@@ -0,0 +1,49 @@
+@@ -0,0 +1,53 @@
 +<template>
 +    <TopNavBar :title="routeInfo.title" />
 +    <section class="full-container">
@@ -426,6 +950,9 @@ index 0000000..faea362
 +            <KsTabPane name="activities" :label="$t('cr_designer.activities')" lazy>
 +                <ActivityDesigner :me="me" />
 +            </KsTabPane>
++            <KsTabPane name="components" :label="$t('cr_designer.components')" lazy>
++                <ComponentDesigner :me="me" />
++            </KsTabPane>
 +        </KsTabs>
 +    </section>
 +</template>
@@ -438,6 +965,7 @@ index 0000000..faea362
 +    import TopNavBar from "../layout/TopNavBar.vue"
 +    import ProcessDesigner from "./ProcessDesigner.vue"
 +    import ActivityDesigner from "./ActivityDesigner.vue"
++    import ComponentDesigner from "./ComponentDesigner.vue"
 +    import {gateway} from "./crApi"
 +    import type {Me} from "./crApi"
 +
@@ -450,7 +978,7 @@ index 0000000..faea362
 +
 +    const me = ref<Me>()
 +    const error = ref("")
-+    const tab = computed(() => route.params.tab === "activities" ? "activities" : "processes")
++    const tab = computed(() => route.params.tab === "activities" || route.params.tab === "components" ? route.params.tab : "processes")
 +
 +    const selectTab = (name?: string) => router.replace({name: "cr/designer", params: {...route.params, tab: name}})
 +
@@ -1363,19 +1891,33 @@ index 0000000..fad5af0
 +</style>
 diff --git a/ui/src/components/crdesigner/ProcessDesigner.vue b/ui/src/components/crdesigner/ProcessDesigner.vue
 new file mode 100644
-index 0000000..d3c921f
+index 0000000..4c0a022
 --- /dev/null
 +++ b/ui/src/components/crdesigner/ProcessDesigner.vue
-@@ -0,0 +1,493 @@
+@@ -0,0 +1,548 @@
 +<template>
 +    <div class="designer">
 +        <div class="designer-top">
 +            <KsSelect :modelValue="project" class="project-select" :placeholder="$t('cr_designer.project')" data-test="project-select" @update:model-value="selectProject">
 +                <KsOption v-for="p in projectList" :key="p.project" :label="p.project" :value="p.project">
 +                    <span>{{ p.project }}</span>
-+                    <span class="hint"> {{ p.namespace }}</span>
++                    <span class="hint"> {{ p.namespace }}{{ p.hidden_at ? ` · ${$t("cr_designer.project_deleted_tag")}` : "" }}</span>
 +                </KsOption>
 +            </KsSelect>
++            <KsCheckbox v-if="admin" v-model="showDeleted" data-test="show-deleted" @change="reloadProjects">
++                {{ $t("cr_designer.show_deleted") }}
++            </KsCheckbox>
++            <KsButton
++                v-if="admin && currentProject && !currentProject.hidden_at && project !== defaultProject"
++                :icon="Delete"
++                data-test="delete-project"
++                @click="deleteProject"
++            >
++                {{ $t("cr_designer.delete_project") }}
++            </KsButton>
++            <KsButton v-if="admin && currentProject?.hidden_at" :icon="Restore" type="primary" data-test="restore-project" @click="restoreProject">
++                {{ $t("cr_designer.restore_project") }}
++            </KsButton>
 +            <KsButton v-if="admin" :icon="Plus" data-test="new-project" @click="openCreate">
 +                {{ $t("cr_designer.new_project") }}
 +            </KsButton>
@@ -1393,6 +1935,9 @@ index 0000000..d3c921f
 +            />
 +        </div>
 +
++        <KsAlert v-if="currentProject?.hidden_at" type="warning" :closable="false" data-test="project-deleted">
++            {{ $t("cr_designer.project_deleted", {by: currentProject.hidden_by ?? "", at: currentProject.hidden_at}) }}
++        </KsAlert>
 +        <KsTabs v-if="def" v-model="view" class="designer-tabs">
 +            <KsTabPane name="flow" :label="$t('cr_designer.flow_tab')">
 +                <div class="designer-body flow-body">
@@ -1517,13 +2062,15 @@ index 0000000..d3c921f
 +</template>
 +
 +<script setup lang="ts">
-+    import {computed, onMounted, ref} from "vue"
++    import {computed, onMounted, provide, ref} from "vue"
 +    import {useRoute, useRouter} from "vue-router"
 +    import {useI18n} from "vue-i18n"
 +    import {VueFlow, MarkerType, useVueFlow} from "@vue-flow/core"
 +    import {Background} from "@vue-flow/background"
 +    import {GRAPH_BACKGROUND, MIN_ZOOM} from "@kestra-io/topology"
 +    import Plus from "vue-material-design-icons/Plus.vue"
++    import Delete from "vue-material-design-icons/Delete.vue"
++    import Restore from "vue-material-design-icons/Restore.vue"
 +    import VersionBar from "./VersionBar.vue"
 +    import StepNode from "./StepNode.vue"
 +    import ExtraNode from "./ExtraNode.vue"
@@ -1533,7 +2080,8 @@ index 0000000..d3c921f
 +    import StepEditor from "./StepEditor.vue"
 +    import JsonView from "./JsonView.vue"
 +    import PipelineEditor from "./PipelineEditor.vue"
-+    import {insertWidget, normalize as normalizeWidgets, routes} from "./pipelineWidgets"
++    import {CALLABLES, insertWidget, normalize as normalizeWidgets, routes} from "./pipelineWidgets"
++    import type {Callables} from "./pipelineWidgets"
 +    import {computeDagLayout} from "../dependencies/utils/dagLayout"
 +    import {gateway, processUrl, processFlows, projectUrl, projects} from "./crApi"
 +    import type {Me, FlowInfo, ProjectInfo} from "./crApi"
@@ -1549,8 +2097,41 @@ index 0000000..d3c921f
 +    const router = useRouter()
 +    const {fitView} = useVueFlow("cr-designer")
 +
-+    const projectList = ref<ProjectInfo[]>([])
++    const callables = ref<Callables>({builtins: [], components: []})
++    provide(CALLABLES, callables)
++
++    const projectList = ref<(ProjectInfo & {hidden_by?: string})[]>([])
 +    const project = ref("")
++    const showDeleted = ref(false)
++    const defaultProject = ref<string>()
++    const currentProject = computed(() => projectList.value.find(p => p.project === project.value))
++
++    async function reloadProjects() {
++        const res = await projects(project.value, showDeleted.value)
++        projectList.value = res.list
++        defaultProject.value = res.defaultProject
++        if (!res.list.some(p => p.project === project.value) && res.first) await selectProject(res.first)
++    }
++
++    /** A soft delete: the project is hidden, its orders, versions and history stay, and it can be restored. */
++    async function deleteProject() {
++        if (!await ask(t("cr_designer.confirm_delete_project", {project: project.value}))) return
++        try {
++            message.value = (await gateway<{message: string}>(`${processUrl(project.value)}/delete`, {method: "POST"})).message
++            await reloadProjects()
++        } catch (e: any) {
++            error.value = e?.message ?? String(e)
++        }
++    }
++
++    async function restoreProject() {
++        try {
++            message.value = (await gateway<{message: string}>(`${processUrl(project.value)}/restore`, {method: "POST"})).message
++            await reloadProjects()
++        } catch (e: any) {
++            error.value = e?.message ?? String(e)
++        }
++    }
 +    const flows = ref<FlowInfo[]>([])
 +    const fields = ref<{order: string[], child: string[]}>({order: [], child: []})
 +    const selectedId = ref<string>()
@@ -1633,6 +2214,7 @@ index 0000000..d3c921f
 +        project.value = p
 +        router.replace({query: {...route.query, project: p}})
 +        fields.value = await gateway<{order: string[], child: string[]}>(`${projectUrl(p)}/context-fields`).catch(() => ({order: [], child: []}))
++        callables.value = await gateway<Callables>(`${projectUrl(p)}/components`).catch(() => ({builtins: [], components: []}))
 +        await loadVersions()
 +    }
 +
@@ -1788,8 +2370,9 @@ index 0000000..d3c921f
 +
 +    onMounted(async () => {
 +        try {
-+            const {list, first} = await projects(route.query.project)
++            const {list, first, defaultProject: fallback} = await projects(route.query.project)
 +            projectList.value = list
++            defaultProject.value = fallback
 +            if (first) await selectProject(first)
 +        } catch (e: any) {
 +            error.value = e?.message ?? String(e)
@@ -2433,22 +3016,37 @@ index 0000000..4d9d491
 +</style>
 diff --git a/ui/src/components/crdesigner/WidgetForm.vue b/ui/src/components/crdesigner/WidgetForm.vue
 new file mode 100644
-index 0000000..117b744
+index 0000000..bca0237
 --- /dev/null
 +++ b/ui/src/components/crdesigner/WidgetForm.vue
-@@ -0,0 +1,195 @@
+@@ -0,0 +1,216 @@
 +<template>
 +    <div class="widget-form">
 +        <template v-if="w.widget === 'NEI'">
 +            <div class="row">
-+                <label class="field"><span>{{ $t("cr_designer.f_component") }}</span><KsInput v-model="w.component" :disabled="!editable" placeholder="clicr" /></label>
-+                <label class="field"><span>{{ $t("cr_designer.f_action") }}</span><KsInput v-model="w.action" :disabled="!editable" placeholder="MOP_EXECUTION" /></label>
++                <label class="field"><span>{{ $t("cr_designer.f_component") }}</span>
++                    <KsSelect v-model="w.component" filterable allowCreate :disabled="!editable" placeholder="clicr" data-test="widget-component">
++                        <KsOptionGroup v-if="callables?.components.length" :label="$t('cr_designer.f_registered')">
++                            <KsOption v-for="c in callables.components" :key="c.name" :label="c.name" :value="c.name" />
++                        </KsOptionGroup>
++                        <KsOptionGroup :label="$t('cr_designer.f_builtin')">
++                            <KsOption v-for="b in callables?.builtins ?? []" :key="b" :label="b" :value="b" />
++                        </KsOptionGroup>
++                    </KsSelect>
++                </label>
++                <label class="field"><span>{{ $t("cr_designer.f_action") }}</span>
++                    <KsSelect v-if="registered" v-model="w.action" :disabled="!editable" data-test="widget-action">
++                        <KsOption v-for="a in registered.actions" :key="a.name" :label="a.name" :value="a.name" />
++                    </KsSelect>
++                    <KsInput v-else v-model="w.action" :disabled="!editable" placeholder="MOP_EXECUTION" />
++                </label>
 +                <label class="field"><span>{{ $t("cr_designer.f_step") }}</span><KsInput v-model="w.step" :disabled="!editable" :placeholder="w.action" /></label>
 +            </div>
-+            <label class="field"><span>{{ $t("cr_designer.f_sub_activity") }}</span>
++            <label v-if="registered?.kind !== 'STANDALONE'" class="field"><span>{{ $t("cr_designer.f_sub_activity") }}</span>
 +                <KsInput v-model="w.sub_activity" :disabled="!editable" placeholder="${activity.sub_activity}" />
 +            </label>
-+            <KeyValues v-model="w.params" group="params" :editable="editable" />
++            <p v-if="registered" class="hint">{{ $t(registered.kind === "STANDALONE" ? "cr_designer.f_calls_standalone" : "cr_designer.f_calls_wrapped") }}</p>
++            <KeyValues v-model="w.params" group="params" :editable="editable" :known="actionParams" />
 +        </template>
 +
 +        <template v-else-if="w.widget === 'MAIL'">
@@ -2560,7 +3158,7 @@ index 0000000..117b744
 +    import Close from "vue-material-design-icons/Close.vue"
 +    import Plus from "vue-material-design-icons/Plus.vue"
 +    import KeyValues from "./KeyValues.vue"
-+    import {PIPELINE, flatten} from "./pipelineWidgets"
++    import {CALLABLES, PIPELINE, flatten} from "./pipelineWidgets"
 +
 +    const OPS = ["equals", "not_equals", "in", "not_in", "empty", "non_empty"]
 +
@@ -2569,6 +3167,12 @@ index 0000000..117b744
 +    const editable = computed(() => ctx.editable.value)
 +    const w = computed(() => props.widget)
 +    const mails = computed(() => flatten(ctx.root.value).filter(x => x.widget === "MAIL").map(x => x.id))
++    const callablesRef = inject(CALLABLES, undefined)
++    const callables = computed(() => callablesRef?.value)
++    const registered = computed(() => callables.value?.components.find(c => c.name === w.value.component))
++    /** The chosen action's parameters, offered with their defaults (a missing required one is a problem on save). */
++    const actionParams = computed<Record<string, string>>(() => Object.fromEntries(
++        (registered.value?.actions.find(a => a.name === w.value.action)?.params ?? []).map((p: any) => [p.name, p.default ?? ""])))
 +
 +    const csv = (s: string) => s.split(",").map(x => x.trim()).filter(Boolean)
 +</script>
@@ -2788,10 +3392,10 @@ index 0000000..6f76697
 +</style>
 diff --git a/ui/src/components/crdesigner/crApi.ts b/ui/src/components/crdesigner/crApi.ts
 new file mode 100644
-index 0000000..8a5d721
+index 0000000..6974aeb
 --- /dev/null
 +++ b/ui/src/components/crdesigner/crApi.ts
-@@ -0,0 +1,75 @@
+@@ -0,0 +1,78 @@
 +/**
 + * The cr_automation gateway's API (/cr/api) and the Kestra calls the designer needs. The gateway enforces the
 + * roles; the UI only avoids offering what the role cannot do.
@@ -2833,15 +3437,18 @@ index 0000000..8a5d721
 +export const activityUrl = (project: string, nodeType: string, subActivity: string) =>
 +    `${projectUrl(project)}/activities/${encodeURIComponent(nodeType)}/${encodeURIComponent(subActivity)}`
 +
-+export interface ProjectInfo {project: string, name?: string, namespace?: string}
++export interface ProjectInfo {project: string, name?: string, namespace?: string, hidden_at?: string}
 +
-+/** The projects, and the one to show first: the route's ?project=, else the gateway's default one. */
-+export async function projects(wanted?: unknown): Promise<{list: ProjectInfo[], first: string}> {
-+    const res = await gateway<{processes: ProjectInfo[], default_project?: string}>("/cr/api/processes")
++/**
++ * The projects (with the deleted ones when `withDeleted`), the gateway's default project, and the one to show first:
++ * the route's ?project=, else the default one.
++ */
++export async function projects(wanted?: unknown, withDeleted = false): Promise<{list: ProjectInfo[], first: string, defaultProject?: string}> {
++    const res = await gateway<{processes: ProjectInfo[], default_project?: string}>(`/cr/api/processes${withDeleted ? "?hidden=true" : ""}`)
 +    const names = res.processes.map(p => p.project)
 +    const first = typeof wanted === "string" && names.includes(wanted) ? wanted
 +        : res.default_project && names.includes(res.default_project) ? res.default_project : names[0] ?? ""
-+    return {list: res.processes, first}
++    return {list: res.processes, first, defaultProject: res.default_project}
 +}
 +
 +/** The flows of a namespace a process step may run: those labelled process: "true", with their declared inputs. */
@@ -3298,10 +3905,10 @@ index 0000000..841540d
 +}
 diff --git a/ui/src/components/crdesigner/pipelineWidgets.ts b/ui/src/components/crdesigner/pipelineWidgets.ts
 new file mode 100644
-index 0000000..14e78de
+index 0000000..51529db
 --- /dev/null
 +++ b/ui/src/components/crdesigner/pipelineWidgets.ts
-@@ -0,0 +1,142 @@
+@@ -0,0 +1,147 @@
 +import type {InjectionKey, Ref} from "vue"
 +
 +/** The widgets of a pipeline, as the gateway's Pipeline class accepts them. */
@@ -3314,6 +3921,11 @@ index 0000000..14e78de
 +}
 +
 +export const PIPELINE: InjectionKey<PipelineContext> = Symbol("cr-pipeline")
++
++/** What a NEI / Call component box can call: the built-in NEI folders and the project's registered components. */
++export interface Callables {builtins: string[], components: {name: string, kind?: string, actions: any[]}[]}
++
++export const CALLABLES: InjectionKey<Ref<Callables>> = Symbol("cr-callables")
 +
 +const PREFIX: Record<string, string> = {
 +    NEI: "nei", MAIL: "mail", DECISION: "decision", IF: "check", FOR_EACH: "each", COLLECT: "collect", END: "end",
@@ -3446,7 +4058,7 @@ index 0000000..14e78de
 +export const FLOW_INSERT: InjectionKey<(insert: {step: string, hook: string, path: (string | number)[], index: number}, type: string) => void> = Symbol("cr-flow-insert")
 diff --git a/ui/src/components/crdesigner/useVersioned.ts b/ui/src/components/crdesigner/useVersioned.ts
 new file mode 100644
-index 0000000..c3aeddf
+index 0000000..b0cb819
 --- /dev/null
 +++ b/ui/src/components/crdesigner/useVersioned.ts
 @@ -0,0 +1,103 @@
@@ -3463,7 +4075,7 @@ index 0000000..c3aeddf
 + */
 +export function useVersioned(options: {
 +    base: () => string,
-+    field: "definition" | "config",
++    field: "definition" | "config" | "spec",
 +    normalize: (content: any) => any,
 +    onLoaded?: () => Promise<void> | void,
 +}) {
@@ -4641,10 +5253,10 @@ index e243b34..de41337 100644
      {name: "kv/list", path: "/:tenant?/kv", component: () => import("../components/kv/KVs.vue")},
  
 diff --git a/ui/src/translations/en.json b/ui/src/translations/en.json
-index f4a164d..6f152a5 100644
+index f4a164d..cb5b0b7 100644
 --- a/ui/src/translations/en.json
 +++ b/ui/src/translations/en.json
-@@ -199,6 +199,289 @@
+@@ -199,6 +199,362 @@
      "details": "Details",
      "overview": "Overview",
      "gantt": "Gantt",
@@ -4725,7 +5337,76 @@ index f4a164d..6f152a5 100644
 +      "confirm_retire": "Retire version {version}? New orders can no longer use it.",
 +      "confirm_leave": "You have unsaved changes. Leave and lose them?",
 +      "diagram": "Steps (cards)",
++      "components": "Components",
++      "comp_pick": "Component",
++      "comp_declare": "New component",
++      "comp_none": "No component is declared in this project yet.",
++      "comp_hint": "Pick a component, or make a new one: a jar or a script your steps can call.",
++      "comp_name": "Name (lower case, e.g. hlr_check)",
++      "comp_kind": "How it is called",
++      "comp_kind_WRAPPED": "Wrapped (NEI jar)",
++      "comp_kind_STANDALONE": "Standalone (jar, Python or shell)",
++      "comp_kind_WRAPPED_hint": "An NEI jar with the Macro Server contract, like CLICR and FileCR: the wrapper loads its class, logs in and runs the task; results are its 7200 NEW lines, its status codes decide success.",
++      "comp_kind_STANDALONE_hint": "Any program: the wrapper starts it, gives it the step's values (a request file, arguments or environment variables) and reads its results (a response file, KEY=VALUE lines, a JSON line or only the exit code).",
++      "comp_files": "Files",
++      "comp_location_UPLOADED": "Files uploaded here",
++      "comp_location_FOLDER": "A folder already in the namespace",
++      "comp_folder_hint": "The component's jar and lib/ are already in this namespace folder (e.g. nei/clicr for the CLICR NEI); nothing is uploaded.",
++      "comp_upload_hint": "Uploaded files go to {dir} in the project's namespace. A zip is unpacked (e.g. a jar with its lib/); when everything in it is inside one folder (like a build's target/), that folder is left out.",
++      "comp_uploaded": "{count} file(s) uploaded.",
++      "comp_uploaded_dropped": "{count} file(s) uploaded, without the zip's top folder {folder}/.",
++      "comp_no_files": "No file yet.",
++      "comp_choose_file": "Choose a file",
++      "comp_upload_path": "Where (e.g. lib/tool.jar; empty for a zip = the root)",
++      "comp_unzip": "Unpack the zip",
++      "comp_upload": "Upload",
++      "comp_uploading": "Uploading\u2026",
++      "comp_how_wrapped": "NEI settings",
++      "comp_ne_type": "NE type",
++      "comp_product": "Product",
++      "comp_version": "Product version",
++      "comp_config_dir": "Status-code folder",
++      "comp_class": "The wrapper loads the class {cls}.",
++      "comp_how_standalone": "How it is called",
++      "comp_runtime": "Runtime",
++      "comp_command": "Command",
++      "comp_command_hint": "{'{'}runtime{'}'} is the runtime's program, {'{'}file:NAME{'}'} one of the component's files, {'{'}dir{'}'} its folder - e.g. {'{'}runtime{'}'} {'{'}file:check.py{'}'} --mode post.",
++      "comp_input": "Values go in as",
++      "comp_input_REQUEST_FILE": "a request file (KEY=VALUE), then a response file - both as arguments",
++      "comp_input_ARGS": "arguments (the template below)",
++      "comp_input_ENV": "environment variables P_<KEY>",
++      "comp_output": "Results come back as",
++      "comp_output_RESPONSE_FILE": "the response file it writes",
++      "comp_output_STDOUT_KEYVALUE": "KEY=VALUE lines it prints",
++      "comp_output_STDOUT_JSON": "the last JSON line it prints",
++      "comp_output_EXIT_CODE": "only its exit code",
++      "comp_args": "Arguments ({'{'}KEY{'}'} = the value of parameter KEY, one argument each)",
++      "comp_success_key": "Success when result",
++      "comp_success_default": "empty: STATUS, else exit code 0",
++      "comp_success_value": "equals",
++      "comp_timeout": "Timeout (s)",
++      "comp_actions": "Actions",
++      "comp_actions_hint": "What the component can do, each with the parameters it takes and the results it gives. A step or a pipeline box calling it picks an action; its ACTION parameter is the action's name.",
++      "comp_add_action": "Add action",
++      "comp_params": "Parameters",
++      "comp_add_param": "Add parameter",
++      "comp_results": "Results",
++      "comp_add_result": "Add result",
++      "comp_action": "Action",
++      "comp_try": "Try it",
++      "comp_try_hint": "Runs one action of this saved version with these values in the project's namespace and shows what went in and what came out.",
++      "comp_try_save_first": "Save first: Try it runs the saved version.",
++      "comp_try_run": "Run",
++      "comp_trying": "Running\u2026",
++      "comp_try_request": "What went in",
++      "comp_try_log": "Log",
 +      "new_project": "New project",
++      "delete_project": "Delete project",
++      "restore_project": "Restore project",
++      "show_deleted": "Show deleted projects",
++      "project_deleted_tag": "deleted",
++      "project_deleted": "This project is deleted (hidden by {by} at {at}): its orders and versions are kept but cannot be continued, and its flows cannot be run by executors. Restore it to use it again.",
++      "confirm_delete_project": "Delete project {project}? It is hidden, not erased: its orders, versions and history stay, its orders can no longer be continued, and an admin can restore it.",
 +      "create_project": "Create project",
 +      "project_id": "Project id (upper case, e.g. CR_AUTOMATIONS)",
 +      "project_name": "Name",
@@ -4898,7 +5579,11 @@ index f4a164d..6f152a5 100644
 +      "on_failure_STOP": "Stop",
 +      "on_failure_CONTINUE": "Continue",
 +      "f_id": "Id (other boxes read its results by it)",
-+      "f_component": "NEI package",
++      "f_component": "Component (an NEI package or a registered component)",
++      "f_registered": "Registered components",
++      "f_builtin": "Built-in NEIs",
++      "f_calls_standalone": "A standalone component: it gets the action's parameters below (and ORDER_ID, CHILD_ID, NODE, ITEM), not the NEI ones; the version published last when the process is published is the one used.",
++      "f_calls_wrapped": "A wrapped NEI component: it gets the usual NEI parameters plus the action's parameters below; the version published last when the process is published is the one used.",
 +      "f_action": "Action",
 +      "f_step": "Recorded as step",
 +      "f_sub_activity": "Sub-activity (selects the template)",

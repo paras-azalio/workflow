@@ -55,6 +55,8 @@ final class ProcessStore {
                 versions.ensureVersionTable(st);
                 st.execute("ALTER TABLE " + t("process_version") + " ADD COLUMN IF NOT EXISTS compiled JSONB");
                 st.execute("ALTER TABLE " + t("process") + " ADD COLUMN IF NOT EXISTS namespace VARCHAR(128)");
+                st.execute("ALTER TABLE " + t("process") + " ADD COLUMN IF NOT EXISTS hidden_at TIMESTAMPTZ");
+                st.execute("ALTER TABLE " + t("process") + " ADD COLUMN IF NOT EXISTS hidden_by VARCHAR(256)");
                 // processes from before the column: the namespace their latest version's definition names
                 st.execute("UPDATE " + t("process") + " p SET namespace = (SELECT v.definition ->> 'namespace' FROM "
                         + t("process_version") + " v WHERE v.process_id = p.process_id ORDER BY v.version DESC LIMIT 1)"
@@ -153,9 +155,10 @@ final class ProcessStore {
             if (VersionedStore.one(c, "SELECT 1 FROM " + t("process") + " WHERE project = ?", project) != null) {
                 throw new UserStore.Rejected(409, "Project %s already exists.".formatted(project));
             }
-            Map<String, Object> other = VersionedStore.one(c, "SELECT project FROM " + t("process") + " WHERE namespace = ?", namespace);
+            Map<String, Object> other = VersionedStore.one(c, "SELECT project, hidden_at FROM " + t("process") + " WHERE namespace = ?", namespace);
             if (other != null) {
-                throw new UserStore.Rejected(409, "Namespace %s already belongs to project %s.".formatted(namespace, other.get("project")));
+                throw new UserStore.Rejected(409, "Namespace %s already belongs to project %s%s.".formatted(namespace, other.get("project"),
+                        other.get("hidden_at") == null ? "" : " (deleted - restore it instead)"));
             }
             long id = ((Number) VersionedStore.one(c, "INSERT INTO " + t("process") + " (project, name, namespace) VALUES (?,?,?)"
                     + " RETURNING process_id", project, name == null || name.isBlank() ? project : name, namespace).get("process_id")).longValue();
@@ -178,12 +181,42 @@ final class ProcessStore {
         return id(project) != null;
     }
 
-    /** Every project's namespace (refreshed every 30 s, and at once after a project is created). */
+    /**
+     * Deletes a project softly: it is hidden from the lists and its flows can no longer be run by executors, while its
+     * versions, orders and history stay, and {@link #restore} brings it back. Its namespace stays reserved.
+     */
+    void hide(String project, String actor) throws SQLException {
+        int n = db.with(c -> VersionedStore.update(c, "UPDATE " + t("process") + " SET hidden_at = now(), hidden_by = ?"
+                + " WHERE project = ? AND hidden_at IS NULL", actor, project));
+        if (n == 0) {
+            throw new UserStore.Rejected(exists(project) ? 409 : 404, "Project %s is not there to delete (already deleted?).".formatted(project));
+        }
+        namespacesAt = 0;
+        audit.audit(actor, Role.ADMIN, "PROJECT_DELETE", null, null, null, null, "project %s hidden (soft delete)".formatted(project));
+    }
+
+    void restore(String project, String actor) throws SQLException {
+        int n = db.with(c -> VersionedStore.update(c, "UPDATE " + t("process") + " SET hidden_at = NULL, hidden_by = NULL"
+                + " WHERE project = ? AND hidden_at IS NOT NULL", project));
+        if (n == 0) {
+            throw new UserStore.Rejected(exists(project) ? 409 : 404, "Project %s is not deleted.".formatted(project));
+        }
+        namespacesAt = 0;
+        audit.audit(actor, Role.ADMIN, "PROJECT_RESTORE", null, null, null, null, "project %s restored".formatted(project));
+    }
+
+    boolean hidden(String project) throws SQLException {
+        Map<String, Object> r = db.with(c -> VersionedStore.one(c, "SELECT hidden_at FROM " + t("process") + " WHERE project = ?", project));
+        return r != null && r.get("hidden_at") != null;
+    }
+
+    /** Every visible project's namespace (refreshed every 30 s, and at once after a project is created, deleted or restored). */
     java.util.Set<String> namespaces() throws SQLException {
         if (System.currentTimeMillis() - namespacesAt > NAMESPACE_CACHE_MILLIS) {
             java.util.Set<String> out = new java.util.HashSet<>();
             db.with(c -> {
-                for (Map<String, Object> r : VersionedStore.all(c, "SELECT namespace FROM " + t("process") + " WHERE namespace IS NOT NULL")) {
+                for (Map<String, Object> r : VersionedStore.all(c, "SELECT namespace FROM " + t("process")
+                        + " WHERE namespace IS NOT NULL AND hidden_at IS NULL")) {
                     out.add(String.valueOf(r.get("namespace")));
                 }
                 return null;
@@ -194,11 +227,13 @@ final class ProcessStore {
         return namespaces;
     }
 
-    List<Map<String, Object>> processes() throws SQLException {
-        return db.with(c -> VersionedStore.all(c, "SELECT p.project, p.name, p.namespace, p.description,"
+    /** @param withHidden also the deleted (hidden) projects, marked with hidden_at */
+    List<Map<String, Object>> processes(boolean withHidden) throws SQLException {
+        return db.with(c -> VersionedStore.all(c, "SELECT p.project, p.name, p.namespace, p.description, p.hidden_at::text AS hidden_at,"
+                + " p.hidden_by,"
                 + " (SELECT max(version) FROM " + t("process_version") + " v WHERE v.process_id = p.process_id AND v.state = 'PUBLISHED') AS published_version,"
                 + " (SELECT max(version) FROM " + t("process_version") + " v WHERE v.process_id = p.process_id AND v.state = 'DRAFT') AS draft_version"
-                + " FROM " + t("process") + " p ORDER BY p.project"));
+                + " FROM " + t("process") + " p" + (withHidden ? "" : " WHERE p.hidden_at IS NULL") + " ORDER BY p.project"));
     }
 
     List<Map<String, Object>> versions(String project) throws SQLException {

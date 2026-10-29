@@ -5,6 +5,7 @@ import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -224,6 +225,31 @@ public class PipelineTest {
         assertTrue(y.contains("MAIL_SUBJECT=$P_"), "the reply reader gets the mail's subject: " + y);
         assertTrue(has(problems(Pipeline.Hook.NODE, """
                 [{"id": "c", "widget": "COLLECT", "list": "X", "value": "v", "separator": ""}]"""), "'separator' must be 1-8 characters"));
+    }
+
+    @Test
+    public void aBoxCallingARegisteredComponentRunsItsPinnedVersion() {
+        List<String> p = new ArrayList<>();
+        Pipeline pipeline = parse(Pipeline.Hook.NODE, """
+                [{"id": "check", "widget": "NEI", "component": "py_check", "action": "CHECK", "params": {"IMSI": "${node}"}},
+                 {"id": "tpl", "widget": "NEI", "component": "filecr_tpl", "action": "MAKE"}]""", p);
+        assertEquals(List.of(), p);
+        Map<String, PipelineCompiler.ComponentRef> refs = Map.of(
+                "py_check", new PipelineCompiler.ComponentRef("components/py_check/v3", "components/py_check/v3", "STANDALONE",
+                        Map.of("CHECK", Map.of("MODE", "post"))),
+                "filecr_tpl", new PipelineCompiler.ComponentRef("components/filecr_tpl/v1", "nei/filecr", "WRAPPED",
+                        Map.of("MAKE", Map.of("REQ_ID_HINT", "x"))));
+        String y = PipelineCompiler.compile("cr_automation", "P", 1, "s", pipeline, refs).yaml();
+        assertTrue(y.contains("sh bin/component.sh components/py_check/v3 \\\"$LOG_NAME\\\""), y);
+        assertTrue(y.contains("- \"components/py_check/v3/**\""), "its files are copied in: " + y);
+        assertTrue(y.contains("MODE=$P_1"), "the action's default goes in first: " + y);
+        assertTrue(y.contains("IMSI=$P_2"), y);
+        assertTrue(y.contains("sh bin/component.sh components/filecr_tpl/v1"), y);
+        assertTrue(y.contains("- \"nei/filecr/**\""), "a folder component's own folder is copied too: " + y);
+        String check = y.substring(y.indexOf("id: \"check\""), y.indexOf("id: \"tpl\""));
+        assertFalse(check.contains("INPUT_JSON_FILE_NAME"), "a standalone program gets no NEI parameters: " + check);
+        String tpl = y.substring(y.indexOf("id: \"tpl\""));
+        assertTrue(tpl.contains("INPUT_JSON_FILE_NAME") && tpl.contains("REQ_ID_HINT"), "a wrapped one keeps them, plus its defaults: " + tpl);
     }
 
     @Test

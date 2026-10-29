@@ -160,3 +160,13 @@ docker compose up -d --build                       # UI: http://localhost:8080
 4. Process designer → **New project**: id `CR_AUTOMATIONS`, namespace `cr_automations`, start from a copy of CR_AUTOMATION (or empty) → edit the draft → Publish (checks the flows exist in that namespace and deploys its pipelines there).
 5. Activities tab, project CR_AUTOMATIONS: declare its activities and levels (they are per project).
 New orders of that namespace's flows are pinned to that project; its Orders, Order tab, automatic starts and stops work like CR_AUTOMATION's.
+
+## Components (jars and scripts from the UI)
+
+Process designer → **Components** → pick the project → **New component** (standalone or wrapped):
+1. **Files:** upload the jar / script (or a zip, unpacked), or point it to a folder of the namespace (e.g. `nei/filecr`).
+2. **Settings:** wrapped = NE type / product / version, config dir, GRC and login values; standalone = runtime, command (`{runtime} {file:check.py}`), how values go in (request file, arguments `--imsi {IMSI}`, env `P_IMSI`) and how results come out (response file, `KEY=value` lines, last JSON line, exit code), success rule, timeout.
+3. **Actions:** name, parameters (required, default, secret `${secret:NAME}`), results.
+4. **Save → Try it** (runs one action in the flow `cr_component_try`) **→ Publish**.
+
+Use it in a process: Processes → a step's pipeline → a NEI box → Component = the registered component, Action = one of its actions (its other parameters are offered). Save / Publish checks the action and the required parameters; the process version runs the component version published last when it was published.

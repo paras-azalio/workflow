@@ -266,6 +266,7 @@ final class Steps {
         if (!ctx.continuable()) {
             throw new UserStore.Rejected(409, ctx.reason());
         }
+        requireNotDeleted(ctx.version());
         ProcessDefinition.Step step = ctx.definition().step(stepId);
         if (step == null) {
             throw new UserStore.Rejected(404, "Process version %d has no step %s.".formatted(ctx.version().version(), stepId));
@@ -287,6 +288,7 @@ final class Steps {
     /** Starts an automatic step the gateway found offered in {@code ctx} (just evaluated), as {@code user}. */
     Map<String, Object> startAutomatically(Context ctx, ProcessDefinition.Step step, Map<String, Object> body, UserStore.User user)
             throws Exception {
+        requireNotDeleted(ctx.version());
         return run(step, ctx.definition().namespace, ctx.order(), ctx.child(), body, user, null,
                 "automatic start, order " + ctx.order().get("value"), ctx.version());
     }
@@ -429,6 +431,13 @@ final class Steps {
     }
 
     // ------------------------------------------------------------------ helpers
+
+    /** A deleted (hidden) project's orders can be looked at, not continued. */
+    private void requireNotDeleted(ProcessStore.Version v) throws java.sql.SQLException {
+        if (processes.hidden(v.project())) {
+            throw new UserStore.Rejected(409, "Project %s is deleted: restore it to continue its orders.".formatted(v.project()));
+        }
+    }
 
     private static void requireExecutor(UserStore.User user) {
         if (!user.role().atLeast(Role.EXECUTOR)) {

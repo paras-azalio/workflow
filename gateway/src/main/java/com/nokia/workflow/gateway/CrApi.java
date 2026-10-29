@@ -28,8 +28,16 @@ import java.util.Map;
  *   GET    /cr/api/processes                               projects (with their namespace) and versions any role
  *   POST   /cr/api/processes                               new project: {project, name, namespace,     ADMIN
  *                                                           from_project?} - its process starts as a draft
+ *   POST   /cr/api/processes/{p}/delete | /restore         soft delete (hidden; orders and versions stay) ADMIN
+ *                                                           / bring back; ?hidden=true lists the deleted ones
  *   /cr/api/projects/{p}/activities[/...]                   as /cr/api/activities, for project p (the plain
  *   GET /cr/api/projects/{p}/context-fields                 routes are the gateway's default project)
+ *   /cr/api/projects/{p}/components                         GET list; POST {name, kind, description} (ADMIN)
+ *     /{c}/versions[/{v}]                                   GET; POST new draft {from_version?}; PUT {spec, revision};
+ *                                                           DELETE draft; /{v}/publish | /retire (ADMIN)
+ *     /{c}/versions/{v}/files[?path=P&unzip=true]           GET list; PUT the file's bytes (a zip unpacked into P);
+ *                                                           DELETE ?path=P (ADMIN, drafts only)
+ *     /{c}/versions/{v}/try                                 POST {action, params}: runs it once, answers IO (ADMIN)
  *   GET    /cr/api/processes/{p}/start                     steps that start an order                   any role
  *   POST   /cr/api/processes/{p}/start/{step}              start an order: {inputs, files, request_key} EXECUTOR
  *   GET    /cr/api/processes/{p}/versions[/{v}]            versions / one version with its definition  any role
@@ -63,13 +71,17 @@ final class CrApi {
     private final Steps steps;
     private final Decisions decisions;
     private final OrderSearch search;
+    private final ComponentStore components;
+    private final ComponentTry tryRun;
     private final Kestra kestra;
     private final String defaultProject;
     private final Runnable onUserChange;
 
     CrApi(UserStore users, ProcessStore processes, ActivityStore activities, Steps steps, Decisions decisions, OrderSearch search,
-          Kestra kestra, String defaultProject, Runnable onUserChange) {
+          ComponentStore components, Kestra kestra, String defaultProject, Runnable onUserChange) {
         this.search = search;
+        this.components = components;
+        this.tryRun = new ComponentTry(kestra);
         this.users = users;
         this.processes = processes;
         this.activities = activities;
@@ -108,6 +120,8 @@ final class CrApi {
                     String[] rest = java.util.Arrays.copyOfRange(s, 2, s.length);
                     if ("activities".equals(rest[0])) {
                         activities(ex, method, rest, who, path, p);
+                    } else if ("components".equals(rest[0])) {
+                        components(ex, method, rest, who, path, p);
                     } else if ("context-fields".equals(rest[0]) && rest.length == 1 && "GET".equals(method)) {
                         Gateway.json(ex, 200, steps.contextFields(p));
                     } else {
@@ -241,7 +255,8 @@ final class CrApi {
     private void processes(HttpExchange ex, String method, String[] s, Gateway.Caller who, String path) throws Exception {
         UserStore.User me = who.user();
         if (s.length == 1 && "GET".equals(method)) {
-            Gateway.json(ex, 200, Map.of("processes", processes.processes(), "default_project", defaultProject));
+            boolean withHidden = "true".equals(query(ex, "hidden")) && me.role().atLeast(Role.ADMIN);
+            Gateway.json(ex, 200, Map.of("processes", processes.processes(withHidden), "default_project", defaultProject));
             return;
         }
         if (s.length == 1 && "POST".equals(method)) {
@@ -256,11 +271,29 @@ final class CrApi {
             return;
         }
         String p = s.length > 1 ? Paths.decode(s[1]) : null;
+        if (s.length == 3 && ("delete".equals(s[2]) || "restore".equals(s[2])) && "POST".equals(method)) {
+            requireRole(me, Role.ADMIN, method, path, who);
+            requireProject(p);
+            if ("delete".equals(s[2])) {
+                if (defaultProject.equals(p)) {
+                    throw new UserStore.Rejected(409, "%s is the gateway's default project and cannot be deleted.".formatted(p));
+                }
+                processes.hide(p, me.username());
+                Gateway.json(ex, 200, Map.of("message", "Project %s is deleted (hidden). Its orders and versions stay; an admin can restore it.".formatted(p)));
+            } else {
+                processes.restore(p, me.username());
+                Gateway.json(ex, 200, Map.of("message", "Project %s is restored.".formatted(p)));
+            }
+            return;
+        }
         if (s.length == 3 && "start".equals(s[2]) && "GET".equals(method)) {
             requireProject(p);
             Gateway.json(ex, 200, steps.startSteps(p, me.role()));
         } else if (s.length == 4 && "start".equals(s[2]) && "POST".equals(method)) {
             requireProject(p);
+            if (processes.hidden(p)) {
+                throw new UserStore.Rejected(409, "Project %s is deleted: restore it to start new orders.".formatted(p));
+            }
             Map<String, Object> body = Gateway.readJson(ex, MAX_STEP_BODY);
             Gateway.json(ex, 201, steps.startOrder(p, s[3], body, me, who.ip()));
         } else if (s.length == 3 && "versions".equals(s[2]) && "GET".equals(method)) {
@@ -320,6 +353,140 @@ final class CrApi {
             requireRole(me, Role.ADMIN, method, path, who);
             processes.retire(p, version(s[3]), me.username());
             Gateway.json(ex, 200, Map.of("message", "Version %s of %s is retired.".formatted(s[3], p)));
+        } else {
+            notFound(method, path);
+        }
+    }
+
+    // ------------------------------------------------------------------ components
+
+    /** Up to 300 MB per upload (a jar with its lib/ as a zip). */
+    private static final int MAX_UPLOAD = 300 * 1024 * 1024;
+
+    @SuppressWarnings("unchecked")
+    private void components(HttpExchange ex, String method, String[] s, Gateway.Caller who, String path, String project) throws Exception {
+        UserStore.User me = who.user();
+        ComponentStore store = components.of(project);
+        String namespace = processes.namespace(project);
+        if (s.length == 1 && "GET".equals(method)) {
+            java.util.Set<String> builtins = new java.util.TreeSet<>();
+            for (Map<String, Object> f : kestra.listNamespaceFiles(namespace, "/nei")) {
+                String[] parts = String.valueOf(f.get("path")).split("/");
+                if (parts.length > 3) {
+                    builtins.add(parts[2]);
+                }
+            }
+            List<Map<String, Object>> listed = new ArrayList<>();
+            for (Map<String, Object> c : store.list()) {
+                Map<String, Object> m = new LinkedHashMap<>(c);
+                VersionedStore.Version published = store.latestPublished(String.valueOf(c.get("name")));
+                m.put("actions", published == null ? List.of() : published.content().getOrDefault("actions", List.of()));
+                listed.add(m);
+            }
+            Gateway.json(ex, 200, Map.of("project", project, "components", listed, "builtins", List.copyOf(builtins),
+                    "runtimes", List.copyOf(ComponentSpec.RUNTIMES)));
+            return;
+        }
+        requireRole(me, Role.VIEWER, method, path, who);
+        if (s.length == 1 && "POST".equals(method)) {
+            requireRole(me, Role.ADMIN, method, path, who);
+            Map<String, Object> b = Gateway.readJson(ex);
+            Gateway.json(ex, 201, store.declare(Gateway.str(b.get("name")), Gateway.str(b.get("kind")), Gateway.str(b.get("description")),
+                    me.username(), namespace));
+            return;
+        }
+        if (s.length < 3 || !"versions".equals(s[2])) {
+            notFound(method, path);
+        }
+        String name = Paths.decode(s[1]);
+        if (s.length == 3 && "GET".equals(method)) {
+            Gateway.json(ex, 200, Map.of("name", name, "versions", store.versions(name)));
+            return;
+        }
+        if (s.length == 3 && "POST".equals(method)) {
+            requireRole(me, Role.ADMIN, method, path, who);
+            Object from = Gateway.readJson(ex).get("from_version");
+            VersionedStore.Version v = store.createDraft(name, from == null ? null : version(String.valueOf(from)), me.username(), namespace);
+            Gateway.json(ex, 201, Map.of("name", name, "version", v.version(), "state", v.state(), "revision", v.revision()));
+            return;
+        }
+        int v = version(s[3]);
+        if (s.length == 4 && "GET".equals(method)) {
+            VersionedStore.Version ver = store.version(name, v);
+            if (ver == null) {
+                throw new UserStore.Rejected(404, "Component %s has no version %d.".formatted(name, v));
+            }
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put("name", name);
+            m.put("version", ver.version());
+            m.put("state", ver.state());
+            m.put("revision", ver.revision());
+            m.put("spec", ver.content());
+            m.put("problems", ComponentSpec.problems(ver.content()));
+            m.put("dir", ComponentStore.dir(name, v));
+            m.put("files", store.files(name, v, namespace));
+            Gateway.json(ex, 200, m);
+        } else if (s.length == 4 && "PUT".equals(method)) {
+            requireRole(me, Role.ADMIN, method, path, who);
+            Map<String, Object> b = Gateway.readJson(ex, MAX_STEP_BODY);
+            if (b.get("spec") == null || b.get("revision") == null) {
+                throw new UserStore.Rejected(400, "Send {spec, revision} (revision: the one you loaded).");
+            }
+            Object spec = b.get("spec");
+            Gateway.json(ex, 200, Map.of("saved", true, "problems", store.updateDraft(name, v,
+                    spec instanceof String str ? str : SimpleJson.writeCompact(spec), version(String.valueOf(b.get("revision"))), me.username(), namespace)));
+        } else if (s.length == 4 && "DELETE".equals(method)) {
+            requireRole(me, Role.ADMIN, method, path, who);
+            store.discardDraft(name, v, me.username(), namespace);
+            Gateway.json(ex, 200, Map.of("message", "Draft %d of %s discarded.".formatted(v, name)));
+        } else if (s.length == 5 && "publish".equals(s[4]) && "POST".equals(method)) {
+            requireRole(me, Role.ADMIN, method, path, who);
+            store.publish(name, v, me.username(), namespace);
+            Gateway.json(ex, 200, Map.of("message", "Version %d of %s is published; pipelines published from now on use it.".formatted(v, name)));
+        } else if (s.length == 5 && "retire".equals(s[4]) && "POST".equals(method)) {
+            requireRole(me, Role.ADMIN, method, path, who);
+            store.retire(name, v, me.username());
+            Gateway.json(ex, 200, Map.of("message", "Version %d of %s is retired.".formatted(v, name)));
+        } else if (s.length == 5 && "files".equals(s[4]) && "GET".equals(method)) {
+            Gateway.json(ex, 200, Map.of("files", store.files(name, v, namespace)));
+        } else if (s.length == 5 && "files".equals(s[4]) && "PUT".equals(method)) {
+            requireRole(me, Role.ADMIN, method, path, who);
+            byte[] content = Gateway.readBytes(ex, MAX_UPLOAD);
+            if (content.length == 0) {
+                throw new UserStore.Rejected(400, "The file is empty.");
+            }
+            ComponentStore.Uploaded u = store.upload(name, v, query(ex, "path"), content, "true".equals(query(ex, "unzip")), me.username(), namespace);
+            Map<String, Object> out = new LinkedHashMap<>();
+            out.put("written", u.written());
+            if (u.droppedFolder() != null) {
+                out.put("dropped_folder", u.droppedFolder());
+            }
+            Gateway.json(ex, 200, out);
+        } else if (s.length == 5 && "files".equals(s[4]) && "DELETE".equals(method)) {
+            requireRole(me, Role.ADMIN, method, path, who);
+            store.deleteFile(name, v, query(ex, "path"), me.username(), namespace);
+            Gateway.json(ex, 200, Map.of("message", "Deleted."));
+        } else if (s.length == 5 && "try".equals(s[4]) && "POST".equals(method)) {
+            requireRole(me, Role.ADMIN, method, path, who);
+            VersionedStore.Version ver = store.version(name, v);
+            if (ver == null) {
+                throw new UserStore.Rejected(404, "Component %s has no version %d.".formatted(name, v));
+            }
+            List<String> problems = ComponentSpec.problems(ver.content());
+            if (!problems.isEmpty()) {
+                throw new UserStore.Rejected(400, "Save a valid definition first: " + String.join("; ", problems));
+            }
+            Map<String, Object> b = Gateway.readJson(ex, MAX_STEP_BODY);
+            String action = Gateway.str(b.get("action"));
+            if (action == null || !ComponentSpec.actions(ver.content()).containsKey(action)) {
+                throw new UserStore.Rejected(400, "Choose one of the component's actions %s.".formatted(ComponentSpec.actions(ver.content()).keySet()));
+            }
+            Map<String, Object> params = b.get("params") instanceof Map<?, ?> pm ? (Map<String, Object>) pm : Map.of();
+            Map<String, Object> standalone = ver.content().get("standalone") instanceof Map<?, ?> sm ? (Map<String, Object>) sm : Map.of();
+            Long timeout = ProcessDefinition.number(standalone.getOrDefault("timeout_sec", "300"));
+            String dir = ComponentStore.dir(name, v);
+            users.audit(me.username(), me.role(), "COMPONENT_TRY", method, null, 200, who.ip(), "%s/%s v%d: %s".formatted(project, name, v, action));
+            Gateway.json(ex, 200, tryRun.run(namespace, dir, ComponentSpec.home(ver.content(), dir), action, params, timeout == null ? 300 : timeout));
         } else {
             notFound(method, path);
         }
@@ -413,6 +580,18 @@ final class CrApi {
         List<String> problems = new ArrayList<>();
         Map<String, PipelineCompiler.Compiled> compiled = new LinkedHashMap<>();
         Map<String, String[]> target = new LinkedHashMap<>();
+        Map<String, PipelineCompiler.ComponentRef> refs = new LinkedHashMap<>();
+        Map<String, Map<String, Object>> specs = new LinkedHashMap<>();
+        for (ProcessDefinition.Step step : def.steps) {
+            for (Map.Entry<Pipeline.Hook, Pipeline> e : step.pipelines().entrySet()) {
+                for (Pipeline.Widget w : Pipeline.flatten(e.getValue().widgets)) {
+                    if (w instanceof Pipeline.Nei n) {
+                        componentProblems(project, def.namespace, "step '%s', pipeline %s, widget '%s'".formatted(step.id(), e.getKey().key, n.id()),
+                                n, refs, specs, problems);
+                    }
+                }
+            }
+        }
         for (ProcessDefinition.Step step : def.steps) {
             if (step.pipelines().isEmpty()) {
                 continue;
@@ -426,7 +605,7 @@ final class CrApi {
                             .formatted(step.flow(), e.getKey().key, hooks == null ? "none" : hooks));
                     continue;
                 }
-                PipelineCompiler.Compiled c = PipelineCompiler.compile(def.namespace, project, version, step.id(), e.getValue());
+                PipelineCompiler.Compiled c = PipelineCompiler.compile(def.namespace, project, version, step.id(), e.getValue(), refs);
                 for (String v : kestra.validateFlow(c.yaml())) {
                     problems.add(at + ": Kestra: " + v);
                 }
@@ -442,6 +621,69 @@ final class CrApi {
             }
         }
         return problems;
+    }
+
+    /**
+     * What a NEI box calls: a registered component (its latest published version - pinned into the compiled flow -,
+     * one of its actions, every required parameter given) or a built-in NEI folder nei/&lt;component&gt; of the namespace.
+     */
+    @SuppressWarnings("unchecked")
+    private void componentProblems(String project, String namespace, String at, Pipeline.Nei n,
+                                   Map<String, PipelineCompiler.ComponentRef> refs, Map<String, Map<String, Object>> specs,
+                                   List<String> problems) throws Exception {
+        ComponentStore store = components.of(project);
+        if (!refs.containsKey(n.component())) {
+            boolean declared = store.list().stream().anyMatch(c -> n.component().equals(c.get("name")));
+            if (declared) {
+                VersionedStore.Version v = store.latestPublished(n.component());
+                if (v == null) {
+                    problems.add(at + ": component " + n.component() + " has no published version yet.");
+                    return;
+                }
+                Map<String, Map<String, String>> defaults = new LinkedHashMap<>();
+                ComponentSpec.actions(v.content()).forEach((name, a) -> {
+                    Map<String, String> d = new LinkedHashMap<>();
+                    if (a.get("params") instanceof List<?> ps) {
+                        for (Object o : ps) {
+                            Map<String, Object> p = (Map<String, Object>) o;
+                            if (p.get("default") != null && !String.valueOf(p.get("default")).isEmpty()) {
+                                d.put(String.valueOf(p.get("name")), String.valueOf(p.get("default")));
+                            }
+                        }
+                    }
+                    defaults.put(name, d);
+                });
+                String dir = ComponentStore.dir(n.component(), v.version());
+                refs.put(n.component(), new PipelineCompiler.ComponentRef(dir, ComponentSpec.home(v.content(), dir),
+                        String.valueOf(v.content().get("kind")), defaults));
+                specs.put(n.component(), v.content());
+            } else if (kestra.listNamespaceFiles(namespace, "/nei/" + n.component()).isEmpty()) {
+                problems.add(at + ": '" + n.component() + "' is neither a component of " + project + " nor an NEI folder nei/"
+                        + n.component() + " of namespace " + namespace + ".");
+                return;
+            }
+        }
+        Map<String, Object> spec = specs.get(n.component());
+        if (spec == null) {
+            return;
+        }
+        Map<String, Object> action = ComponentSpec.actions(spec).get(n.action());
+        if (action == null) {
+            problems.add(at + ": component " + n.component() + " has no action " + n.action() + " (its actions: "
+                    + ComponentSpec.actions(spec).keySet() + ").");
+            return;
+        }
+        if (action.get("params") instanceof List<?> ps) {
+            for (Object o : ps) {
+                Map<String, Object> p = (Map<String, Object>) o;
+                String name = String.valueOf(p.get("name"));
+                boolean required = ProcessDefinition.bool(p.get("required"));
+                boolean hasDefault = p.get("default") != null && !String.valueOf(p.get("default")).isEmpty();
+                if (required && !hasDefault && !n.params().containsKey(name)) {
+                    problems.add(at + ": " + n.component() + " " + n.action() + " needs the parameter " + name + ".");
+                }
+            }
+        }
     }
 
     private List<String> publishProblems(String project, int version, ProcessDefinition def,

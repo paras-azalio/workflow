@@ -270,6 +270,89 @@ final class Kestra {
         return namespaceFile(namespace, "/config/" + name);
     }
 
+    private String filesUrl(String namespace, String path) {
+        return "/api/v1/" + tenant + "/namespaces/" + Paths.encode(namespace) + "/files?path="
+                + java.net.URLEncoder.encode(path, java.nio.charset.StandardCharsets.UTF_8);
+    }
+
+    /** Writes a namespace file (replacing it), e.g. an uploaded jar of a component. */
+    void putNamespaceFile(String namespace, String path, byte[] content) throws IOException, InterruptedException {
+        String boundary = "----crgateway" + java.util.UUID.randomUUID().toString().replace("-", "");
+        String name = path.substring(path.lastIndexOf('/') + 1);
+        HttpResponse<String> r = client.send(HttpRequest.newBuilder(base.resolve(filesUrl(namespace, path)))
+                .header("Authorization", authorization).header("Content-Type", "multipart/form-data; boundary=" + boundary)
+                .POST(HttpRequest.BodyPublishers.ofByteArray(multipart(boundary, Map.of(), Map.of("fileContent", new FilePart(name, content)))))
+                .build(), HttpResponse.BodyHandlers.ofString());
+        if (r.statusCode() / 100 != 2) {
+            throw new KestraError(r.statusCode() == 401 ? 502 : r.statusCode(), "Kestra refused the file %s: %s".formatted(path, r.body()));
+        }
+    }
+
+    /** A namespace file's bytes, or null when there is none. */
+    byte[] namespaceFileBytes(String namespace, String path) throws IOException, InterruptedException {
+        HttpResponse<byte[]> r = client.send(HttpRequest.newBuilder(base.resolve(filesUrl(namespace, path)))
+                .header("Authorization", authorization).GET().build(), HttpResponse.BodyHandlers.ofByteArray());
+        if (r.statusCode() == 404) {
+            return null;
+        }
+        if (r.statusCode() != 200) {
+            throw new IOException("Kestra answered %d for namespace file %s%s.".formatted(r.statusCode(), namespace, path));
+        }
+        return r.body();
+    }
+
+    /** Every file under a namespace folder, recursively: {path, size}; empty when the folder does not exist. */
+    @SuppressWarnings("unchecked")
+    List<Map<String, Object>> listNamespaceFiles(String namespace, String folder) throws IOException, InterruptedException {
+        List<Map<String, Object>> out = new java.util.ArrayList<>();
+        HttpResponse<String> r = client.send(HttpRequest.newBuilder(base.resolve("/api/v1/" + tenant + "/namespaces/"
+                        + Paths.encode(namespace) + "/files/directory?path=" + java.net.URLEncoder.encode(folder, java.nio.charset.StandardCharsets.UTF_8)))
+                .header("Authorization", authorization).GET().build(), HttpResponse.BodyHandlers.ofString());
+        if (r.statusCode() != 200 || !(SimpleJson.parse(r.body()) instanceof List<?> entries)) {
+            return out;
+        }
+        for (Object e : entries) {
+            Map<String, Object> m = (Map<String, Object>) e;
+            String path = folder.replaceAll("/+$", "") + "/" + m.get("fileName");
+            if ("Directory".equals(String.valueOf(m.get("type")))) {
+                out.addAll(listNamespaceFiles(namespace, path));
+            } else {
+                Map<String, Object> f = new java.util.LinkedHashMap<>();
+                f.put("path", path);
+                f.put("size", m.get("size"));
+                out.add(f);
+            }
+        }
+        return out;
+    }
+
+    /** Deletes a namespace file or folder (with what it holds); a missing one is fine. */
+    void deleteNamespaceFile(String namespace, String path) throws IOException, InterruptedException {
+        HttpResponse<String> r = client.send(HttpRequest.newBuilder(base.resolve(filesUrl(namespace, path)))
+                .header("Authorization", authorization).DELETE().build(), HttpResponse.BodyHandlers.ofString());
+        if (r.statusCode() / 100 != 2 && r.statusCode() != 404) {
+            throw new KestraError(r.statusCode() == 401 ? 502 : r.statusCode(), "Kestra refused to delete %s: %s".formatted(path, r.body()));
+        }
+    }
+
+    /** The log lines of an execution, in order. */
+    @SuppressWarnings("unchecked")
+    List<String> executionLogs(String executionId) throws IOException, InterruptedException {
+        HttpResponse<String> r = client.send(HttpRequest.newBuilder(base.resolve("/api/v1/" + tenant + "/logs/" + Paths.encode(executionId)))
+                .header("Authorization", authorization).GET().build(), HttpResponse.BodyHandlers.ofString());
+        List<String> out = new java.util.ArrayList<>();
+        Object parsed = r.statusCode() == 200 ? SimpleJson.parse(r.body()) : null;
+        Object list = parsed instanceof Map<?, ?> m ? m.get("results") : parsed;
+        if (list instanceof List<?> l) {
+            for (Object e : l) {
+                if (e instanceof Map<?, ?> entry && entry.get("message") != null) {
+                    out.add(String.valueOf(entry.get("message")));
+                }
+            }
+        }
+        return out;
+    }
+
     /** A namespace file's text, or null when there is none. */
     String namespaceFile(String namespace, String path) throws IOException, InterruptedException {
         HttpResponse<String> r = client.send(HttpRequest.newBuilder(base.resolve("/api/v1/" + tenant + "/namespaces/"

@@ -53,12 +53,12 @@ final class Gateway implements HttpHandler {
     private final Map<String, CachedBasic> basicCache = new ConcurrentHashMap<>();
 
     Gateway(UserStore users, ProcessStore processes, ActivityStore activities, Steps steps, Decisions decisions, OrderSearch search,
-            Kestra kestra, Rules rules, java.util.function.Predicate<String> isProjectNamespace, String defaultProject) {
+            ComponentStore components, Kestra kestra, Rules rules, java.util.function.Predicate<String> isProjectNamespace, String defaultProject) {
         this.users = users;
         this.kestra = kestra;
         this.rules = rules;
         this.isProjectNamespace = isProjectNamespace;
-        this.api = new CrApi(users, processes, activities, steps, decisions, search, kestra, defaultProject, this::forgetBasicLogins);
+        this.api = new CrApi(users, processes, activities, steps, decisions, search, components, kestra, defaultProject, this::forgetBasicLogins);
     }
 
     @Override
@@ -282,6 +282,22 @@ final class Gateway implements HttpHandler {
 
     private static boolean isHttps(HttpExchange ex) {
         return "https".equalsIgnoreCase(ex.getRequestHeaders().getFirst("X-Forwarded-Proto"));
+    }
+
+    /** The raw request body (an uploaded file), at most {@code maxBytes}. */
+    static byte[] readBytes(HttpExchange ex, int maxBytes) throws IOException {
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        try (InputStream in = ex.getRequestBody()) {
+            byte[] buf = new byte[65536];
+            int n;
+            while ((n = in.read(buf)) >= 0) {
+                out.write(buf, 0, n);
+                if (out.size() > maxBytes) {
+                    throw new UserStore.Rejected(413, "The file is larger than %d MB.".formatted(maxBytes >> 20));
+                }
+            }
+        }
+        return out.toByteArray();
     }
 
     static Map<String, Object> readJson(HttpExchange ex) throws IOException {
