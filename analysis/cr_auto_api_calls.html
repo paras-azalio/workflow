@@ -1,0 +1,2258 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>CR_AUTO API hits</title><style>
+:root { --bg:#f7f7f9; --card:#fff; --text:#1d1d24; --dim:#5f6070; --line:#dddde6; --code:#f0f0f5; --ok:#1a7f4b; --bad:#b42318;
+  --get:#2459c4; --post:#1a7f4b; --put:#9a5b00; --delete:#b42318; }
+@media (prefers-color-scheme: dark) { :root { --bg:#14141a; --card:#1d1d25; --text:#e8e8ef; --dim:#a0a0b2; --line:#33333f;
+  --code:#262630; --ok:#4cc38a; --bad:#ff7a6b; --get:#7aa7ff; --post:#4cc38a; --put:#f0b45a; --delete:#ff7a6b; } }
+body { margin:0; background:var(--bg); color:var(--text); font:14px/1.5 system-ui,sans-serif; }
+main { max-width:1280px; margin:0 auto; padding:24px 16px 64px; }
+h1 { font-size:1.5rem; margin:0 0 4px; } h2 { font-size:1.05rem; margin:28px 0 8px; }
+h3 { font-size:.75rem; margin:0 0 4px; color:var(--dim); text-transform:uppercase; letter-spacing:.05em; }
+.lead { color:var(--dim); margin:0 0 10px; }
+.hit { background:var(--card); border:1px solid var(--line); border-radius:6px; margin:4px 0; }
+summary { cursor:pointer; padding:6px 10px; display:flex; gap:10px; align-items:baseline; flex-wrap:wrap; font-family:ui-monospace,Consolas,monospace; font-size:.82rem; }
+.n { color:var(--dim); min-width:2em; text-align:right; } .t { color:var(--dim); } .m { font-weight:700; min-width:3.6em; }
+.m-GET { color:var(--get); } .m-POST { color:var(--post); } .m-PUT { color:var(--put); } .m-DELETE { color:var(--delete); }
+.u { word-break:break-all; } .s { font-weight:700; } .ok { color:var(--ok); } .bad { color:var(--bad); } .d { color:var(--dim); }
+.p { color:var(--dim); flex-basis:100%; padding-left:3em; font-family:system-ui,sans-serif; }
+.io { display:grid; grid-template-columns:1fr 1fr; gap:10px; padding:10px; border-top:1px solid var(--line); }
+@media (max-width:800px) { .io { grid-template-columns:1fr; } }
+pre { background:var(--code); padding:10px; border-radius:6px; overflow:auto; max-height:480px; font-size:.78rem; margin:0; white-space:pre-wrap; word-break:break-word; }
+</style></head><body><main>
+<h1>CR_AUTO – API hit log</h1>
+<p class="lead">34 HTTP hits to http://localhost:8080 from 16:30:27.602 to 16:30:44.647 (2026-10-29), in order. Gateway API: /cr/api/…; Kestra API: /api/v1/main/….
+Click a hit for its request (line, headers, payload) and response (status, headers, body). Authorization is masked; repository jars and scripts are shown by size and hash; the config file and flows in full.</p>
+<h2>Configuration</h2><details class="hit"><summary>
+<span class="n">1</span><span class="t">16:30:27.602</span><span class="m m-GET">GET</span>
+<code class="u">/cr/api/processes?hidden=true</code><span class="s ok">200</span>
+<span class="d">115 ms · ↑ 0 B · ↓ 435 B</span>
+<span class="p">The projects (with deleted ones)</span></summary>
+<div class="io"><div><h3>Request</h3><pre>GET /cr/api/processes?hidden=true HTTP/1.1
+Host: localhost:8080
+Accept: application/json
+Authorization: Basic *** (masked)
+</pre></div><div><h3>Response</h3><pre>HTTP/1.1 200
+Content-Type: application/json; charset=utf-8
+Content-Length: 435
+
+{
+  &quot;processes&quot;: [
+    {
+      &quot;project&quot;: &quot;CR_AUTOMATION&quot;,
+      &quot;name&quot;: &quot;CR_AUTOMATION order process&quot;,
+      &quot;namespace&quot;: &quot;cr_automation&quot;,
+      &quot;description&quot;: null,
+      &quot;hidden_at&quot;: null,
+      &quot;hidden_by&quot;: null,
+      &quot;published_version&quot;: 26,
+      &quot;draft_version&quot;: null
+    },
+    {
+      &quot;project&quot;: &quot;CR_AUTOMATIONS&quot;,
+      &quot;name&quot;: &quot;CR_AUTOMATIONS&quot;,
+      &quot;namespace&quot;: &quot;cr_automations&quot;,
+      &quot;description&quot;: null,
+      &quot;hidden_at&quot;: null,
+      &quot;hidden_by&quot;: null,
+      &quot;published_version&quot;: null,
+      &quot;draft_version&quot;: 1
+    }
+  ],
+  &quot;default_project&quot;: &quot;CR_AUTOMATION&quot;
+}</pre></div></div></details><details class="hit"><summary>
+<span class="n">2</span><span class="t">16:30:27.718</span><span class="m m-POST">POST</span>
+<code class="u">/api/v1/main/namespaces/cr_auto/files?path=%2Fbin%2Fstore.sh</code><span class="s ok">200</span>
+<span class="d">52 ms · ↑ 1.3 KB · ↓ 0 B</span>
+<span class="p">Platform file bin/store.sh (from this repository)</span></summary>
+<div class="io"><div><h3>Request</h3><pre>POST /api/v1/main/namespaces/cr_auto/files?path=%2Fbin%2Fstore.sh HTTP/1.1
+Host: localhost:8080
+Accept: application/json
+Content-Type: multipart/form-data; boundary=015144fc840843c0a29a3c43cd4a9270
+Authorization: Basic *** (masked)
+
+--015144fc840843c0a29a3c43cd4a9270
+Content-Disposition: form-data; name=&quot;fileContent&quot;; filename=&quot;store.sh&quot;
+
+&lt;binary store.sh: 1117 bytes, sha256 2a02a420d7c9f585…&gt;
+--015144fc840843c0a29a3c43cd4a9270--</pre></div><div><h3>Response</h3><pre>HTTP/1.1 200
+Content-Length: 0
+</pre></div></div></details><details class="hit"><summary>
+<span class="n">3</span><span class="t">16:30:27.771</span><span class="m m-POST">POST</span>
+<code class="u">/api/v1/main/namespaces/cr_auto/files?path=%2Fbin%2Fcomponent.sh</code><span class="s ok">200</span>
+<span class="d">15 ms · ↑ 3.8 KB · ↓ 0 B</span>
+<span class="p">Platform file bin/component.sh (from this repository)</span></summary>
+<div class="io"><div><h3>Request</h3><pre>POST /api/v1/main/namespaces/cr_auto/files?path=%2Fbin%2Fcomponent.sh HTTP/1.1
+Host: localhost:8080
+Accept: application/json
+Content-Type: multipart/form-data; boundary=dbbdc39755134bb792ddbec8b53b5716
+Authorization: Basic *** (masked)
+
+--dbbdc39755134bb792ddbec8b53b5716
+Content-Disposition: form-data; name=&quot;fileContent&quot;; filename=&quot;component.sh&quot;
+
+&lt;binary component.sh: 3676 bytes, sha256 904228053cdad589…&gt;
+--dbbdc39755134bb792ddbec8b53b5716--</pre></div><div><h3>Response</h3><pre>HTTP/1.1 200
+Content-Length: 0
+</pre></div></div></details><details class="hit"><summary>
+<span class="n">4</span><span class="t">16:30:27.788</span><span class="m m-POST">POST</span>
+<code class="u">/api/v1/main/namespaces/cr_auto/files?path=%2Fwrappers%2Fcomponent-wrappers-0.1.0.jar</code><span class="s ok">200</span>
+<span class="d">25 ms · ↑ 70.0 KB · ↓ 0 B</span>
+<span class="p">Platform file wrappers/component-wrappers-0.1.0.jar (from this repository)</span></summary>
+<div class="io"><div><h3>Request</h3><pre>POST /api/v1/main/namespaces/cr_auto/files?path=%2Fwrappers%2Fcomponent-wrappers-0.1.0.jar HTTP/1.1
+Host: localhost:8080
+Accept: application/json
+Content-Type: multipart/form-data; boundary=f7b306f412a44a0c9e29f4f04abc0a80
+Authorization: Basic *** (masked)
+
+--f7b306f412a44a0c9e29f4f04abc0a80
+Content-Disposition: form-data; name=&quot;fileContent&quot;; filename=&quot;component-wrappers-0.1.0.jar&quot;
+
+&lt;binary component-wrappers-0.1.0.jar: 71439 bytes, sha256 a0ec7f8f27a95bec…&gt;
+--f7b306f412a44a0c9e29f4f04abc0a80--</pre></div><div><h3>Response</h3><pre>HTTP/1.1 200
+Content-Length: 0
+</pre></div></div></details><details class="hit"><summary>
+<span class="n">5</span><span class="t">16:30:27.816</span><span class="m m-POST">POST</span>
+<code class="u">/api/v1/main/namespaces/cr_auto/files?path=%2Flib%2Fpostgresql-42.7.4.jar</code><span class="s ok">200</span>
+<span class="d">58 ms · ↑ 1.0 MB · ↓ 0 B</span>
+<span class="p">Platform file lib/postgresql-42.7.4.jar (from this repository)</span></summary>
+<div class="io"><div><h3>Request</h3><pre>POST /api/v1/main/namespaces/cr_auto/files?path=%2Flib%2Fpostgresql-42.7.4.jar HTTP/1.1
+Host: localhost:8080
+Accept: application/json
+Content-Type: multipart/form-data; boundary=3423f3c4bf6d480b8a91524a44581f74
+Authorization: Basic *** (masked)
+
+--3423f3c4bf6d480b8a91524a44581f74
+Content-Disposition: form-data; name=&quot;fileContent&quot;; filename=&quot;postgresql-42.7.4.jar&quot;
+
+&lt;binary postgresql-42.7.4.jar: 1086687 bytes, sha256 188976721ead8e86…&gt;
+--3423f3c4bf6d480b8a91524a44581f74--</pre></div><div><h3>Response</h3><pre>HTTP/1.1 200
+Content-Length: 0
+</pre></div></div></details><details class="hit"><summary>
+<span class="n">6</span><span class="t">16:30:27.875</span><span class="m m-POST">POST</span>
+<code class="u">/api/v1/main/namespaces/cr_auto/files?path=%2Fconfig%2Fcr_auto.properties</code><span class="s ok">200</span>
+<span class="d">43 ms · ↑ 640 B · ↓ 0 B</span>
+<span class="p">The project config, written from scratch</span></summary>
+<div class="io"><div><h3>Request</h3><pre>POST /api/v1/main/namespaces/cr_auto/files?path=%2Fconfig%2Fcr_auto.properties HTTP/1.1
+Host: localhost:8080
+Accept: application/json
+Content-Type: multipart/form-data; boundary=eb2f6dcaec3e413c81927137407ede80
+Authorization: Basic *** (masked)
+
+--eb2f6dcaec3e413c81927137407ede80
+Content-Disposition: form-data; name=&quot;fileContent&quot;; filename=&quot;cr_auto.properties&quot;
+
+# CR_AUTO project config - written from scratch by build_cr_auto.py, uploaded as config/cr_auto.properties.
+# The request store (orders, steps, IO). Its password is not here: STORE_JDBC_PASSWORD comes from the Kestra secret CR_DB_PASSWORD.
+store.jdbc.url=jdbc:postgresql://postgres:5432/kestra
+store.jdbc.user=kestra
+store.project=CR_AUTO
+# The FileCR NEI&#x27;s GRC and status codes are the component&#x27;s own (Components tab, component filecr).
+
+--eb2f6dcaec3e413c81927137407ede80--</pre></div><div><h3>Response</h3><pre>HTTP/1.1 200
+Content-Length: 0
+</pre></div></div></details><details class="hit"><summary>
+<span class="n">7</span><span class="t">16:30:27.918</span><span class="m m-PUT">PUT</span>
+<code class="u">/api/v1/main/namespaces/cr_auto/kv/SHARED_DATA_DIR</code><span class="s ok">200</span>
+<span class="d">25 ms · ↑ 18 B · ↓ 0 B</span>
+<span class="p">KV SHARED_DATA_DIR: where orders keep their folders</span></summary>
+<div class="io"><div><h3>Request</h3><pre>PUT /api/v1/main/namespaces/cr_auto/kv/SHARED_DATA_DIR HTTP/1.1
+Host: localhost:8080
+Accept: application/json
+Content-Type: text/plain
+Authorization: Basic *** (masked)
+
+&quot;/mnt/shared_data&quot;</pre></div><div><h3>Response</h3><pre>HTTP/1.1 200
+Content-Length: 0
+</pre></div></div></details><details class="hit"><summary>
+<span class="n">8</span><span class="t">16:30:27.944</span><span class="m m-GET">GET</span>
+<code class="u">/api/v1/main/namespaces/cr_auto/files/directory?path=%2F</code><span class="s ok">200</span>
+<span class="d">11 ms · ↑ 0 B · ↓ 501 B</span>
+<span class="p">What the namespace now holds</span></summary>
+<div class="io"><div><h3>Request</h3><pre>GET /api/v1/main/namespaces/cr_auto/files/directory?path=%2F HTTP/1.1
+Host: localhost:8080
+Accept: application/json
+Authorization: Basic *** (masked)
+</pre></div><div><h3>Response</h3><pre>HTTP/1.1 200
+Content-Type: application/json
+Content-Length: 501
+
+[
+  {
+    &quot;type&quot;: &quot;Directory&quot;,
+    &quot;size&quot;: 0,
+    &quot;fileName&quot;: &quot;lib&quot;,
+    &quot;lastModifiedTime&quot;: 1793271627863,
+    &quot;creationTime&quot;: 1793271143164,
+    &quot;metadata&quot;: {}
+  },
+  {
+    &quot;type&quot;: &quot;Directory&quot;,
+    &quot;size&quot;: 0,
+    &quot;fileName&quot;: &quot;bin&quot;,
+    &quot;lastModifiedTime&quot;: 1793271627757,
+    &quot;creationTime&quot;: 1793271142621,
+    &quot;metadata&quot;: {}
+  },
+  {
+    &quot;type&quot;: &quot;Directory&quot;,
+    &quot;size&quot;: 0,
+    &quot;fileName&quot;: &quot;wrappers&quot;,
+    &quot;lastModifiedTime&quot;: 1793271627804,
+    &quot;creationTime&quot;: 1793271142836,
+    &quot;metadata&quot;: {}
+  },
+  {
+    &quot;type&quot;: &quot;Directory&quot;,
+    &quot;size&quot;: 0,
+    &quot;fileName&quot;: &quot;config&quot;,
+    &quot;lastModifiedTime&quot;: 1793271627909,
+    &quot;creationTime&quot;: 1793271143237,
+    &quot;metadata&quot;: {}
+  }
+]</pre></div></div></details><details class="hit"><summary>
+<span class="n">9</span><span class="t">16:30:27.956</span><span class="m m-POST">POST</span>
+<code class="u">/cr/api/processes</code><span class="s ok">201</span>
+<span class="d">33 ms · ↑ 94 B · ↓ 75 B</span>
+<span class="p">Create the project: an empty draft v1</span></summary>
+<div class="io"><div><h3>Request</h3><pre>POST /cr/api/processes HTTP/1.1
+Host: localhost:8080
+Accept: application/json
+Content-Type: application/json
+Authorization: Basic *** (masked)
+
+{
+  &quot;project&quot;: &quot;CR_AUTO&quot;,
+  &quot;name&quot;: &quot;FileCR sample built through the APIs&quot;,
+  &quot;namespace&quot;: &quot;cr_auto&quot;
+}</pre></div><div><h3>Response</h3><pre>HTTP/1.1 201
+Content-Type: application/json; charset=utf-8
+Content-Length: 75
+
+{
+  &quot;namespace&quot;: &quot;cr_auto&quot;,
+  &quot;state&quot;: &quot;DRAFT&quot;,
+  &quot;project&quot;: &quot;CR_AUTO&quot;,
+  &quot;version&quot;: 1
+}</pre></div></div></details><details class="hit"><summary>
+<span class="n">10</span><span class="t">16:30:27.989</span><span class="m m-POST">POST</span>
+<code class="u">/cr/api/projects/CR_AUTO/components</code><span class="s ok">201</span>
+<span class="d">14 ms · ↑ 113 B · ↓ 67 B</span>
+<span class="p">Declare the component</span></summary>
+<div class="io"><div><h3>Request</h3><pre>POST /cr/api/projects/CR_AUTO/components HTTP/1.1
+Host: localhost:8080
+Accept: application/json
+Content-Type: application/json
+Authorization: Basic *** (masked)
+
+{
+  &quot;name&quot;: &quot;filecr&quot;,
+  &quot;kind&quot;: &quot;WRAPPED&quot;,
+  &quot;description&quot;: &quot;FileCR NEI from the build zip NOKIA_FILE_CR_V1/target.zip&quot;
+}</pre></div><div><h3>Response</h3><pre>HTTP/1.1 201
+Content-Type: application/json; charset=utf-8
+Content-Length: 67
+
+{
+  &quot;name&quot;: &quot;filecr&quot;,
+  &quot;state&quot;: &quot;DRAFT&quot;,
+  &quot;version&quot;: 1,
+  &quot;component_id&quot;: 16
+}</pre></div></div></details><details class="hit"><summary>
+<span class="n">11</span><span class="t">16:30:28.035</span><span class="m m-PUT">PUT</span>
+<code class="u">/cr/api/projects/CR_AUTO/components/filecr/versions/1/files?path=&amp;unzip=true</code><span class="s ok">200</span>
+<span class="d">1612 ms · ↑ 22.4 MB · ↓ 5.7 KB</span>
+<span class="p">Upload target.zip, unpacked (its top folder target/ is left out)</span></summary>
+<div class="io"><div><h3>Request</h3><pre>PUT /cr/api/projects/CR_AUTO/components/filecr/versions/1/files?path=&amp;unzip=true HTTP/1.1
+Host: localhost:8080
+Accept: application/json
+Content-Type: application/octet-stream
+Authorization: Basic *** (masked)
+
+&lt;target.zip: 23485900 bytes, sha256 052b7f2b15c5ccd1…&gt;</pre></div><div><h3>Response</h3><pre>HTTP/1.1 200
+Content-Type: application/json; charset=utf-8
+Content-Length: 5801
+
+{
+  &quot;written&quot;: [
+    &quot;bin/.packinglist&quot;,
+    &quot;bin/configure&quot;,
+    &quot;bin/java_filecr_any_v1.ksh&quot;,
+    &quot;bin/validate&quot;,
+    &quot;classes/ilink/nei/filecr/any/CIQUtilities.class&quot;,
+    &quot;classes/ilink/nei/filecr/any/Connection.class&quot;,
+    &quot;classes/ilink/nei/filecr/any/Constants.class&quot;,
+    &quot;classes/ilink/nei/filecr/any/FileUtils.class&quot;,
+    &quot;classes/ilink/nei/filecr/any/MopGeneratorHelper.class&quot;,
+    &quot;classes/ilink/nei/filecr/any/PropertiesReader.class&quot;,
+    &quot;classes/ilink/nei/filecr/any/SimFileCrReportRunner.class&quot;,
+    &quot;classes/ilink/nei/filecr/any/Utilities.class&quot;,
+    &quot;classes/macro_FILECR_ANY_V1.class&quot;,
+    &quot;config/.mds.rc&quot;,
+    &quot;config/error_codes.txt&quot;,
+    &quot;config/mds.rc&quot;,
+    &quot;config/mds.rc.add&quot;,
+    &quot;config/phase_codes.txt&quot;,
+    &quot;config/supp_codes.txt&quot;,
+    &quot;docs/word/InstantLink_NEI_for_NOKIA_FILECR_ANY_V1_Functional_Description.docx&quot;,
+    &quot;docs/word/InstantLink_NEI_for_NOKIA_FILECR_ANY_V1_Installation_Guide.docx&quot;,
+    &quot;docs/word/InstantLink_NEI_for_NOKIA_FILECR_ANY_V1_Release_Notes.docx&quot;,
+    &quot;docs/word/InstantLink_NEI_for_NOKIA_FILECR_ANY_V1_Test_Plan.docx&quot;,
+    &quot;docs/word/InstantLink_NEI_for_NOKIA_FILECR_ANY_V1_Test_Report.docx&quot;,
+    &quot;lib/ciq-processor-1.0.3-cli.jar&quot;,
+    &quot;lib/cli-parser-1.0.0.jar&quot;,
+    &quot;lib/execution-report-generator-1.0.2-cli.jar&quot;,
+    &quot;lib/java_macroserver-JDK8.jar&quot;,
+    &quot;lib/json-20210307.jar&quot;,
+    &quot;macro_FILECR_ANY_V1.jar&quot;,
+    &quot;script/common_functions.ksh&quot;,
+    &quot;script/drop_nemo.ksh&quot;,
+    &quot;script/il_nemo_functions.ksh&quot;,
+    &quot;script/nei_info.txt&quot;,
+    &quot;script/nemo_info.txt&quot;,
+    &quot;script/nemo_parameters.properties&quot;,
+    &quot;script/nemo_setup.ksh&quot;,
+    &quot;script/nemo_setup.log&quot;,
+    &quot;script/oracle/drop_nemo.sql&quot;,
+    &quot;script/postgres/drop_nemo.sql&quot;,
+    &quot;templates/application.properties&quot;,
+    &quot;templates/html/mop_execution_report_template.html&quot;,
+    &quot;templates/html/mop_execution_single_node_report_template.html&quot;,
+    &quot;templates/html/mop_execution_summary_report_template.html&quot;,
+    &quot;templates/html/validation-report-template-new.html&quot;,
+    &quot;templates/html/validation-report-template.html&quot;,
+    &quot;templates/jsonTemplate/CFX_128_TGRP_CONFIGURATION_IN_CFX_json-output.yaml&quot;,
+    &quot;templates/jsonTemplate/DPA_DLU_INSTALLATION_json-output.yaml&quot;,
+    &quot;templates/jsonTemplate/DSR_10005_SAPC_CCPC_PREFERENCE_CHANGE_IN_DSR_json-output.yaml&quot;,
+    &quot;templates/jsonTemplate/DSR_10006_HOST_NAME_REALM_ROUTING_CREATION_MODIFICATION_DELETION_DSR_json-output.yaml&quot;,
+    &quot;templates/jsonTemplate/DSR_10011_TEST_IMSI_ROUTING_CREATION_DELETION_IN_DSR_json-output.yaml&quot;,
+    &quot;templates/jsonTemplate/EIR_1029_TAC_LOADING_EIR_json-output.yaml&quot;,
+    &quot;templates/jsonTemplate/MRF_24.7_ANNOUNCEMENT_LOADING_json-output.yaml&quot;,
+    &quot;templates/jsonTemplate/MRF_ANNOUNCEMENT_LOADING_json-output.yaml&quot;,
+    &quot;templates/jsonTemplate/PGW_RDS_1008_VOLTE_DEFAULT_ROAMING_json-output.yaml&quot;,
+    &quot;templates/jsonTemplate/PGW_RDS_1051_SUBSCRIBER_PROFILE_CONFIGURATION_json-output.yaml&quot;,
+    &quot;templates/jsonTemplate/PGW_RDS_1058_IFC_CAPABILITY_MODIFICATION_json-output.yaml&quot;,
+    &quot;templates/jsonTemplate/SBC_107_NEW_SUBNET_CREATION_IN_SBC_json-output.yaml&quot;,
+    &quot;templates/jsonTemplate/SBC_127_NEW_SUBNET_CREATION_MEDIA_SBC_json-output.yaml&quot;,
+    &quot;templates/jsonTemplate/SBC_146_SDP_PROFILE_MODIFICATION_&amp;_TG_MODIFICATION_IN_ISBC_json-output.yaml&quot;,
+    &quot;templates/jsonTemplate/SBC_147_IP_POI_CONFIG_ISBC_json-output.yaml&quot;,
+    &quot;templates/jsonTemplate/SBC_156_ENUM_PROFILE_AND_TRUNKGROUP_CREATION_IN_PSBC_json-output.yaml&quot;,
+    &quot;templates/jsonTemplate/SBC_19_FEPHFLOWPOLICY_AND_SG_PROFILE_PARAMETER_MODIFICATION_json-output.yaml&quot;,
+    &quot;templates/jsonTemplate/SBC_2_ADDITION_DELETION_IN_EMERGENCY_URI_IN_ASBC_json-output.yaml&quot;,
+    &quot;templates/jsonTemplate/SBC_33_LIC_LOADING_IN_SBC_json-output.yaml&quot;,
+    &quot;templates/jsonTemplate/SBC_33_LIC_LOADING_IN_SBC_PRECHECK_json-output.yaml&quot;,
+    &quot;templates/jsonTemplate/SBC_37_DRA_LINK_SHIFTING_GUI_json-output.yaml&quot;,
+    &quot;templates/jsonTemplate/SBC_5_ADDITION_DELETION_MODIFICATION_OF_SIP_FILTER_MM_IN_SBC_json-output.yaml&quot;,
+    &quot;templates/jsonTemplate/SBC_96_FIXED_LINE_CONFIGURATION_IN_SBC_json-output.yaml&quot;,
+    &quot;templates/jsonTemplate/WBX_SAS_5017_STATIC_ROUTE_ADDITION_DELETION_json-output.yaml&quot;,
+    &quot;templates/yaml/CFX_128_TGRP_CONFIGURATION_IN_CFX_validation-rules.yaml&quot;,
+    &quot;templates/yaml/DPA_DLU_INSTALLATION_validation-rules.yaml&quot;,
+    &quot;templates/yaml/DSR_10005_SAPC_CCPC_PREFERENCE_CHANGE_IN_DSR_validation-rules.yaml&quot;,
+    &quot;templates/yaml/DSR_10006_HOST_NAME_REALM_ROUTING_CREATION_MODIFICATION_DELETION_DSR_validation-rules.yaml&quot;,
+    &quot;templates/yaml/DSR_10011_TEST_IMSI_ROUTING_CREATION_DELETION_IN_DSR_validation-rules.yaml&quot;,
+    &quot;templates/yaml/EIR_1029_TAC_LOADING_EIR_validation-rules.yaml&quot;,
+    &quot;templates/yaml/MRF_24.7_ANNOUNCEMENT_LOADING_validation-rules.yaml&quot;,
+    &quot;templates/yaml/MRF_ANNOUNCEMENT_LOADING_validation-rules.yaml&quot;,
+    &quot;templates/yaml/PGW_RDS_1008_VOLTE_DEFAULT_ROAMING_validation-rules.yaml&quot;,
+    &quot;templates/yaml/PGW_RDS_1051_SUBSCRIBER_PROFILE_CONFIGURATION_validation-rules.yaml&quot;,
+    &quot;templates/yaml/PGW_RDS_1058_IFC_CAPABILITY_MODIFICATION_validation-rules.yaml&quot;,
+    &quot;templates/yaml/SBC_107_NEW_SUBNET_CREATION_IN_SBC_validation-rules.yaml&quot;,
+    &quot;templates/yaml/SBC_127_NEW_SUBNET_CREATION_MEDIA_SBC_validation-rules.yaml&quot;,
+    &quot;templates/yaml/SBC_146_SDP_PROFILE_MODIFICATION_&amp;_TG_MODIFICATION_IN_ISBC_validation-rules.yaml&quot;,
+    &quot;templates/yaml/SBC_147_IP_POI_CONFIG_ISBC_validation-rules.yaml&quot;,
+    &quot;templates/yaml/SBC_147_IP_POI_CONFIG_ISBC_validation-rules_phase1.yaml&quot;,
+    &quot;templates/yaml/SBC_156_ENUM_PROFILE_AND_TRUNKGROUP_CREATION_IN_PSBC_validation-rules.yaml&quot;,
+    &quot;templates/yaml/SBC_19_FEPHFLOWPOLICY_AND_SG_PROFILE_PARAMETER_MODIFICATION_validation-rules.yaml&quot;,
+    &quot;templates/yaml/SBC_2_ADDITION_DELETION_IN_EMERGENCY_URI_IN_ASBC_validation-rules.yaml&quot;,
+    &quot;templates/yaml/SBC_33_LIC_LOADING_IN_SBC_validation-rules.yaml&quot;,
+    &quot;templates/yaml/SBC_37_DRA_LINK_SHIFTING_GUI_validation-rules.yaml&quot;,
+    &quot;templates/yaml/SBC_5_ADDITION_DELETION_MODIFICATION_OF_SIP_FILTER_MM_IN_SBC_validation-rules.yaml&quot;,
+    &quot;templates/yaml/SBC_96_FIXED_LINE_CONFIGURATION_IN_SBC_validation-rules.yaml&quot;,
+    &quot;templates/yaml/SBC_FIXED_LINE_CONFIGURATION_validation-rules.yaml&quot;,
+    &quot;templates/yaml/WBX_SAS_5017_STATIC_ROUTE_ADDITION_DELETION_validation-rules.yaml&quot;
+  ],
+  &quot;dropped_folder&quot;: &quot;target&quot;
+}</pre></div></div></details><details class="hit"><summary>
+<span class="n">12</span><span class="t">16:30:29.647</span><span class="m m-GET">GET</span>
+<code class="u">/cr/api/projects/CR_AUTO/components/filecr/versions/1</code><span class="s ok">200</span>
+<span class="d">87 ms · ↑ 0 B · ↓ 16.8 KB</span>
+<span class="p">The draft (its revision)</span></summary>
+<div class="io"><div><h3>Request</h3><pre>GET /cr/api/projects/CR_AUTO/components/filecr/versions/1 HTTP/1.1
+Host: localhost:8080
+Accept: application/json
+Authorization: Basic *** (masked)
+</pre></div><div><h3>Response</h3><pre>HTTP/1.1 200
+Content-Type: application/json; charset=utf-8
+Content-Length: 17153
+
+{
+  &quot;name&quot;: &quot;filecr&quot;,
+  &quot;version&quot;: 1,
+  &quot;state&quot;: &quot;DRAFT&quot;,
+  &quot;revision&quot;: 1,
+  &quot;spec&quot;: {
+    &quot;kind&quot;: &quot;WRAPPED&quot;,
+    &quot;actions&quot;: [],
+    &quot;wrapped&quot;: {
+      &quot;grc&quot;: {},
+      &quot;login&quot;: {},
+      &quot;ne_type&quot;: &quot;&quot;,
+      &quot;product&quot;: &quot;ANY&quot;,
+      &quot;version&quot;: &quot;V1&quot;,
+      &quot;config_dir&quot;: &quot;config&quot;
+    },
+    &quot;location&quot;: &quot;UPLOADED&quot;
+  },
+  &quot;problems&quot;: [
+    &quot;wrapped.ne_type must be the NE type in upper case, e.g. CLICR (class macro_CLICR_ANY_V1).&quot;
+  ],
+  &quot;dir&quot;: &quot;components/filecr/v1&quot;,
+  &quot;files&quot;: [
+    {
+      &quot;path&quot;: &quot;/components/filecr/v1/config/.mds.rc&quot;,
+      &quot;size&quot;: &quot;1517&quot;,
+      &quot;name&quot;: &quot;config/.mds.rc&quot;
+    },
+    {
+      &quot;path&quot;: &quot;/components/filecr/v1/config/error_codes.txt&quot;,
+      &quot;size&quot;: &quot;2442&quot;,
+      &quot;name&quot;: &quot;config/error_codes.txt&quot;
+    },
+    {
+      &quot;path&quot;: &quot;/components/filecr/v1/config/mds.rc&quot;,
+      &quot;size&quot;: &quot;1580&quot;,
+      &quot;name&quot;: &quot;config/mds.rc&quot;
+    },
+    {
+      &quot;path&quot;: &quot;/components/filecr/v1/config/mds.rc.add&quot;,
+      &quot;size&quot;: &quot;535&quot;,
+      &quot;name&quot;: &quot;config/mds.rc.add&quot;
+    },
+    {
+      &quot;path&quot;: &quot;/components/filecr/v1/config/phase_codes.txt&quot;,
+      &quot;size&quot;: &quot;5034&quot;,
+      &quot;name&quot;: &quot;config/phase_codes.txt&quot;
+    },
+    {
+      &quot;path&quot;: &quot;/components/filecr/v1/config/supp_codes.txt&quot;,
+      &quot;size&quot;: &quot;19198&quot;,
+      &quot;name&quot;: &quot;config/supp_codes.txt&quot;
+    },
+    {
+      &quot;path&quot;: &quot;/components/filecr/v1/docs/word/InstantLink_NEI_for_NOKIA_FILECR_ANY_V1_Functional_Description.docx&quot;,
+      &quot;size&quot;: &quot;217288&quot;,
+      &quot;name&quot;: &quot;docs/word/InstantLink_NEI_for_NOKIA_FILECR_ANY_V1_Functional_Description.docx&quot;
+    },
+    {
+      &quot;path&quot;: &quot;/components/filecr/v1/docs/word/InstantLink_NEI_for_NOKIA_FILECR_ANY_V1_Installation_Guide.docx&quot;,
+      &quot;size&quot;: &quot;118539&quot;,
+      &quot;name&quot;: &quot;docs/word/InstantLink_NEI_for_NOKIA_FILECR_ANY_V1_Installation_Guide.docx&quot;
+    },
+    {
+      &quot;path&quot;: &quot;/components/filecr/v1/docs/word/InstantLink_NEI_for_NOKIA_FILECR_ANY_V1_Release_Notes.docx&quot;,
+      &quot;size&quot;: &quot;98892&quot;,
+      &quot;name&quot;: &quot;docs/word/InstantLink_NEI_for_NOKIA_FILECR_ANY_V1_Release_Notes.docx&quot;
+    },
+    {
+      &quot;path&quot;: &quot;/components/filecr/v1/docs/word/InstantLink_NEI_for_NOKIA_FILECR_ANY_V1_Test_Plan.docx&quot;,
+      &quot;size&quot;: &quot;104735&quot;,
+      &quot;name&quot;: &quot;docs/word/InstantLink_NEI_for_NOKIA_FILECR_ANY_V1_Test_Plan.docx&quot;
+    },
+    {
+      &quot;path&quot;: &quot;/components/filecr/v1/docs/word/InstantLink_NEI_for_NOKIA_FILECR_ANY_V1_Test_Report.docx&quot;,
+      &quot;size&quot;: &quot;104946&quot;,
+      &quot;name&quot;: &quot;docs/word/InstantLink_NEI_for_NOKIA_FILECR_ANY_V1_Test_Report.docx&quot;
+    },
+    {
+      &quot;path&quot;: &quot;/components/filecr/v1/lib/ciq-processor-1.0.3-cli.jar&quot;,
+      &quot;size&quot;: &quot;22376087&quot;,
+      &quot;name&quot;: &quot;lib/ciq-processor-1.0.3-cli.jar&quot;
+    },
+    {
+      &quot;path&quot;: &quot;/components/filecr/v1/lib/cli-parser-1.0.0.jar&quot;,
+      &quot;size&quot;: &quot;19741&quot;,
+      &quot;name&quot;: &quot;lib/cli-parser-1.0.0.jar&quot;
+    },
+    {
+      &quot;path&quot;: &quot;/components/filecr/v1/lib/execution-report-generator-1.0.2-cli.jar&quot;,
+      &quot;size&quot;: &quot;3023711&quot;,
+      &quot;name&quot;: &quot;lib/execution-report-generator-1.0.2-cli.jar&quot;
+    },
+    {
+      &quot;path&quot;: &quot;/components/filecr/v1/lib/java_macroserver-JDK8.jar&quot;,
+      &quot;size&quot;: &quot;52436&quot;,
+      &quot;name&quot;: &quot;lib/java_macroserver-JDK8.jar&quot;
+    },
+    {
+      &quot;path&quot;: &quot;/components/filecr/v1/lib/json-20210307.jar&quot;,
+      &quot;size&quot;: &quot;69710&quot;,
+      &quot;name&quot;: &quot;lib/json-20210307.jar&quot;
+    },
+    {
+      &quot;path&quot;: &quot;/components/filecr/v1/macro_FILECR_ANY_V1.jar&quot;,
+      &quot;size&quot;: &quot;26907&quot;,
+      &quot;name&quot;: &quot;macro_FILECR_ANY_V1.jar&quot;
+    },
+    {
+      &quot;path&quot;: &quot;/components/filecr/v1/script/common_functions.ksh&quot;,
+      &quot;size&quot;: &quot;1459&quot;,
+      &quot;name&quot;: &quot;script/common_functions.ksh&quot;
+    },
+    {
+      &quot;path&quot;: &quot;/components/filecr/v1/script/drop_nemo.ksh&quot;,
+      &quot;size&quot;: &quot;5041&quot;,
+      &quot;name&quot;: &quot;script/drop_nemo.ksh&quot;
+    },
+    {
+      &quot;path&quot;: &quot;/components/filecr/v1/script/il_nemo_functions.ksh&quot;,
+      &quot;size&quot;: &quot;21144&quot;,
+      &quot;name&quot;: &quot;script/il_nemo_functions.ksh&quot;
+    },
+    {
+      &quot;path&quot;: &quot;/components/filecr/v1/script/nei_info.txt&quot;,
+      &quot;size&quot;: &quot;92&quot;,
+      &quot;name&quot;: &quot;script/nei_info.txt&quot;
+    },
+    {
+      &quot;path&quot;: &quot;/components/filecr/v1/script/nemo_info.txt&quot;,
+      &quot;size&quot;: &quot;0&quot;,
+      &quot;name&quot;: &quot;script/nemo_info.txt&quot;
+    },
+    {
+      &quot;path&quot;: &quot;/components/filecr/v1/script/nemo_parameters.properties&quot;,
+      &quot;size&quot;: &quot;8863&quot;,
+      &quot;name&quot;: &quot;script/nemo_parameters.properties&quot;
+    },
+    {
+      &quot;path&quot;: &quot;/components/filecr/v1/script/nemo_setup.ksh&quot;,
+      &quot;size&quot;: &quot;21215&quot;,
+      &quot;name&quot;: &quot;script/nemo_setup.ksh&quot;
+    },
+    {
+      &quot;path&quot;: &quot;/components/filecr/v1/script/nemo_setup.log&quot;,
+      &quot;size&quot;: &quot;0&quot;,
+      &quot;name&quot;: &quot;script/nemo_setup.log&quot;
+    },
+    {
+      &quot;path&quot;: &quot;/components/filecr/v1/script/oracle/drop_nemo.sql&quot;,
+      &quot;size&quot;: &quot;556&quot;,
+      &quot;name&quot;: &quot;script/oracle/drop_nemo.sql&quot;
+    },
+    {
+      &quot;path&quot;: &quot;/components/filecr/v1/script/postgres/drop_nemo.sql&quot;,
+      &quot;size&quot;: &quot;518&quot;,
+      &quot;name&quot;: &quot;script/postgres/drop_nemo.sql&quot;
+    },
+    {
+      &quot;path&quot;: &quot;/components/filecr/v1/templates/application.properties&quot;,
+      &quot;size&quot;: &quot;141&quot;,
+      &quot;name&quot;: &quot;templates/application.properties&quot;
+    },
+    {
+      &quot;path&quot;: &quot;/components/filecr/v1/templates/html/mop_execution_report_template.html&quot;,
+      &quot;size&quot;: &quot;31692&quot;,
+      &quot;name&quot;: &quot;templates/html/mop_execution_report_template.html&quot;
+    },
+    {
+      &quot;path&quot;: &quot;/components/filecr/v1/templates/html/mop_execution_single_node_report_template.html&quot;,
+      &quot;size&quot;: &quot;22038&quot;,
+      &quot;name&quot;: &quot;templates/html/mop_execution_single_node_report_template.html&quot;
+    },
+    {
+      &quot;path&quot;: &quot;/components/filecr/v1/templates/html/mop_execution_summary_report_template.html&quot;,
+      &quot;size&quot;: &quot;8925&quot;,
+      &quot;name&quot;: &quot;templates/html/mop_execution_summary_report_template.html&quot;
+    },
+    {
+      &quot;path&quot;: &quot;/components/filecr/v1/templates/html/validation-report-template-new.html&quot;,
+      &quot;size&quot;: &quot;10427&quot;,
+      &quot;name&quot;: &quot;templates/html/validation-report-template-new.html&quot;
+    },
+    {
+      &quot;path&quot;: &quot;/components/filecr/v1/templates/html/validation-report-template.html&quot;,
+      &quot;size&quot;: &quot;7368&quot;,
+      &quot;name&quot;: &quot;templates/html/validation-report-template.html&quot;
+    },
+    {
+      &quot;path&quot;: &quot;/components/filecr/v1/templates/jsonTemplate/CFX_128_TGRP_CONFIGURATION_IN_CFX_json-output.yaml&quot;,
+      &quot;size&quot;: &quot;1715&quot;,
+      &quot;name&quot;: &quot;templates/jsonTemplate/CFX_128_TGRP_CONFIGURATION_IN_CFX_json-output.yaml&quot;
+    },
+    {
+      &quot;path&quot;: &quot;/components/filecr/v1/templates/jsonTemplate/DPA_DLU_INSTALLATION_json-output.yaml&quot;,
+      &quot;size&quot;: &quot;1352&quot;,
+      &quot;name&quot;: &quot;templates/jsonTemplate/DPA_DLU_INSTALLATION_json-output.yaml&quot;
+    },
+    {
+      &quot;path&quot;: &quot;/components/filecr/v1/templates/jsonTemplate/DSR_10005_SAPC_CCPC_PREFERENCE_CHANGE_IN_DSR_json-output.yaml&quot;,
+      &quot;size&quot;: &quot;1747&quot;,
+      &quot;name&quot;: &quot;templates/jsonTemplate/DSR_10005_SAPC_CCPC_PREFERENCE_CHANGE_IN_DSR_json-output.yaml&quot;
+    },
+    {
+      &quot;path&quot;: &quot;/components/filecr/v1/templates/jsonTemplate/DSR_10006_HOST_NAME_REALM_ROUTING_CREATION_MODIFICATION_DELETION_DSR_json-output.yaml&quot;,
+      &quot;size&quot;: &quot;1091&quot;,
+      &quot;name&quot;: &quot;templates/jsonTemplate/DSR_10006_HOST_NAME_REALM_ROUTING_CREATION_MODIFICATION_DELETION_DSR_json-output.yaml&quot;
+    },
+    {
+      &quot;path&quot;: &quot;/components/filecr/v1/templates/jsonTemplate/DSR_10011_TEST_IMSI_ROUTING_CREATION_DELETION_IN_DSR_json-output.yaml&quot;,
+      &quot;size&quot;: &quot;1364&quot;,
+      &quot;name&quot;: &quot;templates/jsonTemplate/DSR_10011_TEST_IMSI_ROUTING_CREATION_DELETION_IN_DSR_json-output.yaml&quot;
+    },
+    {
+      &quot;path&quot;: &quot;/components/filecr/v1/templates/jsonTemplate/EIR_1029_TAC_LOADING_EIR_json-output.yaml&quot;,
+      &quot;size&quot;: &quot;1380&quot;,
+      &quot;name&quot;: &quot;templates/jsonTemplate/EIR_1029_TAC_LOADING_EIR_json-output.yaml&quot;
+    },
+    {
+      &quot;path&quot;: &quot;/components/filecr/v1/templates/jsonTemplate/MRF_24.7_ANNOUNCEMENT_LOADING_json-output.yaml&quot;,
+      &quot;size&quot;: &quot;2712&quot;,
+      &quot;name&quot;: &quot;templates/jsonTemplate/MRF_24.7_ANNOUNCEMENT_LOADING_json-output.yaml&quot;
+    },
+    {
+      &quot;path&quot;: &quot;/components/filecr/v1/templates/jsonTemplate/MRF_ANNOUNCEMENT_LOADING_json-output.yaml&quot;,
+      &quot;size&quot;: &quot;2869&quot;,
+      &quot;name&quot;: &quot;templates/jsonTemplate/MRF_ANNOUNCEMENT_LOADING_json-output.yaml&quot;
+    },
+    {
+      &quot;path&quot;: &quot;/components/filecr/v1/templates/jsonTemplate/PGW_RDS_1008_VOLTE_DEFAULT_ROAMING_json-output.yaml&quot;,
+      &quot;size&quot;: &quot;1264&quot;,
+      &quot;name&quot;: &quot;templates/jsonTemplate/PGW_RDS_1008_VOLTE_DEFAULT_ROAMING_json-output.yaml&quot;
+    },
+    {
+      &quot;path&quot;: &quot;/components/filecr/v1/templates/jsonTemplate/PGW_RDS_1051_SUBSCRIBER_PROFILE_CONFIGURATION_json-output.yaml&quot;,
+      &quot;size&quot;: &quot;1550&quot;,
+      &quot;name&quot;: &quot;templates/jsonTemplate/PGW_RDS_1051_SUBSCRIBER_PROFILE_CONFIGURATION_json-output.yaml&quot;
+    },
+    {
+      &quot;path&quot;: &quot;/components/filecr/v1/templates/jsonTemplate/PGW_RDS_1058_IFC_CAPABILITY_MODIFICATION_json-output.yaml&quot;,
+      &quot;size&quot;: &quot;1067&quot;,
+      &quot;name&quot;: &quot;templates/jsonTemplate/PGW_RDS_1058_IFC_CAPABILITY_MODIFICATION_json-output.yaml&quot;
+    },
+    {
+      &quot;path&quot;: &quot;/components/filecr/v1/templates/jsonTemplate/SBC_107_NEW_SUBNET_CREATION_IN_SBC_json-output.yaml&quot;,
+      &quot;size&quot;: &quot;703&quot;,
+      &quot;name&quot;: &quot;templates/jsonTemplate/SBC_107_NEW_SUBNET_CREATION_IN_SBC_json-output.yaml&quot;
+    },
+    {
+      &quot;path&quot;: &quot;/components/filecr/v1/templates/jsonTemplate/SBC_127_NEW_SUBNET_CREATION_MEDIA_SBC_json-output.yaml&quot;,
+      &quot;size&quot;: &quot;2503&quot;,
+      &quot;name&quot;: &quot;templates/jsonTemplate/SBC_127_NEW_SUBNET_CREATION_MEDIA_SBC_json-output.yaml&quot;
+    },
+    {
+      &quot;path&quot;: &quot;/components/filecr/v1/templates/jsonTemplate/SBC_146_SDP_PROFILE_MODIFICATION_&amp;_TG_MODIFICATION_IN_ISBC_json-output.yaml&quot;,
+      &quot;size&quot;: &quot;2114&quot;,
+      &quot;name&quot;: &quot;templates/jsonTemplate/SBC_146_SDP_PROFILE_MODIFICATION_&amp;_TG_MODIFICATION_IN_ISBC_json-output.yaml&quot;
+    },
+    {
+      &quot;path&quot;: &quot;/components/filecr/v1/templates/jsonTemplate/SBC_147_IP_POI_CONFIG_ISBC_json-output.yaml&quot;,
+      &quot;size&quot;: &quot;3657&quot;,
+      &quot;name&quot;: &quot;templates/jsonTemplate/SBC_147_IP_POI_CONFIG_ISBC_json-output.yaml&quot;
+    },
+    {
+      &quot;path&quot;: &quot;/components/filecr/v1/templates/jsonTemplate/SBC_156_ENUM_PROFILE_AND_TRUNKGROUP_CREATION_IN_PSBC_json-output.yaml&quot;,
+      &quot;size&quot;: &quot;2787&quot;,
+      &quot;name&quot;: &quot;templates/jsonTemplate/SBC_156_ENUM_PROFILE_AND_TRUNKGROUP_CREATION_IN_PSBC_json-output.yaml&quot;
+    },
+    {
+      &quot;path&quot;: &quot;/components/filecr/v1/templates/jsonTemplate/SBC_19_FEPHFLOWPOLICY_AND_SG_PROFILE_PARAMETER_MODIFICATION_json-output.yaml&quot;,
+      &quot;size&quot;: &quot;2768&quot;,
+      &quot;name&quot;: &quot;templates/jsonTemplate/SBC_19_FEPHFLOWPOLICY_AND_SG_PROFILE_PARAMETER_MODIFICATION_json-output.yaml&quot;
+    },
+    {
+      &quot;path&quot;: &quot;/components/filecr/v1/templates/jsonTemplate/SBC_2_ADDITION_DELETION_IN_EMERGENCY_URI_IN_ASBC_json-output.yaml&quot;,
+      &quot;size&quot;: &quot;1050&quot;,
+      &quot;name&quot;: &quot;templates/jsonTemplate/SBC_2_ADDITION_DELETION_IN_EMERGENCY_URI_IN_ASBC_json-output.yaml&quot;
+    },
+    {
+      &quot;path&quot;: &quot;/components/filecr/v1/templates/jsonTemplate/SBC_33_LIC_LOADING_IN_SBC_json-output.yaml&quot;,
+      &quot;size&quot;: &quot;1967&quot;,
+      &quot;name&quot;: &quot;templates/jsonTemplate/SBC_33_LIC_LOADING_IN_SBC_json-output.yaml&quot;
+    },
+    {
+      &quot;path&quot;: &quot;/components/filecr/v1/templates/jsonTemplate/SBC_33_LIC_LOADING_IN_SBC_PRECHECK_json-output.yaml&quot;,
+      &quot;size&quot;: &quot;1967&quot;,
+      &quot;name&quot;: &quot;templates/jsonTemplate/SBC_33_LIC_LOADING_IN_SBC_PRECHECK_json-output.yaml&quot;
+    },
+    {
+      &quot;path&quot;: &quot;/components/filecr/v1/templates/jsonTemplate/SBC_37_DRA_LINK_SHIFTING_GUI_json-output.yaml&quot;,
+      &quot;size&quot;: &quot;1806&quot;,
+      &quot;name&quot;: &quot;templates/jsonTemplate/SBC_37_DRA_LINK_SHIFTING_GUI_json-output.yaml&quot;
+    },
+    {
+      &quot;path&quot;: &quot;/components/filecr/v1/templates/jsonTemplate/SBC_5_ADDITION_DELETION_MODIFICATION_OF_SIP_FILTER_MM_IN_SBC_json-output.yaml&quot;,
+      &quot;size&quot;: &quot;1546&quot;,
+      &quot;name&quot;: &quot;templates/jsonTemplate/SBC_5_ADDITION_DELETION_MODIFICATION_OF_SIP_FILTER_MM_IN_SBC_json-output.yaml&quot;
+    },
+    {
+      &quot;path&quot;: &quot;/components/filecr/v1/templates/jsonTemplate/SBC_96_FIXED_LINE_CONFIGURATION_IN_SBC_json-output.yaml&quot;,
+      &quot;size&quot;: &quot;3552&quot;,
+      &quot;name&quot;: &quot;templates/jsonTemplate/SBC_96_FIXED_LINE_CONFIGURATION_IN_SBC_json-output.yaml&quot;
+    },
+    {
+      &quot;path&quot;: &quot;/components/filecr/v1/templates/jsonTemplate/WBX_SAS_5017_STATIC_ROUTE_ADDITION_DELETION_json-output.yaml&quot;,
+      &quot;size&quot;: &quot;2139&quot;,
+      &quot;name&quot;: &quot;templates/jsonTemplate/WBX_SAS_5017_STATIC_ROUTE_ADDITION_DELETION_json-output.yaml&quot;
+    },
+    {
+      &quot;path&quot;: &quot;/components/filecr/v1/templates/yaml/WBX_SAS_5017_STATIC_ROUTE_ADDITION_DELETION_validation-rules.yaml&quot;,
+      &quot;size&quot;: &quot;5777&quot;,
+      &quot;name&quot;: &quot;templates/yaml/WBX_SAS_5017_STATIC_ROUTE_ADDITION_DELETION_validation-rules.yaml&quot;
+    },
+    {
+      &quot;path&quot;: &quot;/components/filecr/v1/templates/yaml/CFX_128_TGRP_CONFIGURATION_IN_CFX_validation-rules.yaml&quot;,
+      &quot;size&quot;: &quot;16304&quot;,
+      &quot;name&quot;: &quot;templates/yaml/CFX_128_TGRP_CONFIGURATION_IN_CFX_validation-rules.yaml&quot;
+    },
+    {
+      &quot;path&quot;: &quot;/components/filecr/v1/templates/yaml/DPA_DLU_INSTALLATION_validation-rules.yaml&quot;,
+      &quot;size&quot;: &quot;5963&quot;,
+      &quot;name&quot;: &quot;templates/yaml/DPA_DLU_INSTALLATION_validation-rules.yaml&quot;
+    },
+    {
+      &quot;path&quot;: &quot;/components/filecr/v1/templates/yaml/DSR_10005_SAPC_CCPC_PREFERENCE_CHANGE_IN_DSR_validation-rules.yaml&quot;,
+      &quot;size&quot;: &quot;7982&quot;,
+      &quot;name&quot;: &quot;templates/yaml/DSR_10005_SAPC_CCPC_PREFERENCE_CHANGE_IN_DSR_validation-rules.yaml&quot;
+    },
+    {
+      &quot;path&quot;: &quot;/components/filecr/v1/templates/yaml/DSR_10006_HOST_NAME_REALM_ROUTING_CREATION_MODIFICATION_DELETION_DSR_validation-rules.yaml&quot;,
+      &quot;size&quot;: &quot;34229&quot;,
+      &quot;name&quot;: &quot;templates/yaml/DSR_10006_HOST_NAME_REALM_ROUTING_CREATION_MODIFICATION_DELETION_DSR_validation-rules.yaml&quot;
+    },
+    {
+      &quot;path&quot;: &quot;/components/filecr/v1/templates/yaml/DSR_10011_TEST_IMSI_ROUTING_CREATION_DELETION_IN_DSR_validation-rules.yaml&quot;,
+      &quot;size&quot;: &quot;46231&quot;,
+      &quot;name&quot;: &quot;templates/yaml/DSR_10011_TEST_IMSI_ROUTING_CREATION_DELETION_IN_DSR_validation-rules.yaml&quot;
+    },
+    {
+      &quot;path&quot;: &quot;/components/filecr/v1/templates/yaml/EIR_1029_TAC_LOADING_EIR_validation-rules.yaml&quot;,
+      &quot;size&quot;: &quot;3655&quot;,
+      &quot;name&quot;: &quot;templates/yaml/EIR_1029_TAC_LOADING_EIR_validation-rules.yaml&quot;
+    },
+    {
+      &quot;path&quot;: &quot;/components/filecr/v1/templates/yaml/MRF_24.7_ANNOUNCEMENT_LOADING_validation-rules.yaml&quot;,
+      &quot;size&quot;: &quot;4256&quot;,
+      &quot;name&quot;: &quot;templates/yaml/MRF_24.7_ANNOUNCEMENT_LOADING_validation-rules.yaml&quot;
+    },
+    {
+      &quot;path&quot;: &quot;/components/filecr/v1/templates/yaml/MRF_ANNOUNCEMENT_LOADING_validation-rules.yaml&quot;,
+      &quot;size&quot;: &quot;5010&quot;,
+      &quot;name&quot;: &quot;templates/yaml/MRF_ANNOUNCEMENT_LOADING_validation-rules.yaml&quot;
+    },
+    {
+      &quot;path&quot;: &quot;/components/filecr/v1/templates/yaml/PGW_RDS_1008_VOLTE_DEFAULT_ROAMING_validation-rules.yaml&quot;,
+      &quot;size&quot;: &quot;5706&quot;,
+      &quot;name&quot;: &quot;templates/yaml/PGW_RDS_1008_VOLTE_DEFAULT_ROAMING_validation-rules.yaml&quot;
+    },
+    {
+      &quot;path&quot;: &quot;/components/filecr/v1/templates/yaml/PGW_RDS_1051_SUBSCRIBER_PROFILE_CONFIGURATION_validation-rules.yaml&quot;,
+      &quot;size&quot;: &quot;14208&quot;,
+      &quot;name&quot;: &quot;templates/yaml/PGW_RDS_1051_SUBSCRIBER_PROFILE_CONFIGURATION_validation-rules.yaml&quot;
+    },
+    {
+      &quot;path&quot;: &quot;/components/filecr/v1/templates/yaml/PGW_RDS_1058_IFC_CAPABILITY_MODIFICATION_validation-rules.yaml&quot;,
+      &quot;size&quot;: &quot;4689&quot;,
+      &quot;name&quot;: &quot;templates/yaml/PGW_RDS_1058_IFC_CAPABILITY_MODIFICATION_validation-rules.yaml&quot;
+    },
+    {
+      &quot;path&quot;: &quot;/components/filecr/v1/templates/yaml/SBC_107_NEW_SUBNET_CREATION_IN_SBC_validation-rules.yaml&quot;,
+      &quot;size&quot;: &quot;8735&quot;,
+      &quot;name&quot;: &quot;templates/yaml/SBC_107_NEW_SUBNET_CREATION_IN_SBC_validation-rules.yaml&quot;
+    },
+    {
+      &quot;path&quot;: &quot;/components/filecr/v1/templates/yaml/SBC_127_NEW_SUBNET_CREATION_MEDIA_SBC_validation-rules.yaml&quot;,
+      &quot;size&quot;: &quot;7320&quot;,
+      &quot;name&quot;: &quot;templates/yaml/SBC_127_NEW_SUBNET_CREATION_MEDIA_SBC_validation-rules.yaml&quot;
+    },
+    {
+      &quot;path&quot;: &quot;/components/filecr/v1/templates/yaml/SBC_146_SDP_PROFILE_MODIFICATION_&amp;_TG_MODIFICATION_IN_ISBC_validation-rules.yaml&quot;,
+      &quot;size&quot;: &quot;73841&quot;,
+      &quot;name&quot;: &quot;templates/yaml/SBC_146_SDP_PROFILE_MODIFICATION_&amp;_TG_MODIFICATION_IN_ISBC_validation-rules.yaml&quot;
+    },
+    {
+      &quot;path&quot;: &quot;/components/filecr/v1/templates/yaml/SBC_147_IP_POI_CONFIG_ISBC_validation-rules.yaml&quot;,
+      &quot;size&quot;: &quot;184218&quot;,
+      &quot;name&quot;: &quot;templates/yaml/SBC_147_IP_POI_CONFIG_ISBC_validation-rules.yaml&quot;
+    },
+    {
+      &quot;path&quot;: &quot;/components/filecr/v1/templates/yaml/SBC_147_IP_POI_CONFIG_ISBC_validation-rules_phase1.yaml&quot;,
+      &quot;size&quot;: &quot;156458&quot;,
+      &quot;name&quot;: &quot;templates/yaml/SBC_147_IP_POI_CONFIG_ISBC_validation-rules_phase1.yaml&quot;
+    },
+    {
+      &quot;path&quot;: &quot;/components/filecr/v1/templates/yaml/SBC_156_ENUM_PROFILE_AND_TRUNKGROUP_CREATION_IN_PSBC_validation-rules.yaml&quot;,
+      &quot;size&quot;: &quot;75383&quot;,
+      &quot;name&quot;: &quot;templates/yaml/SBC_156_ENUM_PROFILE_AND_TRUNKGROUP_CREATION_IN_PSBC_validation-rules.yaml&quot;
+    },
+    {
+      &quot;path&quot;: &quot;/components/filecr/v1/templates/yaml/SBC_19_FEPHFLOWPOLICY_AND_SG_PROFILE_PARAMETER_MODIFICATION_validation-rules.yaml&quot;,
+      &quot;size&quot;: &quot;178611&quot;,
+      &quot;name&quot;: &quot;templates/yaml/SBC_19_FEPHFLOWPOLICY_AND_SG_PROFILE_PARAMETER_MODIFICATION_validation-rules.yaml&quot;
+    },
+    {
+      &quot;path&quot;: &quot;/components/filecr/v1/templates/yaml/SBC_2_ADDITION_DELETION_IN_EMERGENCY_URI_IN_ASBC_validation-rules.yaml&quot;,
+      &quot;size&quot;: &quot;7992&quot;,
+      &quot;name&quot;: &quot;templates/yaml/SBC_2_ADDITION_DELETION_IN_EMERGENCY_URI_IN_ASBC_validation-rules.yaml&quot;
+    },
+    {
+      &quot;path&quot;: &quot;/components/filecr/v1/templates/yaml/SBC_33_LIC_LOADING_IN_SBC_validation-rules.yaml&quot;,
+      &quot;size&quot;: &quot;3690&quot;,
+      &quot;name&quot;: &quot;templates/yaml/SBC_33_LIC_LOADING_IN_SBC_validation-rules.yaml&quot;
+    },
+    {
+      &quot;path&quot;: &quot;/components/filecr/v1/templates/yaml/SBC_37_DRA_LINK_SHIFTING_GUI_validation-rules.yaml&quot;,
+      &quot;size&quot;: &quot;48678&quot;,
+      &quot;name&quot;: &quot;templates/yaml/SBC_37_DRA_LINK_SHIFTING_GUI_validation-rules.yaml&quot;
+    },
+    {
+      &quot;path&quot;: &quot;/components/filecr/v1/templates/yaml/SBC_5_ADDITION_DELETION_MODIFICATION_OF_SIP_FILTER_MM_IN_SBC_validation-rules.yaml&quot;,
+      &quot;size&quot;: &quot;37022&quot;,
+      &quot;name&quot;: &quot;templates/yaml/SBC_5_ADDITION_DELETION_MODIFICATION_OF_SIP_FILTER_MM_IN_SBC_validation-rules.yaml&quot;
+    },
+    {
+      &quot;path&quot;: &quot;/components/filecr/v1/templates/yaml/SBC_96_FIXED_LINE_CONFIGURATION_IN_SBC_validation-rules.yaml&quot;,
+      &quot;size&quot;: &quot;146450&quot;,
+      &quot;name&quot;: &quot;templates/yaml/SBC_96_FIXED_LINE_CONFIGURATION_IN_SBC_validation-rules.yaml&quot;
+    },
+    {
+      &quot;path&quot;: &quot;/components/filecr/v1/templates/yaml/SBC_FIXED_LINE_CONFIGURATION_validation-rules.yaml&quot;,
+      &quot;size&quot;: &quot;108888&quot;,
+      &quot;name&quot;: &quot;templates/yaml/SBC_FIXED_LINE_CONFIGURATION_validation-rules.yaml&quot;
+    },
+    {
+      &quot;path&quot;: &quot;/components/filecr/v1/bin/.packinglist&quot;,
+      &quot;size&quot;: &quot;2172&quot;,
+      &quot;name&quot;: &quot;bin/.packinglist&quot;
+    },
+    {
+      &quot;path&quot;: &quot;/components/filecr/v1/bin/configure&quot;,
+      &quot;size&quot;: &quot;399&quot;,
+      &quot;name&quot;: &quot;bin/configure&quot;
+    },
+    {
+      &quot;path&quot;: &quot;/components/filecr/v1/bin/java_filecr_any_v1.ksh&quot;,
+      &quot;size&quot;: &quot;858&quot;,
+      &quot;name&quot;: &quot;bin/java_filecr_any_v1.ksh&quot;
+    },
+    {
+      &quot;path&quot;: &quot;/components/filecr/v1/bin/validate&quot;,
+      &quot;size&quot;: &quot;10&quot;,
+      &quot;name&quot;: &quot;bin/validate&quot;
+    },
+    {
+      &quot;path&quot;: &quot;/components/filecr/v1/classes/macro_FILECR_ANY_V1.class&quot;,
+      &quot;size&quot;: &quot;12516&quot;,
+      &quot;name&quot;: &quot;classes/macro_FILECR_ANY_V1.class&quot;
+    },
+    {
+      &quot;path&quot;: &quot;/components/filecr/v1/classes/ilink/nei/filecr/any/CIQUtilities.class&quot;,
+      &quot;size&quot;: &quot;9333&quot;,
+      &quot;name&quot;: &quot;classes/ilink/nei/filecr/any/CIQUtilities.class&quot;
+    },
+    {
+      &quot;path&quot;: &quot;/components/filecr/v1/classes/ilink/nei/filecr/any/Connection.class&quot;,
+      &quot;size&quot;: &quot;4378&quot;,
+      &quot;name&quot;: &quot;classes/ilink/nei/filecr/any/Connection.class&quot;
+    },
+    {
+      &quot;path&quot;: &quot;/components/filecr/v1/classes/ilink/nei/filecr/any/Constants.class&quot;,
+      &quot;size&quot;: &quot;11520&quot;,
+      &quot;name&quot;: &quot;classes/ilink/nei/filecr/any/Constants.class&quot;
+    },
+    {
+      &quot;path&quot;: &quot;/components/filecr/v1/classes/ilink/nei/filecr/any/FileUtils.class&quot;,
+      &quot;size&quot;: &quot;2765&quot;,
+      &quot;name&quot;: &quot;classes/ilink/nei/filecr/any/FileUtils.class&quot;
+    },
+    {
+      &quot;path&quot;: &quot;/components/filecr/v1/classes/ilink/nei/filecr/any/MopGeneratorHelper.class&quot;,
+      &quot;size&quot;: &quot;2170&quot;,
+      &quot;name&quot;: &quot;classes/ilink/nei/filecr/any/MopGeneratorHelper.class&quot;
+    },
+    {
+      &quot;path&quot;: &quot;/components/filecr/v1/classes/ilink/nei/filecr/any/PropertiesReader.class&quot;,
+      &quot;size&quot;: &quot;2294&quot;,
+      &quot;name&quot;: &quot;classes/ilink/nei/filecr/any/PropertiesReader.class&quot;
+    },
+    {
+      &quot;path&quot;: &quot;/components/filecr/v1/classes/ilink/nei/filecr/any/SimFileCrReportRunner.class&quot;,
+      &quot;size&quot;: &quot;4947&quot;,
+      &quot;name&quot;: &quot;classes/ilink/nei/filecr/any/SimFileCrReportR
+… (204 more characters)</pre></div></div></details><details class="hit"><summary>
+<span class="n">13</span><span class="t">16:30:29.735</span><span class="m m-PUT">PUT</span>
+<code class="u">/cr/api/projects/CR_AUTO/components/filecr/versions/1</code><span class="s ok">200</span>
+<span class="d">23 ms · ↑ 2.1 KB · ↓ 30 B</span>
+<span class="p">Save the definition: NEI settings, GRC ({dir} = this version&#x27;s folder), the two actions</span></summary>
+<div class="io"><div><h3>Request</h3><pre>PUT /cr/api/projects/CR_AUTO/components/filecr/versions/1 HTTP/1.1
+Host: localhost:8080
+Accept: application/json
+Content-Type: application/json
+Authorization: Basic *** (masked)
+
+{
+  &quot;spec&quot;: {
+    &quot;kind&quot;: &quot;WRAPPED&quot;,
+    &quot;description&quot;: &quot;FileCR NEI from the build zip NOKIA_FILE_CR_V1/target.zip&quot;,
+    &quot;location&quot;: &quot;UPLOADED&quot;,
+    &quot;wrapped&quot;: {
+      &quot;ne_type&quot;: &quot;FILECR&quot;,
+      &quot;product&quot;: &quot;ANY&quot;,
+      &quot;version&quot;: &quot;V1&quot;,
+      &quot;config_dir&quot;: &quot;config&quot;,
+      &quot;grc&quot;: {
+        &quot;moptemplates_path&quot;: &quot;{dir}/templates&quot;,
+        &quot;properties_path&quot;: &quot;{dir}/templates&quot;,
+        &quot;yaml_path&quot;: &quot;{dir}/templates/yaml&quot;,
+        &quot;jsonTemp_path&quot;: &quot;{dir}/templates/jsonTemplate&quot;,
+        &quot;REPORT_TEMP_PATH&quot;: &quot;{dir}/templates/html&quot;,
+        &quot;execution_report_template_path&quot;: &quot;{dir}/templates/html/mop_execution_report_template.html&quot;,
+        &quot;execution_summary_report_template_path&quot;: &quot;{dir}/templates/html/mop_execution_summary_report_template.html&quot;,
+        &quot;single_node_execution_summary_report_template_path&quot;: &quot;{dir}/templates/html/mop_execution_single_node_report_template.html&quot;
+      },
+      &quot;login&quot;: {}
+    },
+    &quot;actions&quot;: [
+      {
+        &quot;name&quot;: &quot;GENERATE_CR_CIQ_TEMPLATE&quot;,
+        &quot;description&quot;: &quot;the blank CIQ template of a node type + sub-activity&quot;,
+        &quot;params&quot;: [
+          {
+            &quot;name&quot;: &quot;REQ_TYPE&quot;,
+            &quot;default&quot;: &quot;1&quot;
+          },
+          {
+            &quot;name&quot;: &quot;NODE_TYPE&quot;,
+            &quot;required&quot;: true,
+            &quot;default&quot;: &quot;PGW_RDS&quot;
+          },
+          {
+            &quot;name&quot;: &quot;ACTIVITY_NAME&quot;,
+            &quot;required&quot;: true,
+            &quot;default&quot;: &quot;1051_SUBSCRIBER_PROFILE_CONFIGURATION&quot;
+          },
+          {
+            &quot;name&quot;: &quot;SUB_ACTIVITY_NAME&quot;,
+            &quot;required&quot;: true,
+            &quot;default&quot;: &quot;1051_SUBSCRIBER_PROFILE_CONFIGURATION&quot;
+          },
+          {
+            &quot;name&quot;: &quot;NODE_VERSION&quot;,
+            &quot;default&quot;: &quot;ALL&quot;
+          },
+          {
+            &quot;name&quot;: &quot;CIQ_FILE_LOCATION&quot;,
+            &quot;required&quot;: true,
+            &quot;description&quot;: &quot;folder the template is written to&quot;
+          },
+          {
+            &quot;name&quot;: &quot;ORDER_NO&quot;
+          },
+          {
+            &quot;name&quot;: &quot;REQ_ID&quot;
+          }
+        ],
+        &quot;results&quot;: []
+      },
+      {
+        &quot;name&quot;: &quot;CR_CIQ_PROCESSOR&quot;,
+        &quot;description&quot;: &quot;validates a filled CIQ; its CRs when valid&quot;,
+        &quot;params&quot;: [
+          {
+            &quot;name&quot;: &quot;REQ_TYPE&quot;,
+            &quot;default&quot;: &quot;1&quot;
+          },
+          {
+            &quot;name&quot;: &quot;CIQ_FILE_NAME&quot;,
+            &quot;required&quot;: true
+          },
+          {
+            &quot;name&quot;: &quot;NODE_TYPE&quot;,
+            &quot;required&quot;: true
+          },
+          {
+            &quot;name&quot;: &quot;ACTIVITY_NAME&quot;,
+            &quot;required&quot;: true
+          },
+          {
+            &quot;name&quot;: &quot;SUB_ACTIVITY_NAME&quot;,
+            &quot;required&quot;: true
+          },
+          {
+            &quot;name&quot;: &quot;NODE_VERSION&quot;,
+            &quot;default&quot;: &quot;ALL&quot;
+          },
+          {
+            &quot;name&quot;: &quot;OUTPUT_FILE_LOCATION&quot;,
+            &quot;required&quot;: true
+          },
+          {
+            &quot;name&quot;: &quot;REPORT_TYPE&quot;,
+            &quot;default&quot;: &quot;HTML&quot;
+          },
+          {
+            &quot;name&quot;: &quot;HEADER_ROW_NO&quot;,
+            &quot;default&quot;: &quot;1&quot;
+          },
+          {
+            &quot;name&quot;: &quot;ORDER_NO&quot;
+          },
+          {
+            &quot;name&quot;: &quot;REQ_ID&quot;
+          }
+        ],
+        &quot;results&quot;: [
+          {
+            &quot;name&quot;: &quot;CR_LIST&quot;
+          },
+          {
+            &quot;name&quot;: &quot;CR_COUNT&quot;
+          },
+          {
+            &quot;name&quot;: &quot;TOTAL_ERRORS&quot;
+          },
+          {
+            &quot;name&quot;: &quot;JSON_FILE_NAME&quot;
+          },
+          {
+            &quot;name&quot;: &quot;REPORT_FILENAME_HTML&quot;
+          }
+        ]
+      }
+    ]
+  },
+  &quot;revision&quot;: 1
+}</pre></div><div><h3>Response</h3><pre>HTTP/1.1 200
+Content-Type: application/json; charset=utf-8
+Content-Length: 30
+
+{
+  &quot;problems&quot;: [],
+  &quot;saved&quot;: true
+}</pre></div></div></details><details class="hit"><summary>
+<span class="n">14</span><span class="t">16:30:29.759</span><span class="m m-POST">POST</span>
+<code class="u">/cr/api/projects/CR_AUTO/components/filecr/versions/1/try</code><span class="s ok">200</span>
+<span class="d">1912 ms · ↑ 289 B · ↓ 12.5 KB</span>
+<span class="p">Try it: GENERATE_CR_CIQ_TEMPLATE once</span></summary>
+<div class="io"><div><h3>Request</h3><pre>POST /cr/api/projects/CR_AUTO/components/filecr/versions/1/try HTTP/1.1
+Host: localhost:8080
+Accept: application/json
+Content-Type: application/json
+Authorization: Basic *** (masked)
+
+{
+  &quot;action&quot;: &quot;GENERATE_CR_CIQ_TEMPLATE&quot;,
+  &quot;params&quot;: {
+    &quot;REQ_TYPE&quot;: &quot;1&quot;,
+    &quot;NODE_TYPE&quot;: &quot;PGW_RDS&quot;,
+    &quot;ACTIVITY_NAME&quot;: &quot;1051_SUBSCRIBER_PROFILE_CONFIGURATION&quot;,
+    &quot;SUB_ACTIVITY_NAME&quot;: &quot;1051_SUBSCRIBER_PROFILE_CONFIGURATION&quot;,
+    &quot;NODE_VERSION&quot;: &quot;ALL&quot;,
+    &quot;CIQ_FILE_LOCATION&quot;: &quot;${WORKDIR}/try/&quot;,
+    &quot;REQ_ID&quot;: &quot;1&quot;
+  }
+}</pre></div><div><h3>Response</h3><pre>HTTP/1.1 200
+Content-Type: application/json; charset=utf-8
+Content-Length: 12806
+
+{
+  &quot;execution_id&quot;: &quot;3Nn4OrCkbzyaWRRo6wvPzp&quot;,
+  &quot;state&quot;: &quot;SUCCESS&quot;,
+  &quot;result&quot;: {
+    &quot;component&quot;: &quot;NEI&quot;,
+    &quot;status&quot;: &quot;0&quot;,
+    &quot;statusText&quot;: &quot;SUCCESS&quot;,
+    &quot;message&quot;: &quot;macro_FILECR_ANY_V1 task OK: SUCCESS&quot;,
+    &quot;startedAt&quot;: &quot;2026-10-29T11:00:30.210+0000&quot;,
+    &quot;durationMs&quot;: &quot;951&quot;,
+    &quot;request&quot;: {
+      &quot;REQ_TYPE&quot;: &quot;1&quot;,
+      &quot;NODE_TYPE&quot;: &quot;PGW_RDS&quot;,
+      &quot;ACTIVITY_NAME&quot;: &quot;1051_SUBSCRIBER_PROFILE_CONFIGURATION&quot;,
+      &quot;SUB_ACTIVITY_NAME&quot;: &quot;1051_SUBSCRIBER_PROFILE_CONFIGURATION&quot;,
+      &quot;NODE_VERSION&quot;: &quot;ALL&quot;,
+      &quot;CIQ_FILE_LOCATION&quot;: &quot;/tmp/13AhiLj9HfK1371cHg7QzE/./try/&quot;,
+      &quot;REQ_ID&quot;: &quot;1&quot;,
+      &quot;ne_type&quot;: &quot;FILECR&quot;,
+      &quot;product_name&quot;: &quot;ANY&quot;,
+      &quot;product_version&quot;: &quot;V1&quot;,
+      &quot;ACTION&quot;: &quot;GENERATE_CR_CIQ_TEMPLATE&quot;
+    },
+    &quot;results&quot;: {
+      &quot;CIQ_FILENAME&quot;: &quot;PGW_RDS_1051_SUBSCRIBER_PROFILE_CONFIGURATION_CIQ.xlsx&quot;,
+      &quot;STATUS&quot;: &quot;7&quot;,
+      &quot;STATUS_MESSAGE&quot;: &quot;SUCCESS&quot;,
+      &quot;NEI_MACRO&quot;: &quot;macro_FILECR_ANY_V1&quot;,
+      &quot;NEI_CONN_STATUS&quot;: &quot;0&quot;,
+      &quot;NEI_TASK_STATUS&quot;: &quot;0&quot;
+    },
+    &quot;log&quot;: &quot;&lt;23 lines of the component&#x27;s run log, left out of this API log&gt;&quot;
+  },
+  &quot;log&quot;: &quot;&lt;84 lines of the component&#x27;s run log, left out of this API log&gt;&quot;
+}</pre></div></div></details><details class="hit"><summary>
+<span class="n">15</span><span class="t">16:30:31.671</span><span class="m m-POST">POST</span>
+<code class="u">/cr/api/projects/CR_AUTO/components/filecr/versions/1/publish</code><span class="s ok">200</span>
+<span class="d">110 ms · ↑ 0 B · ↓ 88 B</span>
+<span class="p">Publish v1</span></summary>
+<div class="io"><div><h3>Request</h3><pre>POST /cr/api/projects/CR_AUTO/components/filecr/versions/1/publish HTTP/1.1
+Host: localhost:8080
+Accept: application/json
+Authorization: Basic *** (masked)
+</pre></div><div><h3>Response</h3><pre>HTTP/1.1 200
+Content-Type: application/json; charset=utf-8
+Content-Length: 88
+
+{
+  &quot;message&quot;: &quot;Version 1 of filecr is published; pipelines published from now on use it.&quot;
+}</pre></div></div></details><details class="hit"><summary>
+<span class="n">16</span><span class="t">16:30:31.782</span><span class="m m-GET">GET</span>
+<code class="u">/api/v1/main/namespaces/cr_auto/kv/COMPONENT_FILECR</code><span class="s ok">200</span>
+<span class="d">8 ms · ↑ 0 B · ↓ 101 B</span>
+<span class="p">KV COMPONENT_FILECR, kept by the gateway: the published version&#x27;s folder</span></summary>
+<div class="io"><div><h3>Request</h3><pre>GET /api/v1/main/namespaces/cr_auto/kv/COMPONENT_FILECR HTTP/1.1
+Host: localhost:8080
+Accept: application/json
+Authorization: Basic *** (masked)
+</pre></div><div><h3>Response</h3><pre>HTTP/1.1 200
+Content-Type: application/json
+Content-Length: 101
+
+{
+  &quot;type&quot;: &quot;STRING&quot;,
+  &quot;value&quot;: &quot;components/filecr/v1&quot;,
+  &quot;revision&quot;: 5,
+  &quot;updated&quot;: &quot;2026-10-29T11:00:31.776893Z&quot;
+}</pre></div></div></details><details class="hit"><summary>
+<span class="n">17</span><span class="t">16:30:31.791</span><span class="m m-GET">GET</span>
+<code class="u">/api/v1/main/namespaces/cr_auto/files?path=%2Fcomponents%2Ffilecr%2Fv1%2Fcomponent.properties</code><span class="s ok">200</span>
+<span class="d">8 ms · ↑ 0 B · ↓ 1.1 KB</span>
+<span class="p">The component.properties the gateway generated</span></summary>
+<div class="io"><div><h3>Request</h3><pre>GET /api/v1/main/namespaces/cr_auto/files?path=%2Fcomponents%2Ffilecr%2Fv1%2Fcomponent.properties HTTP/1.1
+Host: localhost:8080
+Accept: application/octet-stream
+Authorization: Basic *** (masked)
+</pre></div><div><h3>Response</h3><pre>HTTP/1.1 200
+Content-Type: application/octet-stream
+
+#component filecr - written by the gateway from the Process designer; edit it there
+#Thu Oct 29 11:00:31 UTC 2026
+component.home=components/filecr/v1
+component.kind=WRAPPED
+component.name=filecr
+component.ne_type=FILECR
+component.product=ANY
+component.version=V1
+nei.filecr.configdir=components/filecr/v1/config
+nei.filecr.grc.REPORT_TEMP_PATH=${WORKDIR}/components/filecr/v1/templates/html
+nei.filecr.grc.execution_report_template_path=${WORKDIR}/components/filecr/v1/templates/html/mop_execution_report_template.html
+nei.filecr.grc.execution_summary_report_template_path=${WORKDIR}/components/filecr/v1/templates/html/mop_execution_summary_report_template.html
+nei.filecr.grc.jsonTemp_path=${WORKDIR}/components/filecr/v1/templates/jsonTemplate
+nei.filecr.grc.moptemplates_path=${WORKDIR}/components/filecr/v1/templates
+nei.filecr.grc.properties_path=${WORKDIR}/components/filecr/v1/templates
+nei.filecr.grc.single_node_execution_summary_report_template_path=${WORKDIR}/components/filecr/v1/templates/html/mop_execution_single_node_report_template.html
+nei.filecr.grc.yaml_path=${WORKDIR}/components/filecr/v1/templates/yaml
+</pre></div></div></details><details class="hit"><summary>
+<span class="n">18</span><span class="t">16:30:31.800</span><span class="m m-POST">POST</span>
+<code class="u">/api/v1/main/flows</code><span class="s ok">200</span>
+<span class="d">30 ms · ↑ 4.3 KB · ↓ 9.1 KB</span>
+<span class="p">Create flow filecr_template</span></summary>
+<div class="io"><div><h3>Request</h3><pre>POST /api/v1/main/flows HTTP/1.1
+Host: localhost:8080
+Accept: application/json
+Content-Type: application/x-yaml
+Authorization: Basic *** (masked)
+
+id: filecr_template
+namespace: cr_auto
+description: New order with the blank CIQ template (FileCR component, action GENERATE_CR_CIQ_TEMPLATE). Written by build_cr_auto.py.
+labels:
+  project: CR_AUTO
+  process: &quot;true&quot;
+  outline: &quot;CIQ template (FileCR)&quot;
+inputs:
+  - id: node_type
+    type: STRING
+    defaults: PGW_RDS
+  - id: activity
+    type: STRING
+    defaults: 1051_SUBSCRIBER_PROFILE_CONFIGURATION
+  - id: node_version
+    type: STRING
+    defaults: ALL
+  - id: order_no
+    type: STRING
+    required: false
+    validator: &quot;^[1-9][0-9]*$&quot;
+variables:
+  order_id: &quot;{{ outputs.allocate.vars.req_id ?? &#x27;&#x27; }}&quot;
+  order_dir: &quot;{{ kv(&#x27;SHARED_DATA_DIR&#x27;) }}/{{ outputs.allocate.vars.req_id ?? &#x27;&#x27; }}&quot;
+tasks:
+  - id: allocate
+    type: io.kestra.plugin.scripts.shell.Commands
+    taskRunner:
+      type: io.kestra.plugin.core.runner.Process
+    namespaceFiles:
+      enabled: true
+      include: [bin/**, wrappers/**, lib/**, config/**]
+    env:
+      SHARED_DATA_DIR: &quot;{{ kv(&#x27;SHARED_DATA_DIR&#x27;) }}&quot;
+      STORE_JDBC_PASSWORD: &quot;{{ secret(&#x27;CR_DB_PASSWORD&#x27;) }}&quot;
+    commands:
+      - &gt;-
+        sh bin/store.sh new-request --kind ORDER --wanted &quot;{{ inputs.order_no ?? &#x27;&#x27; }}&quot;
+        --node-type &quot;{{ inputs.node_type }}&quot; --activity &quot;{{ inputs.activity }}&quot;
+        --node-version &quot;{{ inputs.node_version }}&quot; --execution &quot;{{ execution.id }}&quot;
+
+  - id: set_labels
+    type: io.kestra.plugin.core.execution.Labels
+    labels:
+      req_id: &quot;{{ render(vars.order_id) }}&quot;
+      order_id: &quot;{{ render(vars.order_id) }}&quot;
+
+  - id: generate_template
+    type: io.kestra.plugin.scripts.shell.Commands
+    description: The FileCR component (its latest published version) - GENERATE_CR_CIQ_TEMPLATE
+    taskRunner:
+      type: io.kestra.plugin.core.runner.Process
+    namespaceFiles:
+      enabled: true
+      include: [bin/**, wrappers/**, lib/**, config/**, &quot;{{ kv(&#x27;COMPONENT_FILECR&#x27;) }}/**&quot;]
+    outputFiles:
+      - out/**
+    env:
+      SHARED_DATA_DIR: &quot;{{ kv(&#x27;SHARED_DATA_DIR&#x27;) }}&quot;
+      STORE_JDBC_PASSWORD: &quot;{{ secret(&#x27;CR_DB_PASSWORD&#x27;) }}&quot;
+      ORDER_DIR: &quot;{{ render(vars.order_dir) }}&quot;
+      STORE_REQ_ID: &quot;{{ render(vars.order_id) }}&quot;
+      STORE_STEP: GENERATE_TEMPLATE
+      EXECUTION_ID: &quot;{{ execution.id }}&quot;
+    commands:
+      - &gt;-
+        sh bin/component.sh &quot;{{ kv(&#x27;COMPONENT_FILECR&#x27;) }}&quot; generate_template
+        --param REQ_TYPE=1
+        --param ACTION=GENERATE_CR_CIQ_TEMPLATE
+        --param &quot;NODE_TYPE={{ inputs.node_type }}&quot;
+        --param &quot;ACTIVITY_NAME={{ inputs.activity }}&quot;
+        --param &quot;SUB_ACTIVITY_NAME={{ inputs.activity }}&quot;
+        --param &quot;NODE_VERSION={{ inputs.node_version }}&quot;
+        --param &quot;CIQ_FILE_LOCATION=$ORDER_DIR/&quot;
+        --param &quot;ORDER_NO={{ render(vars.order_id) }}&quot;
+        --param &quot;REQ_ID={{ render(vars.order_id) }}&quot;
+      - cp &quot;$ORDER_DIR&quot;/*.xlsx out/ 2&gt;/dev/null || true
+
+  - id: register
+    type: io.kestra.plugin.scripts.shell.Commands
+    taskRunner:
+      type: io.kestra.plugin.core.runner.Process
+    namespaceFiles:
+      enabled: true
+      include: [bin/**, wrappers/**, lib/**, config/**]
+    env:
+      SHARED_DATA_DIR: &quot;{{ kv(&#x27;SHARED_DATA_DIR&#x27;) }}&quot;
+      STORE_JDBC_PASSWORD: &quot;{{ secret(&#x27;CR_DB_PASSWORD&#x27;) }}&quot;
+    commands:
+      - &gt;-
+        sh bin/store.sh set-stage --req-id &quot;{{ render(vars.order_id) }}&quot;
+        --stage &quot;{{ outputs.generate_template.vars.status == 0 ? &#x27;TEMPLATE&#x27; : &#x27;TEMPLATE_FAILED&#x27; }}&quot; &gt; /dev/null
+      - sh bin/store.sh registry --order &quot;{{ render(vars.order_id) }}&quot;
+
+  - id: save_order
+    type: io.kestra.plugin.core.kv.Set
+    key: &quot;ORDER_{{ render(vars.order_id) }}&quot;
+    kvType: JSON
+    value: &quot;{{ outputs.register.vars.order | toJson }}&quot;
+
+  - id: save_orders
+    type: io.kestra.plugin.core.kv.Set
+    key: ORDERS
+    kvType: JSON
+    value: &quot;{{ outputs.register.vars.orders | toJson }}&quot;
+
+  - id: template_failed
+    type: io.kestra.plugin.core.execution.Fail
+    runIf: &quot;{{ outputs.generate_template.vars.status != 0 }}&quot;
+    errorMessage: &quot;CIQ template generation failed: {{ outputs.generate_template.vars.message }}&quot;
+
+finally:
+  - id: collect_logs
+    type: io.kestra.plugin.scripts.shell.Commands
+    runIf: &quot;{{ render(vars.order_id) is not empty }}&quot;
+    taskRunner:
+      type: io.kestra.plugin.core.runner.Process
+    outputFiles:
+      - logs/**
+    env:
+      ORDER_DIR: &quot;{{ render(vars.order_dir) }}&quot;
+    commands:
+      - mkdir -p logs &amp;&amp; cp &quot;$ORDER_DIR&quot;/logs/* logs/ 2&gt;/dev/null || true
+</pre></div><div><h3>Response</h3><pre>HTTP/1.1 200
+Content-Type: application/json
+Content-Length: 9323
+
+{
+  &quot;id&quot;: &quot;filecr_template&quot;,
+  &quot;namespace&quot;: &quot;cr_auto&quot;,
+  &quot;revision&quot;: 7,
+  &quot;description&quot;: &quot;New order with the blank CIQ template (FileCR component, action GENERATE_CR_CIQ_TEMPLATE). Written by build_cr_auto.py.&quot;,
+  &quot;inputs&quot;: [
+    {
+      &quot;id&quot;: &quot;node_type&quot;,
+      &quot;type&quot;: &quot;STRING&quot;,
+      &quot;required&quot;: true,
+      &quot;defaults&quot;: &quot;PGW_RDS&quot;
+    },
+    {
+      &quot;id&quot;: &quot;activity&quot;,
+      &quot;type&quot;: &quot;STRING&quot;,
+      &quot;required&quot;: true,
+      &quot;defaults&quot;: &quot;1051_SUBSCRIBER_PROFILE_CONFIGURATION&quot;
+    },
+    {
+      &quot;id&quot;: &quot;node_version&quot;,
+      &quot;type&quot;: &quot;STRING&quot;,
+      &quot;required&quot;: true,
+      &quot;defaults&quot;: &quot;ALL&quot;
+    },
+    {
+      &quot;id&quot;: &quot;order_no&quot;,
+      &quot;type&quot;: &quot;STRING&quot;,
+      &quot;required&quot;: false,
+      &quot;validator&quot;: &quot;^[1-9][0-9]*$&quot;
+    }
+  ],
+  &quot;disabled&quot;: false,
+  &quot;deleted&quot;: false,
+  &quot;draft&quot;: false,
+  &quot;labels&quot;: [
+    {
+      &quot;key&quot;: &quot;project&quot;,
+      &quot;value&quot;: &quot;CR_AUTO&quot;
+    },
+    {
+      &quot;key&quot;: &quot;process&quot;,
+      &quot;value&quot;: &quot;true&quot;
+    },
+    {
+      &quot;key&quot;: &quot;outline&quot;,
+      &quot;value&quot;: &quot;CIQ template (FileCR)&quot;
+    }
+  ],
+  &quot;variables&quot;: {
+    &quot;order_id&quot;: &quot;{{ outputs.allocate.vars.req_id ?? &#x27;&#x27; }}&quot;,
+    &quot;order_dir&quot;: &quot;{{ kv(&#x27;SHARED_DATA_DIR&#x27;) }}/{{ outputs.allocate.vars.req_id ?? &#x27;&#x27; }}&quot;
+  },
+  &quot;tasks&quot;: [
+    {
+      &quot;id&quot;: &quot;allocate&quot;,
+      &quot;type&quot;: &quot;io.kestra.plugin.scripts.shell.Commands&quot;,
+      &quot;taskRunner&quot;: {
+        &quot;type&quot;: &quot;io.kestra.plugin.core.runner.Process&quot;
+      },
+      &quot;env&quot;: &quot;{\&quot;SHARED_DATA_DIR\&quot;:\&quot;{{ kv(&#x27;SHARED_DATA_DIR&#x27;) }}\&quot;,\&quot;STORE_JDBC_PASSWORD\&quot;:\&quot;{{ secret(&#x27;CR_DB_PASSWORD&#x27;) }}\&quot;}&quot;,
+      &quot;namespaceFiles&quot;: {
+        &quot;enabled&quot;: &quot;true&quot;,
+        &quot;include&quot;: &quot;[\&quot;bin/**\&quot;,\&quot;wrappers/**\&quot;,\&quot;lib/**\&quot;,\&quot;config/**\&quot;]&quot;,
+        &quot;namespaces&quot;: &quot;[\&quot;{{flow.namespace}}\&quot;]&quot;,
+        &quot;ifExists&quot;: &quot;OVERWRITE&quot;,
+        &quot;folderPerNamespace&quot;: &quot;false&quot;
+      },
+      &quot;commands&quot;: &quot;[\&quot;sh bin/store.sh new-request --kind ORDER --wanted \\\&quot;{{ inputs.order_no ?? &#x27;&#x27; }}\\\&quot; --node-type \\\&quot;{{ inputs.node_type }}\\\&quot; --activity \\\&quot;{{ inputs.activity }}\\\&quot; --node-version \\\&quot;{{ inputs.node_version }}\\\&quot; --execution \\\&quot;{{ execution.id }}\\\&quot;\&quot;]&quot;
+    },
+    {
+      &quot;id&quot;: &quot;set_labels&quot;,
+      &quot;type&quot;: &quot;io.kestra.plugin.core.execution.Labels&quot;,
+      &quot;labels&quot;: {
+        &quot;req_id&quot;: &quot;{{ render(vars.order_id) }}&quot;,
+        &quot;order_id&quot;: &quot;{{ render(vars.order_id) }}&quot;
+      }
+    },
+    {
+      &quot;id&quot;: &quot;generate_template&quot;,
+      &quot;type&quot;: &quot;io.kestra.plugin.scripts.shell.Commands&quot;,
+      &quot;description&quot;: &quot;The FileCR component (its latest published version) - GENERATE_CR_CIQ_TEMPLATE&quot;,
+      &quot;taskRunner&quot;: {
+        &quot;type&quot;: &quot;io.kestra.plugin.core.runner.Process&quot;
+      },
+      &quot;env&quot;: &quot;{\&quot;SHARED_DATA_DIR\&quot;:\&quot;{{ kv(&#x27;SHARED_DATA_DIR&#x27;) }}\&quot;,\&quot;STORE_JDBC_PASSWORD\&quot;:\&quot;{{ secret(&#x27;CR_DB_PASSWORD&#x27;) }}\&quot;,\&quot;ORDER_DIR\&quot;:\&quot;{{ render(vars.order_dir) }}\&quot;,\&quot;STORE_REQ_ID\&quot;:\&quot;{{ render(vars.order_id) }}\&quot;,\&quot;STORE_STEP\&quot;:\&quot;GENERATE_TEMPLATE\&quot;,\&quot;EXECUTION_ID\&quot;:\&quot;{{ execution.id }}\&quot;}&quot;,
+      &quot;namespaceFiles&quot;: {
+        &quot;enabled&quot;: &quot;true&quot;,
+        &quot;include&quot;: &quot;[\&quot;bin/**\&quot;,\&quot;wrappers/**\&quot;,\&quot;lib/**\&quot;,\&quot;config/**\&quot;,\&quot;{{ kv(&#x27;COMPONENT_FILECR&#x27;) }}/**\&quot;]&quot;,
+        &quot;namespaces&quot;: &quot;[\&quot;{{flow.namespace}}\&quot;]&quot;,
+        &quot;ifExists&quot;: &quot;OVERWRITE&quot;,
+        &quot;folderPerNamespace&quot;: &quot;false&quot;
+      },
+      &quot;outputFiles&quot;: &quot;[\&quot;out/**\&quot;]&quot;,
+      &quot;commands&quot;: &quot;[\&quot;sh bin/component.sh \\\&quot;{{ kv(&#x27;COMPONENT_FILECR&#x27;) }}\\\&quot; generate_template --param REQ_TYPE=1 --param ACTION=GENERATE_CR_CIQ_TEMPLATE --param \\\&quot;NODE_TYPE={{ inputs.node_type }}\\\&quot; --param \\\&quot;ACTIVITY_NAME={{ inputs.activity }}\\\&quot; --param \\\&quot;SUB_ACTIVITY_NAME={{ inputs.activity }}\\\&quot; --param \\\&quot;NODE_VERSION={{ inputs.node_version }}\\\&quot; --param \\\&quot;CIQ_FILE_LOCATION=$ORDER_DIR/\\\&quot; --param \\\&quot;ORDER_NO={{ render(vars.order_id) }}\\\&quot; --param \\\&quot;REQ_ID={{ render(vars.order_id) }}\\\&quot;\&quot;,\&quot;cp \\\&quot;$ORDER_DIR\\\&quot;/*.xlsx out/ 2&gt;/dev/null || true\&quot;]&quot;
+    },
+    {
+      &quot;id&quot;: &quot;register&quot;,
+      &quot;type&quot;: &quot;io.kestra.plugin.scripts.shell.Commands&quot;,
+      &quot;taskRunner&quot;: {
+        &quot;type&quot;: &quot;io.kestra.plugin.core.runner.Process&quot;
+      },
+      &quot;env&quot;: &quot;{\&quot;SHARED_DATA_DIR\&quot;:\&quot;{{ kv(&#x27;SHARED_DATA_DIR&#x27;) }}\&quot;,\&quot;STORE_JDBC_PASSWORD\&quot;:\&quot;{{ secret(&#x27;CR_DB_PASSWORD&#x27;) }}\&quot;}&quot;,
+      &quot;namespaceFiles&quot;: {
+        &quot;enabled&quot;: &quot;true&quot;,
+        &quot;include&quot;: &quot;[\&quot;bin/**\&quot;,\&quot;wrappers/**\&quot;,\&quot;lib/**\&quot;,\&quot;config/**\&quot;]&quot;,
+        &quot;namespaces&quot;: &quot;[\&quot;{{flow.namespace}}\&quot;]&quot;,
+        &quot;ifExists&quot;: &quot;OVERWRITE&quot;,
+        &quot;folderPerNamespace&quot;: &quot;false&quot;
+      },
+      &quot;commands&quot;: &quot;[\&quot;sh bin/store.sh set-stage --req-id \\\&quot;{{ render(vars.order_id) }}\\\&quot; --stage \\\&quot;{{ outputs.generate_template.vars.status == 0 ? &#x27;TEMPLATE&#x27; : &#x27;TEMPLATE_FAILED&#x27; }}\\\&quot; &gt; /dev/null\&quot;,\&quot;sh bin/store.sh registry --order \\\&quot;{{ render(vars.order_id) }}\\\&quot;\&quot;]&quot;
+    },
+    {
+      &quot;id&quot;: &quot;save_order&quot;,
+      &quot;type&quot;: &quot;io.kestra.plugin.core.kv.Set&quot;,
+      &quot;key&quot;: &quot;ORDER_{{ render(vars.order_id) }}&quot;,
+      &quot;value&quot;: &quot;{{ outputs.register.vars.order | toJson }}&quot;,
+      &quot;kvType&quot;: &quot;JSON&quot;
+    },
+    {
+      &quot;id&quot;: &quot;save_orders&quot;,
+      &quot;type&quot;: &quot;io.kestra.plugin.core.kv.Set&quot;,
+      &quot;key&quot;: &quot;ORDERS&quot;,
+      &quot;value&quot;: &quot;{{ outputs.register.vars.orders | toJson }}&quot;,
+      &quot;kvType&quot;: &quot;JSON&quot;
+    },
+    {
+      &quot;id&quot;: &quot;template_failed&quot;,
+      &quot;type&quot;: &quot;io.kestra.plugin.core.execution.Fail&quot;,
+      &quot;runIf&quot;: &quot;{{ outputs.generate_template.vars.status != 0 }}&quot;,
+      &quot;errorMessage&quot;: &quot;CIQ template generation failed: {{ outputs.generate_template.vars.message }}&quot;
+    }
+  ],
+  &quot;source&quot;: &quot;id: filecr_template\nnamespace: cr_auto\ndescription: New order with the blank CIQ template (FileCR component, action GENERATE_CR_CIQ_TEMPLATE). Written by build_cr_auto.py.\nlabels:\n  project: CR_AUTO\n  process: \&quot;true\&quot;\n  outline: \&quot;CIQ template (FileCR)\&quot;\ninputs:\n  - id: node_type\n    type: STRING\n    defaults: PGW_RDS\n  - id: activity\n    type: STRING\n    defaults: 1051_SUBSCRIBER_PROFILE_CONFIGURATION\n  - id: node_version\n    type: STRING\n    defaults: ALL\n  - id: order_no\n    type: STRING\n    required: false\n    validator: \&quot;^[1-9][0-9]*$\&quot;\nvariables:\n  order_id: \&quot;{{ outputs.allocate.vars.req_id ?? &#x27;&#x27; }}\&quot;\n  order_dir: \&quot;{{ kv(&#x27;SHARED_DATA_DIR&#x27;) }}/{{ outputs.allocate.vars.req_id ?? &#x27;&#x27; }}\&quot;\ntasks:\n  - id: allocate\n    type: io.kestra.plugin.scripts.shell.Commands\n    taskRunner:\n      type: io.kestra.plugin.core.runner.Process\n    namespaceFiles:\n      enabled: true\n      include: [bin/**, wrappers/**, lib/**, config/**]\n    env:\n      SHARED_DATA_DIR: \&quot;{{ kv(&#x27;SHARED_DATA_DIR&#x27;) }}\&quot;\n      STORE_JDBC_PASSWORD: \&quot;{{ secret(&#x27;CR_DB_PASSWORD&#x27;) }}\&quot;\n    commands:\n      - &gt;-\n        sh bin/store.sh new-request --kind ORDER --wanted \&quot;{{ inputs.order_no ?? &#x27;&#x27; }}\&quot;\n        --node-type \&quot;{{ inputs.node_type }}\&quot; --activity \&quot;{{ inputs.activity }}\&quot;\n        --node-version \&quot;{{ inputs.node_version }}\&quot; --execution \&quot;{{ execution.id }}\&quot;\n\n  - id: set_labels\n    type: io.kestra.plugin.core.execution.Labels\n    labels:\n      req_id: \&quot;{{ render(vars.order_id) }}\&quot;\n      order_id: \&quot;{{ render(vars.order_id) }}\&quot;\n\n  - id: generate_template\n    type: io.kestra.plugin.scripts.shell.Commands\n    description: The FileCR component (its latest published version) - GENERATE_CR_CIQ_TEMPLATE\n    taskRunner:\n      type: io.kestra.plugin.core.runner.Process\n    namespaceFiles:\n      enabled: true\n      include: [bin/**, wrappers/**, lib/**, config/**, \&quot;{{ kv(&#x27;COMPONENT_FILECR&#x27;) }}/**\&quot;]\n    outputFiles:\n      - out/**\n    env:\n      SHARED_DATA_DIR: \&quot;{{ kv(&#x27;SHARED_DATA_DIR&#x27;) }}\&quot;\n      STORE_JDBC_PASSWORD: \&quot;{{ secret(&#x27;CR_DB_PASSWORD&#x27;) }}\&quot;\n      ORDER_DIR: \&quot;{{ render(vars.order_dir) }}\&quot;\n      STORE_REQ_ID: \&quot;{{ render(vars.order_id) }}\&quot;\n      STORE_STEP: GENERATE_TEMPLATE\n      EXECUTION_ID: \&quot;{{ execution.id }}\&quot;\n    commands:\n      - &gt;-\n        sh bin/component.sh \&quot;{{ kv(&#x27;COMPONENT_FILECR&#x27;) }}\&quot; generate_template\n        --param REQ_TYPE=1\n        --param ACTION=GENERATE_CR_CIQ_TEMPLATE\n        --param \&quot;NODE_TYPE={{ inputs.node_type }}\&quot;\n        --param \&quot;ACTIVITY_NAME={{ inputs.activity }}\&quot;\n        --param \&quot;SUB_ACTIVITY_NAME={{ inputs.activity }}\&quot;\n        --param \&quot;NODE_VERSION={{ inputs.node_version }}\&quot;\n        --param \&quot;CIQ_FILE_LOCATION=$ORDER_DIR/\&quot;\n        --param \&quot;ORDER_NO={{ render(vars.order_id) }}\&quot;\n        --param \&quot;REQ_ID={{ render(vars.order_id) }}\&quot;\n      - cp \&quot;$ORDER_DIR\&quot;/*.xlsx out/ 2&gt;/dev/null || true\n\n  - id: register\n    type: io.kestra.plugin.scripts.shell.Commands\n    taskRunner:\n      type: io.kestra.plugin.core.runner.Process\n    namespaceFiles:\n      enabled: true\n      include: [bin/**, wrappers/**, lib/**, config/**]\n    env:\n      SHARED_DATA_DIR: \&quot;{{ kv(&#x27;SHARED_DATA_DIR&#x27;) }}\&quot;\n      STORE_JDBC_PASSWORD: \&quot;{{ secret(&#x27;CR_DB_PASSWORD&#x27;) }}\&quot;\n    commands:\n      - &gt;-\n        sh bin/store.sh set-stage --req-id \&quot;{{ render(vars.order_id) }}\&quot;\n        --stage \&quot;{{ outputs.generate_template.vars.status == 0 ? &#x27;TEMPLATE&#x27; : &#x27;TEMPLATE_FAILED&#x27; }}\&quot; &gt; /dev/null\n      - sh bin/store.sh registry --order \&quot;{{ render(vars.order_id) }}\&quot;\n\n  - id: save_order\n    type: io.kestra.plugin.core.kv.Set\n    key: \&quot;ORDER_{{ render(vars.order_id) }}\&quot;\n    kvType: JSON\n    value: \&quot;{{ outputs.register.vars.order | toJson }}\&quot;\n\n  - id: save_orders\n    type: io.kestra.plugin.core.kv.Set\n    key: ORDERS\n    kvType: JSON\n    value: \&quot;{{ outputs.register.vars.orders | toJson }}\&quot;\n\n  - id: template_failed\n    type: io.kestra.plugin.core.execution.Fail\n    runIf: \&quot;{{ outputs.generate_template.vars.status != 0 }}\&quot;\n    errorMessage: \&quot;CIQ template generation failed: {{ outputs.generate_template.vars.message }}\&quot;\n\nfinally:\n  - id: collect_logs\n    type: io.kestra.plugin.scripts.shell.Commands\n    runIf: \&quot;{{ render(vars.order_id) is not empty }}\&quot;\n    taskRunner:\n      type: io.kestra.plugin.core.runner.Process\n    outputFiles:\n      - logs/**\n    env:\n      ORDER_DIR: \&quot;{{ render(vars.order_dir) }}\&quot;\n    commands:\n      - mkdir -p logs &amp;&amp; cp \&quot;$ORDER_DIR\&quot;/logs/* logs/ 2&gt;/dev/null || true\n&quot;,
+  &quot;finally&quot;: [
+    {
+      &quot;id&quot;: &quot;collect_logs&quot;,
+      &quot;type&quot;: &quot;io.kestra.plugin.scripts.shell.Commands&quot;,
+      &quot;runIf&quot;: &quot;{{ render(vars.order_id) is not empty }}&quot;,
+      &quot;taskRunner&quot;: {
+        &quot;type&quot;: &quot;io.kestra.plugin.core.runner.Process&quot;
+      },
+      &quot;env&quot;: &quot;{\&quot;ORDER_DIR\&quot;:\&quot;{{ render(vars.order_dir) }}\&quot;}&quot;,
+      &quot;outputFiles&quot;: &quot;[\&quot;logs/**\&quot;]&quot;,
+      &quot;commands&quot;: &quot;[\&quot;mkdir -p logs &amp;&amp; cp \\\&quot;$ORDER_DIR\\\&quot;/logs/* logs/ 2&gt;/dev/null || true\&quot;]&quot;
+    }
+  ]
+}</pre></div></div></details><details class="hit"><summary>
+<span class="n">19</span><span class="t">16:30:31.831</span><span class="m m-POST">POST</span>
+<code class="u">/api/v1/main/flows</code><span class="s ok">200</span>
+<span class="d">38 ms · ↑ 4.3 KB · ↓ 9.0 KB</span>
+<span class="p">Create flow filecr_validation</span></summary>
+<div class="io"><div><h3>Request</h3><pre>POST /api/v1/main/flows HTTP/1.1
+Host: localhost:8080
+Accept: application/json
+Content-Type: application/x-yaml
+Authorization: Basic *** (masked)
+
+id: filecr_validation
+namespace: cr_auto
+description: Validates the filled CIQ of an order (FileCR component, action CR_CIQ_PROCESSOR). Written by build_cr_auto.py.
+labels:
+  project: CR_AUTO
+  process: &quot;true&quot;
+  outline: &quot;CIQ validation (FileCR)&quot;
+inputs:
+  - id: order_id
+    type: STRING
+  - id: ciq
+    type: FILE
+  - id: report_type
+    type: STRING
+    defaults: HTML
+variables:
+  order_id: &quot;{{ inputs.order_id }}&quot;
+  node_type: &quot;{{ kv(&#x27;ORDER_&#x27; ~ inputs.order_id).node_type }}&quot;
+  activity: &quot;{{ kv(&#x27;ORDER_&#x27; ~ inputs.order_id).activity }}&quot;
+  node_version: &quot;{{ kv(&#x27;ORDER_&#x27; ~ inputs.order_id).node_version }}&quot;
+  order_dir: &quot;{{ kv(&#x27;SHARED_DATA_DIR&#x27;) }}/{{ inputs.order_id }}&quot;
+  ciq_name: &quot;{{ kv(&#x27;ORDER_&#x27; ~ inputs.order_id).node_type }}_{{ kv(&#x27;ORDER_&#x27; ~ inputs.order_id).activity }}_CIQ.xlsx&quot;
+tasks:
+  - id: set_labels
+    type: io.kestra.plugin.core.execution.Labels
+    labels:
+      req_id: &quot;{{ inputs.order_id }}&quot;
+      order_id: &quot;{{ inputs.order_id }}&quot;
+
+  - id: ciq_validation
+    type: io.kestra.plugin.scripts.shell.Commands
+    description: The FileCR component (its latest published version) - CR_CIQ_PROCESSOR
+    taskRunner:
+      type: io.kestra.plugin.core.runner.Process
+    namespaceFiles:
+      enabled: true
+      include: [bin/**, wrappers/**, lib/**, config/**, &quot;{{ kv(&#x27;COMPONENT_FILECR&#x27;) }}/**&quot;]
+    inputFiles:
+      uploaded.xlsx: &quot;{{ inputs.ciq }}&quot;
+    outputFiles:
+      - out/**
+    env:
+      SHARED_DATA_DIR: &quot;{{ kv(&#x27;SHARED_DATA_DIR&#x27;) }}&quot;
+      STORE_JDBC_PASSWORD: &quot;{{ secret(&#x27;CR_DB_PASSWORD&#x27;) }}&quot;
+      ORDER_DIR: &quot;{{ render(vars.order_dir) }}&quot;
+      STORE_REQ_ID: &quot;{{ inputs.order_id }}&quot;
+      STORE_STEP: CIQ_VALIDATION
+      EXECUTION_ID: &quot;{{ execution.id }}&quot;
+    commands:
+      - mkdir -p &quot;$ORDER_DIR&quot; &amp;&amp; cp uploaded.xlsx &quot;$ORDER_DIR/{{ render(vars.ciq_name) }}&quot;
+      - &gt;-
+        sh bin/component.sh &quot;{{ kv(&#x27;COMPONENT_FILECR&#x27;) }}&quot; ciq_validation
+        --param REQ_TYPE=1
+        --param ACTION=CR_CIQ_PROCESSOR
+        --param &quot;CIQ_FILE_NAME=$ORDER_DIR/{{ render(vars.ciq_name) }}&quot;
+        --param &quot;NODE_TYPE={{ render(vars.node_type) }}&quot;
+        --param &quot;ACTIVITY_NAME={{ render(vars.activity) }}&quot;
+        --param &quot;SUB_ACTIVITY_NAME={{ render(vars.activity) }}&quot;
+        --param &quot;NODE_VERSION={{ render(vars.node_version) }}&quot;
+        --param &quot;OUTPUT_FILE_LOCATION=$ORDER_DIR/&quot;
+        --param &quot;REPORT_TYPE={{ inputs.report_type }}&quot;
+        --param HEADER_ROW_NO=1
+        --param &quot;ORDER_NO={{ inputs.order_id }}&quot;
+        --param &quot;REQ_ID={{ inputs.order_id }}&quot;
+      - cp &quot;$ORDER_DIR&quot;/*.html &quot;$ORDER_DIR&quot;/*.json out/ 2&gt;/dev/null || true
+
+  - id: register
+    type: io.kestra.plugin.scripts.shell.Commands
+    taskRunner:
+      type: io.kestra.plugin.core.runner.Process
+    namespaceFiles:
+      enabled: true
+      include: [bin/**, wrappers/**, lib/**, config/**]
+    env:
+      SHARED_DATA_DIR: &quot;{{ kv(&#x27;SHARED_DATA_DIR&#x27;) }}&quot;
+      STORE_JDBC_PASSWORD: &quot;{{ secret(&#x27;CR_DB_PASSWORD&#x27;) }}&quot;
+    commands:
+      - &gt;-
+        sh bin/store.sh set-stage --req-id &quot;{{ inputs.order_id }}&quot;
+        --stage &quot;{{ outputs.ciq_validation.vars.status == 0 ? &#x27;VALIDATED&#x27; : &#x27;INVALID&#x27; }}&quot;
+        --cr-list &quot;{{ outputs.ciq_validation.vars.results.CR_LIST ?? &#x27;&#x27; }}&quot;
+        --json-file &quot;{{ outputs.ciq_validation.vars.results.JSON_FILE_NAME is defined
+           ? render(vars.order_dir) ~ &#x27;/&#x27; ~ outputs.ciq_validation.vars.results.JSON_FILE_NAME : &#x27;&#x27; }}&quot; &gt; /dev/null
+      - sh bin/store.sh registry --order &quot;{{ inputs.order_id }}&quot;
+
+  - id: save_order
+    type: io.kestra.plugin.core.kv.Set
+    key: &quot;ORDER_{{ render(vars.order_id) }}&quot;
+    kvType: JSON
+    value: &quot;{{ outputs.register.vars.order | toJson }}&quot;
+
+  - id: save_orders
+    type: io.kestra.plugin.core.kv.Set
+    key: ORDERS
+    kvType: JSON
+    value: &quot;{{ outputs.register.vars.orders | toJson }}&quot;
+
+  - id: ciq_invalid
+    type: io.kestra.plugin.core.execution.Fail
+    runIf: &quot;{{ outputs.ciq_validation.vars.status != 0 }}&quot;
+    errorMessage: &quot;CIQ validation failed: {{ outputs.ciq_validation.vars.message }}&quot;
+
+finally:
+  - id: collect_logs
+    type: io.kestra.plugin.scripts.shell.Commands
+    runIf: &quot;{{ render(vars.order_id) is not empty }}&quot;
+    taskRunner:
+      type: io.kestra.plugin.core.runner.Process
+    outputFiles:
+      - logs/**
+    env:
+      ORDER_DIR: &quot;{{ render(vars.order_dir) }}&quot;
+    commands:
+      - mkdir -p logs &amp;&amp; cp &quot;$ORDER_DIR&quot;/logs/* logs/ 2&gt;/dev/null || true
+</pre></div><div><h3>Response</h3><pre>HTTP/1.1 200
+Content-Type: application/json
+Content-Length: 9200
+
+{
+  &quot;id&quot;: &quot;filecr_validation&quot;,
+  &quot;namespace&quot;: &quot;cr_auto&quot;,
+  &quot;revision&quot;: 7,
+  &quot;description&quot;: &quot;Validates the filled CIQ of an order (FileCR component, action CR_CIQ_PROCESSOR). Written by build_cr_auto.py.&quot;,
+  &quot;inputs&quot;: [
+    {
+      &quot;id&quot;: &quot;order_id&quot;,
+      &quot;type&quot;: &quot;STRING&quot;,
+      &quot;required&quot;: true
+    },
+    {
+      &quot;id&quot;: &quot;ciq&quot;,
+      &quot;type&quot;: &quot;FILE&quot;,
+      &quot;required&quot;: true
+    },
+    {
+      &quot;id&quot;: &quot;report_type&quot;,
+      &quot;type&quot;: &quot;STRING&quot;,
+      &quot;required&quot;: true,
+      &quot;defaults&quot;: &quot;HTML&quot;
+    }
+  ],
+  &quot;disabled&quot;: false,
+  &quot;deleted&quot;: false,
+  &quot;draft&quot;: false,
+  &quot;labels&quot;: [
+    {
+      &quot;key&quot;: &quot;project&quot;,
+      &quot;value&quot;: &quot;CR_AUTO&quot;
+    },
+    {
+      &quot;key&quot;: &quot;process&quot;,
+      &quot;value&quot;: &quot;true&quot;
+    },
+    {
+      &quot;key&quot;: &quot;outline&quot;,
+      &quot;value&quot;: &quot;CIQ validation (FileCR)&quot;
+    }
+  ],
+  &quot;variables&quot;: {
+    &quot;order_id&quot;: &quot;{{ inputs.order_id }}&quot;,
+    &quot;node_type&quot;: &quot;{{ kv(&#x27;ORDER_&#x27; ~ inputs.order_id).node_type }}&quot;,
+    &quot;activity&quot;: &quot;{{ kv(&#x27;ORDER_&#x27; ~ inputs.order_id).activity }}&quot;,
+    &quot;node_version&quot;: &quot;{{ kv(&#x27;ORDER_&#x27; ~ inputs.order_id).node_version }}&quot;,
+    &quot;order_dir&quot;: &quot;{{ kv(&#x27;SHARED_DATA_DIR&#x27;) }}/{{ inputs.order_id }}&quot;,
+    &quot;ciq_name&quot;: &quot;{{ kv(&#x27;ORDER_&#x27; ~ inputs.order_id).node_type }}_{{ kv(&#x27;ORDER_&#x27; ~ inputs.order_id).activity }}_CIQ.xlsx&quot;
+  },
+  &quot;tasks&quot;: [
+    {
+      &quot;id&quot;: &quot;set_labels&quot;,
+      &quot;type&quot;: &quot;io.kestra.plugin.core.execution.Labels&quot;,
+      &quot;labels&quot;: {
+        &quot;req_id&quot;: &quot;{{ inputs.order_id }}&quot;,
+        &quot;order_id&quot;: &quot;{{ inputs.order_id }}&quot;
+      }
+    },
+    {
+      &quot;id&quot;: &quot;ciq_validation&quot;,
+      &quot;type&quot;: &quot;io.kestra.plugin.scripts.shell.Commands&quot;,
+      &quot;description&quot;: &quot;The FileCR component (its latest published version) - CR_CIQ_PROCESSOR&quot;,
+      &quot;taskRunner&quot;: {
+        &quot;type&quot;: &quot;io.kestra.plugin.core.runner.Process&quot;
+      },
+      &quot;env&quot;: &quot;{\&quot;SHARED_DATA_DIR\&quot;:\&quot;{{ kv(&#x27;SHARED_DATA_DIR&#x27;) }}\&quot;,\&quot;STORE_JDBC_PASSWORD\&quot;:\&quot;{{ secret(&#x27;CR_DB_PASSWORD&#x27;) }}\&quot;,\&quot;ORDER_DIR\&quot;:\&quot;{{ render(vars.order_dir) }}\&quot;,\&quot;STORE_REQ_ID\&quot;:\&quot;{{ inputs.order_id }}\&quot;,\&quot;STORE_STEP\&quot;:\&quot;CIQ_VALIDATION\&quot;,\&quot;EXECUTION_ID\&quot;:\&quot;{{ execution.id }}\&quot;}&quot;,
+      &quot;namespaceFiles&quot;: {
+        &quot;enabled&quot;: &quot;true&quot;,
+        &quot;include&quot;: &quot;[\&quot;bin/**\&quot;,\&quot;wrappers/**\&quot;,\&quot;lib/**\&quot;,\&quot;config/**\&quot;,\&quot;{{ kv(&#x27;COMPONENT_FILECR&#x27;) }}/**\&quot;]&quot;,
+        &quot;namespaces&quot;: &quot;[\&quot;{{flow.namespace}}\&quot;]&quot;,
+        &quot;ifExists&quot;: &quot;OVERWRITE&quot;,
+        &quot;folderPerNamespace&quot;: &quot;false&quot;
+      },
+      &quot;inputFiles&quot;: {
+        &quot;uploaded.xlsx&quot;: &quot;{{ inputs.ciq }}&quot;
+      },
+      &quot;outputFiles&quot;: &quot;[\&quot;out/**\&quot;]&quot;,
+      &quot;commands&quot;: &quot;[\&quot;mkdir -p \\\&quot;$ORDER_DIR\\\&quot; &amp;&amp; cp uploaded.xlsx \\\&quot;$ORDER_DIR/{{ render(vars.ciq_name) }}\\\&quot;\&quot;,\&quot;sh bin/component.sh \\\&quot;{{ kv(&#x27;COMPONENT_FILECR&#x27;) }}\\\&quot; ciq_validation --param REQ_TYPE=1 --param ACTION=CR_CIQ_PROCESSOR --param \\\&quot;CIQ_FILE_NAME=$ORDER_DIR/{{ render(vars.ciq_name) }}\\\&quot; --param \\\&quot;NODE_TYPE={{ render(vars.node_type) }}\\\&quot; --param \\\&quot;ACTIVITY_NAME={{ render(vars.activity) }}\\\&quot; --param \\\&quot;SUB_ACTIVITY_NAME={{ render(vars.activity) }}\\\&quot; --param \\\&quot;NODE_VERSION={{ render(vars.node_version) }}\\\&quot; --param \\\&quot;OUTPUT_FILE_LOCATION=$ORDER_DIR/\\\&quot; --param \\\&quot;REPORT_TYPE={{ inputs.report_type }}\\\&quot; --param HEADER_ROW_NO=1 --param \\\&quot;ORDER_NO={{ inputs.order_id }}\\\&quot; --param \\\&quot;REQ_ID={{ inputs.order_id }}\\\&quot;\&quot;,\&quot;cp \\\&quot;$ORDER_DIR\\\&quot;/*.html \\\&quot;$ORDER_DIR\\\&quot;/*.json out/ 2&gt;/dev/null || true\&quot;]&quot;
+    },
+    {
+      &quot;id&quot;: &quot;register&quot;,
+      &quot;type&quot;: &quot;io.kestra.plugin.scripts.shell.Commands&quot;,
+      &quot;taskRunner&quot;: {
+        &quot;type&quot;: &quot;io.kestra.plugin.core.runner.Process&quot;
+      },
+      &quot;env&quot;: &quot;{\&quot;SHARED_DATA_DIR\&quot;:\&quot;{{ kv(&#x27;SHARED_DATA_DIR&#x27;) }}\&quot;,\&quot;STORE_JDBC_PASSWORD\&quot;:\&quot;{{ secret(&#x27;CR_DB_PASSWORD&#x27;) }}\&quot;}&quot;,
+      &quot;namespaceFiles&quot;: {
+        &quot;enabled&quot;: &quot;true&quot;,
+        &quot;include&quot;: &quot;[\&quot;bin/**\&quot;,\&quot;wrappers/**\&quot;,\&quot;lib/**\&quot;,\&quot;config/**\&quot;]&quot;,
+        &quot;namespaces&quot;: &quot;[\&quot;{{flow.namespace}}\&quot;]&quot;,
+        &quot;ifExists&quot;: &quot;OVERWRITE&quot;,
+        &quot;folderPerNamespace&quot;: &quot;false&quot;
+      },
+      &quot;commands&quot;: &quot;[\&quot;sh bin/store.sh set-stage --req-id \\\&quot;{{ inputs.order_id }}\\\&quot; --stage \\\&quot;{{ outputs.ciq_validation.vars.status == 0 ? &#x27;VALIDATED&#x27; : &#x27;INVALID&#x27; }}\\\&quot; --cr-list \\\&quot;{{ outputs.ciq_validation.vars.results.CR_LIST ?? &#x27;&#x27; }}\\\&quot; --json-file \\\&quot;{{ outputs.ciq_validation.vars.results.JSON_FILE_NAME is defined\\n   ? render(vars.order_dir) ~ &#x27;/&#x27; ~ outputs.ciq_validation.vars.results.JSON_FILE_NAME : &#x27;&#x27; }}\\\&quot; &gt; /dev/null\&quot;,\&quot;sh bin/store.sh registry --order \\\&quot;{{ inputs.order_id }}\\\&quot;\&quot;]&quot;
+    },
+    {
+      &quot;id&quot;: &quot;save_order&quot;,
+      &quot;type&quot;: &quot;io.kestra.plugin.core.kv.Set&quot;,
+      &quot;key&quot;: &quot;ORDER_{{ render(vars.order_id) }}&quot;,
+      &quot;value&quot;: &quot;{{ outputs.register.vars.order | toJson }}&quot;,
+      &quot;kvType&quot;: &quot;JSON&quot;
+    },
+    {
+      &quot;id&quot;: &quot;save_orders&quot;,
+      &quot;type&quot;: &quot;io.kestra.plugin.core.kv.Set&quot;,
+      &quot;key&quot;: &quot;ORDERS&quot;,
+      &quot;value&quot;: &quot;{{ outputs.register.vars.orders | toJson }}&quot;,
+      &quot;kvType&quot;: &quot;JSON&quot;
+    },
+    {
+      &quot;id&quot;: &quot;ciq_invalid&quot;,
+      &quot;type&quot;: &quot;io.kestra.plugin.core.execution.Fail&quot;,
+      &quot;runIf&quot;: &quot;{{ outputs.ciq_validation.vars.status != 0 }}&quot;,
+      &quot;errorMessage&quot;: &quot;CIQ validation failed: {{ outputs.ciq_validation.vars.message }}&quot;
+    }
+  ],
+  &quot;source&quot;: &quot;id: filecr_validation\nnamespace: cr_auto\ndescription: Validates the filled CIQ of an order (FileCR component, action CR_CIQ_PROCESSOR). Written by build_cr_auto.py.\nlabels:\n  project: CR_AUTO\n  process: \&quot;true\&quot;\n  outline: \&quot;CIQ validation (FileCR)\&quot;\ninputs:\n  - id: order_id\n    type: STRING\n  - id: ciq\n    type: FILE\n  - id: report_type\n    type: STRING\n    defaults: HTML\nvariables:\n  order_id: \&quot;{{ inputs.order_id }}\&quot;\n  node_type: \&quot;{{ kv(&#x27;ORDER_&#x27; ~ inputs.order_id).node_type }}\&quot;\n  activity: \&quot;{{ kv(&#x27;ORDER_&#x27; ~ inputs.order_id).activity }}\&quot;\n  node_version: \&quot;{{ kv(&#x27;ORDER_&#x27; ~ inputs.order_id).node_version }}\&quot;\n  order_dir: \&quot;{{ kv(&#x27;SHARED_DATA_DIR&#x27;) }}/{{ inputs.order_id }}\&quot;\n  ciq_name: \&quot;{{ kv(&#x27;ORDER_&#x27; ~ inputs.order_id).node_type }}_{{ kv(&#x27;ORDER_&#x27; ~ inputs.order_id).activity }}_CIQ.xlsx\&quot;\ntasks:\n  - id: set_labels\n    type: io.kestra.plugin.core.execution.Labels\n    labels:\n      req_id: \&quot;{{ inputs.order_id }}\&quot;\n      order_id: \&quot;{{ inputs.order_id }}\&quot;\n\n  - id: ciq_validation\n    type: io.kestra.plugin.scripts.shell.Commands\n    description: The FileCR component (its latest published version) - CR_CIQ_PROCESSOR\n    taskRunner:\n      type: io.kestra.plugin.core.runner.Process\n    namespaceFiles:\n      enabled: true\n      include: [bin/**, wrappers/**, lib/**, config/**, \&quot;{{ kv(&#x27;COMPONENT_FILECR&#x27;) }}/**\&quot;]\n    inputFiles:\n      uploaded.xlsx: \&quot;{{ inputs.ciq }}\&quot;\n    outputFiles:\n      - out/**\n    env:\n      SHARED_DATA_DIR: \&quot;{{ kv(&#x27;SHARED_DATA_DIR&#x27;) }}\&quot;\n      STORE_JDBC_PASSWORD: \&quot;{{ secret(&#x27;CR_DB_PASSWORD&#x27;) }}\&quot;\n      ORDER_DIR: \&quot;{{ render(vars.order_dir) }}\&quot;\n      STORE_REQ_ID: \&quot;{{ inputs.order_id }}\&quot;\n      STORE_STEP: CIQ_VALIDATION\n      EXECUTION_ID: \&quot;{{ execution.id }}\&quot;\n    commands:\n      - mkdir -p \&quot;$ORDER_DIR\&quot; &amp;&amp; cp uploaded.xlsx \&quot;$ORDER_DIR/{{ render(vars.ciq_name) }}\&quot;\n      - &gt;-\n        sh bin/component.sh \&quot;{{ kv(&#x27;COMPONENT_FILECR&#x27;) }}\&quot; ciq_validation\n        --param REQ_TYPE=1\n        --param ACTION=CR_CIQ_PROCESSOR\n        --param \&quot;CIQ_FILE_NAME=$ORDER_DIR/{{ render(vars.ciq_name) }}\&quot;\n        --param \&quot;NODE_TYPE={{ render(vars.node_type) }}\&quot;\n        --param \&quot;ACTIVITY_NAME={{ render(vars.activity) }}\&quot;\n        --param \&quot;SUB_ACTIVITY_NAME={{ render(vars.activity) }}\&quot;\n        --param \&quot;NODE_VERSION={{ render(vars.node_version) }}\&quot;\n        --param \&quot;OUTPUT_FILE_LOCATION=$ORDER_DIR/\&quot;\n        --param \&quot;REPORT_TYPE={{ inputs.report_type }}\&quot;\n        --param HEADER_ROW_NO=1\n        --param \&quot;ORDER_NO={{ inputs.order_id }}\&quot;\n        --param \&quot;REQ_ID={{ inputs.order_id }}\&quot;\n      - cp \&quot;$ORDER_DIR\&quot;/*.html \&quot;$ORDER_DIR\&quot;/*.json out/ 2&gt;/dev/null || true\n\n  - id: register\n    type: io.kestra.plugin.scripts.shell.Commands\n    taskRunner:\n      type: io.kestra.plugin.core.runner.Process\n    namespaceFiles:\n      enabled: true\n      include: [bin/**, wrappers/**, lib/**, config/**]\n    env:\n      SHARED_DATA_DIR: \&quot;{{ kv(&#x27;SHARED_DATA_DIR&#x27;) }}\&quot;\n      STORE_JDBC_PASSWORD: \&quot;{{ secret(&#x27;CR_DB_PASSWORD&#x27;) }}\&quot;\n    commands:\n      - &gt;-\n        sh bin/store.sh set-stage --req-id \&quot;{{ inputs.order_id }}\&quot;\n        --stage \&quot;{{ outputs.ciq_validation.vars.status == 0 ? &#x27;VALIDATED&#x27; : &#x27;INVALID&#x27; }}\&quot;\n        --cr-list \&quot;{{ outputs.ciq_validation.vars.results.CR_LIST ?? &#x27;&#x27; }}\&quot;\n        --json-file \&quot;{{ outputs.ciq_validation.vars.results.JSON_FILE_NAME is defined\n           ? render(vars.order_dir) ~ &#x27;/&#x27; ~ outputs.ciq_validation.vars.results.JSON_FILE_NAME : &#x27;&#x27; }}\&quot; &gt; /dev/null\n      - sh bin/store.sh registry --order \&quot;{{ inputs.order_id }}\&quot;\n\n  - id: save_order\n    type: io.kestra.plugin.core.kv.Set\n    key: \&quot;ORDER_{{ render(vars.order_id) }}\&quot;\n    kvType: JSON\n    value: \&quot;{{ outputs.register.vars.order | toJson }}\&quot;\n\n  - id: save_orders\n    type: io.kestra.plugin.core.kv.Set\n    key: ORDERS\n    kvType: JSON\n    value: \&quot;{{ outputs.register.vars.orders | toJson }}\&quot;\n\n  - id: ciq_invalid\n    type: io.kestra.plugin.core.execution.Fail\n    runIf: \&quot;{{ outputs.ciq_validation.vars.status != 0 }}\&quot;\n    errorMessage: \&quot;CIQ validation failed: {{ outputs.ciq_validation.vars.message }}\&quot;\n\nfinally:\n  - id: collect_logs\n    type: io.kestra.plugin.scripts.shell.Commands\n    runIf: \&quot;{{ render(vars.order_id) is not empty }}\&quot;\n    taskRunner:\n      type: io.kestra.plugin.core.runner.Process\n    outputFiles:\n      - logs/**\n    env:\n      ORDER_DIR: \&quot;{{ render(vars.order_dir) }}\&quot;\n    commands:\n      - mkdir -p logs &amp;&amp; cp \&quot;$ORDER_DIR\&quot;/logs/* logs/ 2&gt;/dev/null || true\n&quot;,
+  &quot;finally&quot;: [
+    {
+      &quot;id&quot;: &quot;collect_logs&quot;,
+      &quot;type&quot;: &quot;io.kestra.plugin.scripts.shell.Commands&quot;,
+      &quot;runIf&quot;: &quot;{{ render(vars.order_id) is not empty }}&quot;,
+      &quot;taskRunner&quot;: {
+        &quot;type&quot;: &quot;io.kestra.plugin.core.runner.Process&quot;
+      },
+      &quot;env&quot;: &quot;{\&quot;ORDER_DIR\&quot;:\&quot;{{ render(vars.order_dir) }}\&quot;}&quot;,
+      &quot;outputFiles&quot;: &quot;[\&quot;logs/**\&quot;]&quot;,
+      &quot;commands&quot;: &quot;[\&quot;mkdir -p logs &amp;&amp; cp \\\&quot;$ORDER_DIR\\\&quot;/logs/* logs/ 2&gt;/dev/null || true\&quot;]&quot;
+    }
+  ]
+}</pre></div></div></details><details class="hit"><summary>
+<span class="n">20</span><span class="t">16:30:31.870</span><span class="m m-GET">GET</span>
+<code class="u">/cr/api/processes/CR_AUTO/versions/1</code><span class="s ok">200</span>
+<span class="d">23 ms · ↑ 0 B · ↓ 182 B</span>
+<span class="p">The draft v1 (its revision)</span></summary>
+<div class="io"><div><h3>Request</h3><pre>GET /cr/api/processes/CR_AUTO/versions/1 HTTP/1.1
+Host: localhost:8080
+Accept: application/json
+Authorization: Basic *** (masked)
+</pre></div><div><h3>Response</h3><pre>HTTP/1.1 200
+Content-Type: application/json; charset=utf-8
+Content-Length: 182
+
+{
+  &quot;project&quot;: &quot;CR_AUTO&quot;,
+  &quot;version&quot;: 1,
+  &quot;state&quot;: &quot;DRAFT&quot;,
+  &quot;revision&quot;: 1,
+  &quot;definition&quot;: {
+    &quot;steps&quot;: [],
+    &quot;namespace&quot;: &quot;cr_auto&quot;
+  },
+  &quot;problems&quot;: [
+    &quot;&#x27;steps&#x27; must be a non-empty list.&quot;
+  ],
+  &quot;compiled&quot;: {}
+}</pre></div></div></details><details class="hit"><summary>
+<span class="n">21</span><span class="t">16:30:31.893</span><span class="m m-PUT">PUT</span>
+<code class="u">/cr/api/processes/CR_AUTO/versions/1</code><span class="s ok">200</span>
+<span class="d">28 ms · ↑ 1.1 KB · ↓ 30 B</span>
+<span class="p">Save the definition: two steps running the two flows</span></summary>
+<div class="io"><div><h3>Request</h3><pre>PUT /cr/api/processes/CR_AUTO/versions/1 HTTP/1.1
+Host: localhost:8080
+Accept: application/json
+Content-Type: application/json
+Authorization: Basic *** (masked)
+
+{
+  &quot;definition&quot;: {
+    &quot;namespace&quot;: &quot;cr_auto&quot;,
+    &quot;steps&quot;: [
+      {
+        &quot;id&quot;: &quot;new_order&quot;,
+        &quot;label&quot;: &quot;New order: the blank CIQ template (FileCR)&quot;,
+        &quot;scope&quot;: &quot;ORDER&quot;,
+        &quot;starts_order&quot;: true,
+        &quot;runs&quot;: {
+          &quot;flow&quot;: &quot;filecr_template&quot;
+        },
+        &quot;inputs&quot;: {
+          &quot;node_type&quot;: {
+            &quot;from&quot;: &quot;user&quot;,
+            &quot;type&quot;: &quot;STRING&quot;,
+            &quot;label&quot;: &quot;Node type&quot;,
+            &quot;required&quot;: true,
+            &quot;default&quot;: &quot;PGW_RDS&quot;
+          },
+          &quot;activity&quot;: {
+            &quot;from&quot;: &quot;user&quot;,
+            &quot;type&quot;: &quot;STRING&quot;,
+            &quot;label&quot;: &quot;Sub-activity&quot;,
+            &quot;required&quot;: true,
+            &quot;default&quot;: &quot;1051_SUBSCRIBER_PROFILE_CONFIGURATION&quot;
+          },
+          &quot;node_version&quot;: {
+            &quot;from&quot;: &quot;user&quot;,
+            &quot;type&quot;: &quot;STRING&quot;,
+            &quot;label&quot;: &quot;Node version&quot;,
+            &quot;required&quot;: true,
+            &quot;default&quot;: &quot;ALL&quot;
+          },
+          &quot;order_no&quot;: {
+            &quot;from&quot;: &quot;user&quot;,
+            &quot;type&quot;: &quot;STRING&quot;,
+            &quot;label&quot;: &quot;Order number (empty: the next free number)&quot;
+          }
+        }
+      },
+      {
+        &quot;id&quot;: &quot;validate&quot;,
+        &quot;follows&quot;: [
+          &quot;new_order&quot;
+        ],
+        &quot;label&quot;: &quot;Validate the filled CIQ (FileCR)&quot;,
+        &quot;scope&quot;: &quot;ORDER&quot;,
+        &quot;available_when&quot;: {
+          &quot;order.stage&quot;: {
+            &quot;in&quot;: [
+              &quot;TEMPLATE&quot;,
+              &quot;INVALID&quot;,
+              &quot;VALIDATED&quot;
+            ]
+          }
+        },
+        &quot;runs&quot;: {
+          &quot;flow&quot;: &quot;filecr_validation&quot;
+        },
+        &quot;inputs&quot;: {
+          &quot;order_id&quot;: {
+            &quot;from&quot;: &quot;order.value&quot;
+          },
+          &quot;ciq&quot;: {
+            &quot;from&quot;: &quot;user&quot;,
+            &quot;type&quot;: &quot;FILE&quot;,
+            &quot;label&quot;: &quot;Filled CIQ (.xlsx)&quot;,
+            &quot;required&quot;: true
+          },
+          &quot;report_type&quot;: {
+            &quot;value&quot;: &quot;HTML&quot;
+          }
+        }
+      }
+    ]
+  },
+  &quot;revision&quot;: 1
+}</pre></div><div><h3>Response</h3><pre>HTTP/1.1 200
+Content-Type: application/json; charset=utf-8
+Content-Length: 30
+
+{
+  &quot;problems&quot;: [],
+  &quot;saved&quot;: true
+}</pre></div></div></details><details class="hit"><summary>
+<span class="n">22</span><span class="t">16:30:31.922</span><span class="m m-POST">POST</span>
+<code class="u">/cr/api/processes/CR_AUTO/versions/1/publish</code><span class="s ok">200</span>
+<span class="d">99 ms · ↑ 0 B · ↓ 68 B</span>
+<span class="p">Publish v1</span></summary>
+<div class="io"><div><h3>Request</h3><pre>POST /cr/api/processes/CR_AUTO/versions/1/publish HTTP/1.1
+Host: localhost:8080
+Accept: application/json
+Authorization: Basic *** (masked)
+</pre></div><div><h3>Response</h3><pre>HTTP/1.1 200
+Content-Type: application/json; charset=utf-8
+Content-Length: 68
+
+{
+  &quot;message&quot;: &quot;Version 1 of CR_AUTO is published; new orders use it.&quot;
+}</pre></div></div></details><details class="hit"><summary>
+<span class="n">23</span><span class="t">16:30:32.022</span><span class="m m-GET">GET</span>
+<code class="u">/cr/api/processes/CR_AUTO/start</code><span class="s ok">200</span>
+<span class="d">8 ms · ↑ 0 B · ↓ 639 B</span>
+<span class="p">What a new order can start with</span></summary>
+<div class="io"><div><h3>Request</h3><pre>GET /cr/api/processes/CR_AUTO/start HTTP/1.1
+Host: localhost:8080
+Accept: application/json
+Authorization: Basic *** (masked)
+</pre></div><div><h3>Response</h3><pre>HTTP/1.1 200
+Content-Type: application/json; charset=utf-8
+Content-Length: 639
+
+{
+  &quot;steps&quot;: [
+    {
+      &quot;id&quot;: &quot;new_order&quot;,
+      &quot;label&quot;: &quot;New order: the blank CIQ template (FileCR)&quot;,
+      &quot;description&quot;: null,
+      &quot;inputs&quot;: [
+        {
+          &quot;name&quot;: &quot;activity&quot;,
+          &quot;type&quot;: &quot;STRING&quot;,
+          &quot;label&quot;: &quot;Sub-activity&quot;,
+          &quot;required&quot;: true,
+          &quot;default&quot;: &quot;1051_SUBSCRIBER_PROFILE_CONFIGURATION&quot;
+        },
+        {
+          &quot;name&quot;: &quot;order_no&quot;,
+          &quot;type&quot;: &quot;STRING&quot;,
+          &quot;label&quot;: &quot;Order number (empty: the next free number)&quot;,
+          &quot;required&quot;: false,
+          &quot;default&quot;: null
+        },
+        {
+          &quot;name&quot;: &quot;node_type&quot;,
+          &quot;type&quot;: &quot;STRING&quot;,
+          &quot;label&quot;: &quot;Node type&quot;,
+          &quot;required&quot;: true,
+          &quot;default&quot;: &quot;PGW_RDS&quot;
+        },
+        {
+          &quot;name&quot;: &quot;node_version&quot;,
+          &quot;type&quot;: &quot;STRING&quot;,
+          &quot;label&quot;: &quot;Node version&quot;,
+          &quot;required&quot;: true,
+          &quot;default&quot;: &quot;ALL&quot;
+        }
+      ]
+    }
+  ],
+  &quot;process&quot;: {
+    &quot;project&quot;: &quot;CR_AUTO&quot;,
+    &quot;version&quot;: 1
+  },
+  &quot;can_execute&quot;: true
+}</pre></div></div></details><h2>Test run</h2><p class='lead'>The hits that ran one order through the configured process, to prove it works.</p><details class="hit"><summary>
+<span class="n">24</span><span class="t">16:30:32.030</span><span class="m m-POST">POST</span>
+<code class="u">/cr/api/processes/CR_AUTO/start/new_order</code><span class="s ok">201</span>
+<span class="d">184 ms · ↑ 112 B · ↓ 114 B</span>
+<span class="p">Start a new order: the blank CIQ template</span></summary>
+<div class="io"><div><h3>Request</h3><pre>POST /cr/api/processes/CR_AUTO/start/new_order HTTP/1.1
+Host: localhost:8080
+Accept: application/json
+Content-Type: application/json
+Authorization: Basic *** (masked)
+
+{
+  &quot;inputs&quot;: {
+    &quot;node_type&quot;: &quot;PGW_RDS&quot;,
+    &quot;activity&quot;: &quot;1051_SUBSCRIBER_PROFILE_CONFIGURATION&quot;,
+    &quot;node_version&quot;: &quot;ALL&quot;
+  }
+}</pre></div><div><h3>Response</h3><pre>HTTP/1.1 201
+Content-Type: application/json; charset=utf-8
+Content-Length: 114
+
+{
+  &quot;execution_id&quot;: &quot;7RMQmBt6LmcexcaEHY31LG&quot;,
+  &quot;namespace&quot;: &quot;cr_auto&quot;,
+  &quot;flow_id&quot;: &quot;filecr_template&quot;,
+  &quot;step&quot;: &quot;new_order&quot;
+}</pre></div></div></details><details class="hit"><summary>
+<span class="n">25</span><span class="t">16:30:32.215</span><span class="m m-GET">GET</span>
+<code class="u">/api/v1/main/executions/7RMQmBt6LmcexcaEHY31LG</code><span class="s ok">200</span>
+<span class="d">37 ms · ↑ 0 B · ↓ 7.3 KB ×3 (until 16:30:38.285, last answer shown)</span>
+<span class="p">The template execution</span></summary>
+<div class="io"><div><h3>Request</h3><pre>GET /api/v1/main/executions/7RMQmBt6LmcexcaEHY31LG HTTP/1.1
+Host: localhost:8080
+Accept: application/json
+Authorization: Basic *** (masked)
+</pre></div><div><h3>Response</h3><pre>HTTP/1.1 200
+Content-Type: application/json
+Content-Length: 7430
+
+{
+  &quot;id&quot;: &quot;7RMQmBt6LmcexcaEHY31LG&quot;,
+  &quot;namespace&quot;: &quot;cr_auto&quot;,
+  &quot;flowId&quot;: &quot;filecr_template&quot;,
+  &quot;state&quot;: &quot;SUCCESS&quot;,
+  &quot;labels&quot;: [
+    {
+      &quot;key&quot;: &quot;req_id&quot;,
+      &quot;value&quot;: &quot;120&quot;
+    },
+    {
+      &quot;key&quot;: &quot;process&quot;,
+      &quot;value&quot;: &quot;true&quot;
+    },
+    {
+      &quot;key&quot;: &quot;outline&quot;,
+      &quot;value&quot;: &quot;CIQ template (FileCR)&quot;
+    },
+    {
+      &quot;key&quot;: &quot;process_version&quot;,
+      &quot;value&quot;: &quot;CR_AUTO.1&quot;
+    },
+    {
+      &quot;key&quot;: &quot;system.correlationId&quot;,
+      &quot;value&quot;: &quot;7RMQmBt6LmcexcaEHY31LG&quot;
+    },
+    {
+      &quot;key&quot;: &quot;project&quot;,
+      &quot;value&quot;: &quot;CR_AUTO&quot;
+    },
+    {
+      &quot;key&quot;: &quot;process_step&quot;,
+      &quot;value&quot;: &quot;new_order&quot;
+    },
+    {
+      &quot;key&quot;: &quot;started_by&quot;,
+      &quot;value&quot;: &quot;paras.mahajan@azalio.io&quot;
+    },
+    {
+      &quot;key&quot;: &quot;order_id&quot;,
+      &quot;value&quot;: &quot;120&quot;
+    },
+    {
+      &quot;key&quot;: &quot;system.from&quot;,
+      &quot;value&quot;: &quot;api&quot;
+    }
+  ],
+  &quot;taskRunList&quot;: [
+    {
+      &quot;taskId&quot;: &quot;allocate&quot;,
+      &quot;state&quot;: &quot;SUCCESS&quot;
+    },
+    {
+      &quot;taskId&quot;: &quot;set_labels&quot;,
+      &quot;state&quot;: &quot;SUCCESS&quot;
+    },
+    {
+      &quot;taskId&quot;: &quot;generate_template&quot;,
+      &quot;state&quot;: &quot;SUCCESS&quot;
+    },
+    {
+      &quot;taskId&quot;: &quot;register&quot;,
+      &quot;state&quot;: &quot;SUCCESS&quot;
+    },
+    {
+      &quot;taskId&quot;: &quot;save_order&quot;,
+      &quot;state&quot;: &quot;SUCCESS&quot;
+    },
+    {
+      &quot;taskId&quot;: &quot;save_orders&quot;,
+      &quot;state&quot;: &quot;SUCCESS&quot;
+    },
+    {
+      &quot;taskId&quot;: &quot;template_failed&quot;,
+      &quot;state&quot;: &quot;SKIPPED&quot;
+    },
+    {
+      &quot;taskId&quot;: &quot;collect_logs&quot;,
+      &quot;state&quot;: &quot;SUCCESS&quot;
+    }
+  ],
+  &quot;…&quot;: &quot;(the rest of the execution - inputs, outputs, task logs - left out of this log)&quot;
+}</pre></div></div></details><details class="hit"><summary>
+<span class="n">26</span><span class="t">16:30:38.309</span><span class="m m-GET">GET</span>
+<code class="u">/cr/api/orders/120/next</code><span class="s ok">200</span>
+<span class="d">47 ms · ↑ 0 B · ↓ 410 B</span>
+<span class="p">What the order offers next</span></summary>
+<div class="io"><div><h3>Request</h3><pre>GET /cr/api/orders/120/next HTTP/1.1
+Host: localhost:8080
+Accept: application/json
+Authorization: Basic *** (masked)
+</pre></div><div><h3>Response</h3><pre>HTTP/1.1 200
+Content-Type: application/json; charset=utf-8
+Content-Length: 410
+
+{
+  &quot;order_id&quot;: &quot;120&quot;,
+  &quot;child_id&quot;: null,
+  &quot;continuable&quot;: true,
+  &quot;reason&quot;: null,
+  &quot;can_execute&quot;: true,
+  &quot;process&quot;: {
+    &quot;version&quot;: 1,
+    &quot;state&quot;: &quot;PUBLISHED&quot;,
+    &quot;project&quot;: &quot;CR_AUTO&quot;
+  },
+  &quot;activity&quot;: null,
+  &quot;auto_starts&quot;: [],
+  &quot;steps&quot;: [
+    {
+      &quot;id&quot;: &quot;validate&quot;,
+      &quot;label&quot;: &quot;Validate the filled CIQ (FileCR)&quot;,
+      &quot;description&quot;: null,
+      &quot;inputs&quot;: [
+        {
+          &quot;name&quot;: &quot;ciq&quot;,
+          &quot;type&quot;: &quot;FILE&quot;,
+          &quot;label&quot;: &quot;Filled CIQ (.xlsx)&quot;,
+          &quot;required&quot;: true,
+          &quot;default&quot;: null
+        }
+      ]
+    }
+  ],
+  &quot;decisions&quot;: []
+}</pre></div></div></details><details class="hit"><summary>
+<span class="n">27</span><span class="t">16:30:38.359</span><span class="m m-POST">POST</span>
+<code class="u">/cr/api/orders/120/steps/validate</code><span class="s ok">201</span>
+<span class="d">196 ms · ↑ 11.3 KB · ↓ 114 B</span>
+<span class="p">Validate a filled CIQ for the order</span></summary>
+<div class="io"><div><h3>Request</h3><pre>POST /cr/api/orders/120/steps/validate HTTP/1.1
+Host: localhost:8080
+Accept: application/json
+Content-Type: application/json
+Authorization: Basic *** (masked)
+
+{
+  &quot;inputs&quot;: {},
+  &quot;files&quot;: {
+    &quot;ciq&quot;: {
+      &quot;filename&quot;: &quot;PGW_RDS_1051_CIQ_two_crs_pass.xlsx&quot;,
+      &quot;base64&quot;: &quot;&lt;8598 bytes of PGW_RDS_1051_CIQ_two_crs_pass.xlsx, base64&gt;&quot;
+    }
+  }
+}</pre></div><div><h3>Response</h3><pre>HTTP/1.1 201
+Content-Type: application/json; charset=utf-8
+Content-Length: 114
+
+{
+  &quot;execution_id&quot;: &quot;Wo1fR91QPzten6WTohs7A&quot;,
+  &quot;namespace&quot;: &quot;cr_auto&quot;,
+  &quot;flow_id&quot;: &quot;filecr_validation&quot;,
+  &quot;step&quot;: &quot;validate&quot;
+}</pre></div></div></details><details class="hit"><summary>
+<span class="n">28</span><span class="t">16:30:38.556</span><span class="m m-GET">GET</span>
+<code class="u">/api/v1/main/executions/Wo1fR91QPzten6WTohs7A</code><span class="s ok">200</span>
+<span class="d">31 ms · ↑ 0 B · ↓ 6.8 KB ×3 (until 16:30:44.605, last answer shown)</span>
+<span class="p">The validation execution</span></summary>
+<div class="io"><div><h3>Request</h3><pre>GET /api/v1/main/executions/Wo1fR91QPzten6WTohs7A HTTP/1.1
+Host: localhost:8080
+Accept: application/json
+Authorization: Basic *** (masked)
+</pre></div><div><h3>Response</h3><pre>HTTP/1.1 200
+Content-Type: application/json
+Content-Length: 6953
+
+{
+  &quot;id&quot;: &quot;Wo1fR91QPzten6WTohs7A&quot;,
+  &quot;namespace&quot;: &quot;cr_auto&quot;,
+  &quot;flowId&quot;: &quot;filecr_validation&quot;,
+  &quot;state&quot;: &quot;SUCCESS&quot;,
+  &quot;labels&quot;: [
+    {
+      &quot;key&quot;: &quot;req_id&quot;,
+      &quot;value&quot;: &quot;120&quot;
+    },
+    {
+      &quot;key&quot;: &quot;process&quot;,
+      &quot;value&quot;: &quot;true&quot;
+    },
+    {
+      &quot;key&quot;: &quot;outline&quot;,
+      &quot;value&quot;: &quot;CIQ validation (FileCR)&quot;
+    },
+    {
+      &quot;key&quot;: &quot;process_version&quot;,
+      &quot;value&quot;: &quot;CR_AUTO.1&quot;
+    },
+    {
+      &quot;key&quot;: &quot;system.correlationId&quot;,
+      &quot;value&quot;: &quot;Wo1fR91QPzten6WTohs7A&quot;
+    },
+    {
+      &quot;key&quot;: &quot;project&quot;,
+      &quot;value&quot;: &quot;CR_AUTO&quot;
+    },
+    {
+      &quot;key&quot;: &quot;process_step&quot;,
+      &quot;value&quot;: &quot;validate&quot;
+    },
+    {
+      &quot;key&quot;: &quot;started_by&quot;,
+      &quot;value&quot;: &quot;paras.mahajan@azalio.io&quot;
+    },
+    {
+      &quot;key&quot;: &quot;order_id&quot;,
+      &quot;value&quot;: &quot;120&quot;
+    },
+    {
+      &quot;key&quot;: &quot;system.from&quot;,
+      &quot;value&quot;: &quot;api&quot;
+    }
+  ],
+  &quot;taskRunList&quot;: [
+    {
+      &quot;taskId&quot;: &quot;set_labels&quot;,
+      &quot;state&quot;: &quot;SUCCESS&quot;
+    },
+    {
+      &quot;taskId&quot;: &quot;ciq_validation&quot;,
+      &quot;state&quot;: &quot;SUCCESS&quot;
+    },
+    {
+      &quot;taskId&quot;: &quot;register&quot;,
+      &quot;state&quot;: &quot;SUCCESS&quot;
+    },
+    {
+      &quot;taskId&quot;: &quot;save_order&quot;,
+      &quot;state&quot;: &quot;SUCCESS&quot;
+    },
+    {
+      &quot;taskId&quot;: &quot;save_orders&quot;,
+      &quot;state&quot;: &quot;SUCCESS&quot;
+    },
+    {
+      &quot;taskId&quot;: &quot;ciq_invalid&quot;,
+      &quot;state&quot;: &quot;SKIPPED&quot;
+    },
+    {
+      &quot;taskId&quot;: &quot;collect_logs&quot;,
+      &quot;state&quot;: &quot;SUCCESS&quot;
+    }
+  ],
+  &quot;…&quot;: &quot;(the rest of the execution - inputs, outputs, task logs - left out of this log)&quot;
+}</pre></div></div></details><details class="hit"><summary>
+<span class="n">29</span><span class="t">16:30:44.640</span><span class="m m-GET">GET</span>
+<code class="u">/cr/api/orders?id=120</code><span class="s ok">200</span>
+<span class="d">7 ms · ↑ 0 B · ↓ 350 B</span>
+<span class="p">The order afterwards</span></summary>
+<div class="io"><div><h3>Request</h3><pre>GET /cr/api/orders?id=120 HTTP/1.1
+Host: localhost:8080
+Accept: application/json
+Authorization: Basic *** (masked)
+</pre></div><div><h3>Response</h3><pre>HTTP/1.1 200
+Content-Type: application/json; charset=utf-8
+Content-Length: 350
+
+{
+  &quot;orders&quot;: [
+    {
+      &quot;req_id&quot;: 120,
+      &quot;parent_req_id&quot;: null,
+      &quot;kind&quot;: &quot;ORDER&quot;,
+      &quot;cr_name&quot;: null,
+      &quot;stage&quot;: &quot;VALIDATED&quot;,
+      &quot;node_type&quot;: &quot;PGW_RDS&quot;,
+      &quot;activity&quot;: &quot;1051_SUBSCRIBER_PROFILE_CONFIGURATION&quot;,
+      &quot;project&quot;: &quot;CR_AUTO&quot;,
+      &quot;execution_id&quot;: &quot;7RMQmBt6LmcexcaEHY31LG&quot;,
+      &quot;created_at&quot;: &quot;2026-10-29 11:00:32.978357+00&quot;,
+      &quot;updated_at&quot;: &quot;2026-10-29 11:00:41.652756+00&quot;,
+      &quot;waiting&quot;: false
+    }
+  ]
+}</pre></div></div></details><details class="hit"><summary>
+<span class="n">30</span><span class="t">16:30:44.647</span><span class="m m-GET">GET</span>
+<code class="u">/api/v1/main/namespaces/cr_auto/kv/ORDER_120</code><span class="s ok">200</span>
+<span class="d">21 ms · ↑ 0 B · ↓ 782 B</span>
+<span class="p">KV ORDER_120: what the forms and the Order tab read</span></summary>
+<div class="io"><div><h3>Request</h3><pre>GET /api/v1/main/namespaces/cr_auto/kv/ORDER_120 HTTP/1.1
+Host: localhost:8080
+Accept: application/json
+Authorization: Basic *** (masked)
+</pre></div><div><h3>Response</h3><pre>HTTP/1.1 200
+Content-Type: application/json
+Content-Length: 782
+
+{
+  &quot;type&quot;: &quot;JSON&quot;,
+  &quot;value&quot;: {
+    &quot;stage&quot;: &quot;VALIDATED&quot;,
+    &quot;steps&quot;: [
+      {
+        &quot;at&quot;: &quot;2026-10-29 11:00 UTC&quot;,
+        &quot;stage&quot;: &quot;GENERATE_TEMPLATE SUCCESS&quot;,
+        &quot;execution_id&quot;: &quot;7RMQmBt6LmcexcaEHY31LG&quot;
+      },
+      {
+        &quot;at&quot;: &quot;2026-10-29 11:00 UTC&quot;,
+        &quot;stage&quot;: &quot;CIQ_VALIDATION SUCCESS&quot;,
+        &quot;execution_id&quot;: &quot;Wo1fR91QPzten6WTohs7A&quot;
+      }
+    ],
+    &quot;value&quot;: &quot;120&quot;,
+    &quot;cr_list&quot;: [
+      &quot;CR1&quot;,
+      &quot;CR2&quot;
+    ],
+    &quot;activity&quot;: &quot;1051_SUBSCRIBER_PROFILE_CONFIGURATION&quot;,
+    &quot;children&quot;: {},
+    &quot;json_file&quot;: &quot;/mnt/shared_data/120/PGW_RDS_1051_SUBSCRIBER_PROFILE_CONFIGURATION.json&quot;,
+    &quot;node_type&quot;: &quot;PGW_RDS&quot;,
+    &quot;order_dir&quot;: &quot;/mnt/shared_data/120&quot;,
+    &quot;cr_options&quot;: [
+      {
+        &quot;label&quot;: &quot;CR1&quot;,
+        &quot;value&quot;: &quot;CR1&quot;
+      },
+      {
+        &quot;label&quot;: &quot;CR2&quot;,
+        &quot;value&quot;: &quot;CR2&quot;
+      }
+    ],
+    &quot;process_id&quot;: 12,
+    &quot;node_version&quot;: &quot;ALL&quot;,
+    &quot;child_options&quot;: [],
+    &quot;children_by_id&quot;: {},
+    &quot;process_version&quot;: 1,
+    &quot;rollback_options&quot;: [],
+    &quot;rollback_supported&quot;: false
+  },
+  &quot;revision&quot;: 2,
+  &quot;updated&quot;: &quot;2026-10-29T11:00:42.088180Z&quot;
+}</pre></div></div></details></main></body></html>

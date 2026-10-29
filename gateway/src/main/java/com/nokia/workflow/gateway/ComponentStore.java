@@ -137,6 +137,7 @@ final class ComponentStore {
     void publish(String name, int version, String actor, String namespace) throws Exception {
         versions.publish(requireId(name), label(name), version, actor, content -> filesProblems(name, version, content, namespace));
         writeProperties(name, version, namespace);
+        writePointer(name, namespace);
     }
 
     void discardDraft(String name, int version, String actor, String namespace) throws Exception {
@@ -144,8 +145,27 @@ final class ComponentStore {
         kestra.deleteNamespaceFile(namespace, "/" + dir(name, version));
     }
 
-    void retire(String name, int version, String actor) throws SQLException {
+    void retire(String name, int version, String actor, String namespace) throws Exception {
         versions.retire(requireId(name), label(name), version, actor);
+        writePointer(name, namespace);
+    }
+
+    /** The KV key whose value is the folder of the component's latest published version. */
+    static String pointerKey(String name) {
+        return "COMPONENT_" + name.toUpperCase(java.util.Locale.ROOT);
+    }
+
+    /**
+     * Keeps KV {@code COMPONENT_<NAME>} at the latest published version's folder (removed when none is left), so a
+     * hand-written flow calls {@code sh bin/component.sh "{{ kv('COMPONENT_<NAME>') }}"} without naming a version.
+     */
+    private void writePointer(String name, String namespace) throws Exception {
+        VersionedStore.Version v = latestPublished(name);
+        if (v == null) {
+            kestra.deleteKv(namespace, pointerKey(name));
+        } else {
+            kestra.putKv(namespace, pointerKey(name), dir(name, v.version()));
+        }
     }
 
     // ------------------------------------------------------------------ files

@@ -335,6 +335,28 @@ final class Kestra {
         }
     }
 
+    /** Sets a namespace KV entry to a string. */
+    void putKv(String namespace, String key, String value) throws IOException, InterruptedException {
+        HttpResponse<String> r = client.send(HttpRequest.newBuilder(base.resolve(kvUrl(namespace, key)))
+                .header("Authorization", authorization).header("Content-Type", "text/plain")
+                .PUT(HttpRequest.BodyPublishers.ofString(SimpleJson.writeCompact(value))).build(), HttpResponse.BodyHandlers.ofString());
+        if (r.statusCode() / 100 != 2) {
+            throw new KestraError(r.statusCode() == 401 ? 502 : r.statusCode(), "Kestra refused to set KV %s.%s: %s".formatted(namespace, key, r.body()));
+        }
+    }
+
+    void deleteKv(String namespace, String key) throws IOException, InterruptedException {
+        HttpResponse<String> r = client.send(HttpRequest.newBuilder(base.resolve(kvUrl(namespace, key)))
+                .header("Authorization", authorization).DELETE().build(), HttpResponse.BodyHandlers.ofString());
+        if (r.statusCode() / 100 != 2 && r.statusCode() != 404) {
+            throw new KestraError(r.statusCode() == 401 ? 502 : r.statusCode(), "Kestra refused to delete KV %s.%s: %s".formatted(namespace, key, r.body()));
+        }
+    }
+
+    private String kvUrl(String namespace, String key) {
+        return "/api/v1/" + tenant + "/namespaces/" + Paths.encode(namespace) + "/kv/" + Paths.encode(key);
+    }
+
     /** The log lines of an execution, in order. */
     @SuppressWarnings("unchecked")
     List<String> executionLogs(String executionId) throws IOException, InterruptedException {

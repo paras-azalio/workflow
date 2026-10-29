@@ -170,3 +170,5 @@ Process designer → **Components** → pick the project → **New component** (
 4. **Save → Try it** (runs one action in the flow `cr_component_try`) **→ Publish**.
 
 Use it in a process: Processes → a step's pipeline → a NEI box → Component = the registered component, Action = one of its actions (its other parameters are offered). Save / Publish checks the action and the required parameters; the process version runs the component version published last when it was published.
+
+Sample: `python samples/cr_auto/build_cr_auto.py` builds the FileCR-only project CR_AUTO (namespace cr_auto) through the APIs alone - config written from scratch, FileCR from `NOKIA_FILE_CR_V1/target.zip`, two flows, a process, one order - and writes every call with what it sent and got back to `../analysis/cr_auto_api_calls.html`. `--remove` takes it away again.

@@ -50,7 +50,7 @@ public class ComponentSpecTest {
         String json = """
                 {"kind": "WRAPPED", "location": "FOLDER", "folder": "nei/clicr",
                  "wrapped": {"ne_type": "CLICR", "grc": {"NIAM_IP": "10.0.0.1", "REPO_PASSWORD": "${secret:CLICR_REPO_PASSWORD}"},
-                             "login": {"M2MUSER1": "m2m"}}}""";
+                             "login": {"M2MUSER1": "m2m", "KEY_FILE": "{dir}/keys/id_rsa"}}}""";
         assertEquals(List.of(), ComponentSpec.problems(SimpleJson.parse(json)));
         Properties p = props(json, "clicr");
         assertEquals("nei/clicr", p.getProperty("component.home"));
@@ -61,6 +61,7 @@ public class ComponentSpecTest {
         assertEquals("10.0.0.1", p.getProperty("nei.clicr.grc.NIAM_IP"));
         assertEquals("${secret:CLICR_REPO_PASSWORD}", p.getProperty("nei.clicr.grc.REPO_PASSWORD"));
         assertEquals("m2m", p.getProperty("nei.clicr.login.M2MUSER1"));
+        assertEquals("${WORKDIR}/nei/clicr/keys/id_rsa", p.getProperty("nei.clicr.login.KEY_FILE"));
     }
 
     @Test

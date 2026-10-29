@@ -228,7 +228,8 @@ final class ComponentSpec {
             out.setProperty(prefix + "configdir", home + "/" + str(w.get("config_dir"), "config"));
             for (String group : List.of("grc", "login")) {
                 if (w.get(group) instanceof Map<?, ?> m) {
-                    m.forEach((k, v) -> out.setProperty(prefix + group + "." + k, v == null ? "" : String.valueOf(v)));
+                    m.forEach((k, v) -> out.setProperty(prefix + group + "." + k,
+                            v == null ? "" : String.valueOf(v).replace("{dir}", "${WORKDIR}/" + home)));
                 }
             }
         } else {

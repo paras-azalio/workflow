@@ -445,7 +445,7 @@ final class CrApi {
             Gateway.json(ex, 200, Map.of("message", "Version %d of %s is published; pipelines published from now on use it.".formatted(v, name)));
         } else if (s.length == 5 && "retire".equals(s[4]) && "POST".equals(method)) {
             requireRole(me, Role.ADMIN, method, path, who);
-            store.retire(name, v, me.username());
+            store.retire(name, v, me.username(), namespace);
             Gateway.json(ex, 200, Map.of("message", "Version %d of %s is retired.".formatted(v, name)));
         } else if (s.length == 5 && "files".equals(s[4]) && "GET".equals(method)) {
             Gateway.json(ex, 200, Map.of("files", store.files(name, v, namespace)));
