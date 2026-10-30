@@ -20,12 +20,12 @@ summary { cursor:pointer; padding:6px 10px; display:flex; gap:10px; align-items:
 pre { background:var(--code); padding:10px; border-radius:6px; overflow:auto; max-height:480px; font-size:.78rem; margin:0; white-space:pre-wrap; word-break:break-word; }
 </style></head><body><main>
 <h1>CR_AUTO – API hit log</h1>
-<p class="lead">34 HTTP hits to http://localhost:8080 from 16:30:27.602 to 16:30:44.647 (2026-10-29), in order. Gateway API: /cr/api/…; Kestra API: /api/v1/main/….
-Click a hit for its request (line, headers, payload) and response (status, headers, body). Authorization is masked; repository jars and scripts are shown by size and hash; the config file and flows in full.</p>
+<p class="lead">34 HTTP hits to http://localhost:8080 from 17:18:45.012 to 17:19:44.274 (2026-10-29), in order. Gateway API: /cr/api/…; Kestra API: /api/v1/main/….
+Click a hit for its request (line, headers, payload) and response (status, headers, body). Authorization is masked; files are shown by size and hash, the config and flows in full.</p>
 <h2>Configuration</h2><details class="hit"><summary>
-<span class="n">1</span><span class="t">16:30:27.602</span><span class="m m-GET">GET</span>
+<span class="n">1</span><span class="t">17:18:45.012</span><span class="m m-GET">GET</span>
 <code class="u">/cr/api/processes?hidden=true</code><span class="s ok">200</span>
-<span class="d">115 ms · ↑ 0 B · ↓ 435 B</span>
+<span class="d">225 ms · ↑ 0 B · ↓ 435 B</span>
 <span class="p">The projects (with deleted ones)</span></summary>
 <div class="io"><div><h3>Request</h3><pre>GET /cr/api/processes?hidden=true HTTP/1.1
 Host: localhost:8080
@@ -60,114 +60,46 @@ Content-Length: 435
   ],
   &quot;default_project&quot;: &quot;CR_AUTOMATION&quot;
 }</pre></div></div></details><details class="hit"><summary>
-<span class="n">2</span><span class="t">16:30:27.718</span><span class="m m-POST">POST</span>
-<code class="u">/api/v1/main/namespaces/cr_auto/files?path=%2Fbin%2Fstore.sh</code><span class="s ok">200</span>
-<span class="d">52 ms · ↑ 1.3 KB · ↓ 0 B</span>
-<span class="p">Platform file bin/store.sh (from this repository)</span></summary>
-<div class="io"><div><h3>Request</h3><pre>POST /api/v1/main/namespaces/cr_auto/files?path=%2Fbin%2Fstore.sh HTTP/1.1
+<span class="n">2</span><span class="t">17:18:45.237</span><span class="m m-POST">POST</span>
+<code class="u">/cr/api/processes</code><span class="s ok">201</span>
+<span class="d">790 ms · ↑ 94 B · ↓ 312 B</span>
+<span class="p">Create the project: an empty draft v1; the gateway provisions its namespace</span></summary>
+<div class="io"><div><h3>Request</h3><pre>POST /cr/api/processes HTTP/1.1
 Host: localhost:8080
 Accept: application/json
-Content-Type: multipart/form-data; boundary=015144fc840843c0a29a3c43cd4a9270
+Content-Type: application/json
 Authorization: Basic *** (masked)
 
---015144fc840843c0a29a3c43cd4a9270
-Content-Disposition: form-data; name=&quot;fileContent&quot;; filename=&quot;store.sh&quot;
+{
+  &quot;project&quot;: &quot;CR_AUTO&quot;,
+  &quot;name&quot;: &quot;FileCR sample built through the APIs&quot;,
+  &quot;namespace&quot;: &quot;cr_auto&quot;
+}</pre></div><div><h3>Response</h3><pre>HTTP/1.1 201
+Content-Type: application/json; charset=utf-8
+Content-Length: 312
 
-&lt;binary store.sh: 1117 bytes, sha256 2a02a420d7c9f585…&gt;
---015144fc840843c0a29a3c43cd4a9270--</pre></div><div><h3>Response</h3><pre>HTTP/1.1 200
-Content-Length: 0
-</pre></div></div></details><details class="hit"><summary>
-<span class="n">3</span><span class="t">16:30:27.771</span><span class="m m-POST">POST</span>
-<code class="u">/api/v1/main/namespaces/cr_auto/files?path=%2Fbin%2Fcomponent.sh</code><span class="s ok">200</span>
-<span class="d">15 ms · ↑ 3.8 KB · ↓ 0 B</span>
-<span class="p">Platform file bin/component.sh (from this repository)</span></summary>
-<div class="io"><div><h3>Request</h3><pre>POST /api/v1/main/namespaces/cr_auto/files?path=%2Fbin%2Fcomponent.sh HTTP/1.1
-Host: localhost:8080
-Accept: application/json
-Content-Type: multipart/form-data; boundary=dbbdc39755134bb792ddbec8b53b5716
-Authorization: Basic *** (masked)
-
---dbbdc39755134bb792ddbec8b53b5716
-Content-Disposition: form-data; name=&quot;fileContent&quot;; filename=&quot;component.sh&quot;
-
-&lt;binary component.sh: 3676 bytes, sha256 904228053cdad589…&gt;
---dbbdc39755134bb792ddbec8b53b5716--</pre></div><div><h3>Response</h3><pre>HTTP/1.1 200
-Content-Length: 0
-</pre></div></div></details><details class="hit"><summary>
-<span class="n">4</span><span class="t">16:30:27.788</span><span class="m m-POST">POST</span>
-<code class="u">/api/v1/main/namespaces/cr_auto/files?path=%2Fwrappers%2Fcomponent-wrappers-0.1.0.jar</code><span class="s ok">200</span>
-<span class="d">25 ms · ↑ 70.0 KB · ↓ 0 B</span>
-<span class="p">Platform file wrappers/component-wrappers-0.1.0.jar (from this repository)</span></summary>
-<div class="io"><div><h3>Request</h3><pre>POST /api/v1/main/namespaces/cr_auto/files?path=%2Fwrappers%2Fcomponent-wrappers-0.1.0.jar HTTP/1.1
-Host: localhost:8080
-Accept: application/json
-Content-Type: multipart/form-data; boundary=f7b306f412a44a0c9e29f4f04abc0a80
-Authorization: Basic *** (masked)
-
---f7b306f412a44a0c9e29f4f04abc0a80
-Content-Disposition: form-data; name=&quot;fileContent&quot;; filename=&quot;component-wrappers-0.1.0.jar&quot;
-
-&lt;binary component-wrappers-0.1.0.jar: 71439 bytes, sha256 a0ec7f8f27a95bec…&gt;
---f7b306f412a44a0c9e29f4f04abc0a80--</pre></div><div><h3>Response</h3><pre>HTTP/1.1 200
-Content-Length: 0
-</pre></div></div></details><details class="hit"><summary>
-<span class="n">5</span><span class="t">16:30:27.816</span><span class="m m-POST">POST</span>
-<code class="u">/api/v1/main/namespaces/cr_auto/files?path=%2Flib%2Fpostgresql-42.7.4.jar</code><span class="s ok">200</span>
-<span class="d">58 ms · ↑ 1.0 MB · ↓ 0 B</span>
-<span class="p">Platform file lib/postgresql-42.7.4.jar (from this repository)</span></summary>
-<div class="io"><div><h3>Request</h3><pre>POST /api/v1/main/namespaces/cr_auto/files?path=%2Flib%2Fpostgresql-42.7.4.jar HTTP/1.1
-Host: localhost:8080
-Accept: application/json
-Content-Type: multipart/form-data; boundary=3423f3c4bf6d480b8a91524a44581f74
-Authorization: Basic *** (masked)
-
---3423f3c4bf6d480b8a91524a44581f74
-Content-Disposition: form-data; name=&quot;fileContent&quot;; filename=&quot;postgresql-42.7.4.jar&quot;
-
-&lt;binary postgresql-42.7.4.jar: 1086687 bytes, sha256 188976721ead8e86…&gt;
---3423f3c4bf6d480b8a91524a44581f74--</pre></div><div><h3>Response</h3><pre>HTTP/1.1 200
-Content-Length: 0
-</pre></div></div></details><details class="hit"><summary>
-<span class="n">6</span><span class="t">16:30:27.875</span><span class="m m-POST">POST</span>
-<code class="u">/api/v1/main/namespaces/cr_auto/files?path=%2Fconfig%2Fcr_auto.properties</code><span class="s ok">200</span>
-<span class="d">43 ms · ↑ 640 B · ↓ 0 B</span>
-<span class="p">The project config, written from scratch</span></summary>
-<div class="io"><div><h3>Request</h3><pre>POST /api/v1/main/namespaces/cr_auto/files?path=%2Fconfig%2Fcr_auto.properties HTTP/1.1
-Host: localhost:8080
-Accept: application/json
-Content-Type: multipart/form-data; boundary=eb2f6dcaec3e413c81927137407ede80
-Authorization: Basic *** (masked)
-
---eb2f6dcaec3e413c81927137407ede80
-Content-Disposition: form-data; name=&quot;fileContent&quot;; filename=&quot;cr_auto.properties&quot;
-
-# CR_AUTO project config - written from scratch by build_cr_auto.py, uploaded as config/cr_auto.properties.
-# The request store (orders, steps, IO). Its password is not here: STORE_JDBC_PASSWORD comes from the Kestra secret CR_DB_PASSWORD.
-store.jdbc.url=jdbc:postgresql://postgres:5432/kestra
-store.jdbc.user=kestra
-store.project=CR_AUTO
-# The FileCR NEI&#x27;s GRC and status codes are the component&#x27;s own (Components tab, component filecr).
-
---eb2f6dcaec3e413c81927137407ede80--</pre></div><div><h3>Response</h3><pre>HTTP/1.1 200
-Content-Length: 0
-</pre></div></div></details><details class="hit"><summary>
-<span class="n">7</span><span class="t">16:30:27.918</span><span class="m m-PUT">PUT</span>
-<code class="u">/api/v1/main/namespaces/cr_auto/kv/SHARED_DATA_DIR</code><span class="s ok">200</span>
-<span class="d">25 ms · ↑ 18 B · ↓ 0 B</span>
-<span class="p">KV SHARED_DATA_DIR: where orders keep their folders</span></summary>
-<div class="io"><div><h3>Request</h3><pre>PUT /api/v1/main/namespaces/cr_auto/kv/SHARED_DATA_DIR HTTP/1.1
-Host: localhost:8080
-Accept: application/json
-Content-Type: text/plain
-Authorization: Basic *** (masked)
-
-&quot;/mnt/shared_data&quot;</pre></div><div><h3>Response</h3><pre>HTTP/1.1 200
-Content-Length: 0
-</pre></div></div></details><details class="hit"><summary>
-<span class="n">8</span><span class="t">16:30:27.944</span><span class="m m-GET">GET</span>
+{
+  &quot;version&quot;: 1,
+  &quot;project&quot;: &quot;CR_AUTO&quot;,
+  &quot;state&quot;: &quot;DRAFT&quot;,
+  &quot;namespace&quot;: &quot;cr_auto&quot;,
+  &quot;provisioned&quot;: [
+    &quot;bin/command.sh&quot;,
+    &quot;bin/component.sh&quot;,
+    &quot;bin/mail-drop.sh&quot;,
+    &quot;bin/nei.sh&quot;,
+    &quot;bin/reply-drop.sh&quot;,
+    &quot;bin/store.sh&quot;,
+    &quot;lib/postgresql-42.7.4.jar&quot;,
+    &quot;wrappers/component-wrappers-0.1.0.jar&quot;,
+    &quot;config/cr_auto.properties&quot;,
+    &quot;KV SHARED_DATA_DIR&quot;
+  ]
+}</pre></div></div></details><details class="hit"><summary>
+<span class="n">3</span><span class="t">17:18:46.028</span><span class="m m-GET">GET</span>
 <code class="u">/api/v1/main/namespaces/cr_auto/files/directory?path=%2F</code><span class="s ok">200</span>
-<span class="d">11 ms · ↑ 0 B · ↓ 501 B</span>
-<span class="p">What the namespace now holds</span></summary>
+<span class="d">35 ms · ↑ 0 B · ↓ 501 B</span>
+<span class="p">What the namespace now holds (all from the gateway)</span></summary>
 <div class="io"><div><h3>Request</h3><pre>GET /api/v1/main/namespaces/cr_auto/files/directory?path=%2F HTTP/1.1
 Host: localhost:8080
 Accept: application/json
@@ -181,7 +113,7 @@ Content-Length: 501
     &quot;type&quot;: &quot;Directory&quot;,
     &quot;size&quot;: 0,
     &quot;fileName&quot;: &quot;lib&quot;,
-    &quot;lastModifiedTime&quot;: 1793271627863,
+    &quot;lastModifiedTime&quot;: 1793274525874,
     &quot;creationTime&quot;: 1793271143164,
     &quot;metadata&quot;: {}
   },
@@ -189,54 +121,65 @@ Content-Length: 501
     &quot;type&quot;: &quot;Directory&quot;,
     &quot;size&quot;: 0,
     &quot;fileName&quot;: &quot;bin&quot;,
-    &quot;lastModifiedTime&quot;: 1793271627757,
+    &quot;lastModifiedTime&quot;: 1793274525439,
     &quot;creationTime&quot;: 1793271142621,
     &quot;metadata&quot;: {}
   },
   {
     &quot;type&quot;: &quot;Directory&quot;,
     &quot;size&quot;: 0,
-    &quot;fileName&quot;: &quot;wrappers&quot;,
-    &quot;lastModifiedTime&quot;: 1793271627804,
-    &quot;creationTime&quot;: 1793271142836,
+    &quot;fileName&quot;: &quot;config&quot;,
+    &quot;lastModifiedTime&quot;: 1793274525968,
+    &quot;creationTime&quot;: 1793271143237,
     &quot;metadata&quot;: {}
   },
   {
     &quot;type&quot;: &quot;Directory&quot;,
     &quot;size&quot;: 0,
-    &quot;fileName&quot;: &quot;config&quot;,
-    &quot;lastModifiedTime&quot;: 1793271627909,
-    &quot;creationTime&quot;: 1793271143237,
+    &quot;fileName&quot;: &quot;wrappers&quot;,
+    &quot;lastModifiedTime&quot;: 1793274525928,
+    &quot;creationTime&quot;: 1793271142836,
     &quot;metadata&quot;: {}
   }
 ]</pre></div></div></details><details class="hit"><summary>
-<span class="n">9</span><span class="t">16:30:27.956</span><span class="m m-POST">POST</span>
-<code class="u">/cr/api/processes</code><span class="s ok">201</span>
-<span class="d">33 ms · ↑ 94 B · ↓ 75 B</span>
-<span class="p">Create the project: an empty draft v1</span></summary>
-<div class="io"><div><h3>Request</h3><pre>POST /cr/api/processes HTTP/1.1
+<span class="n">4</span><span class="t">17:18:46.063</span><span class="m m-GET">GET</span>
+<code class="u">/api/v1/main/namespaces/cr_auto/files?path=%2Fconfig%2Fcr_auto.properties</code><span class="s ok">200</span>
+<span class="d">73 ms · ↑ 0 B · ↓ 317 B</span>
+<span class="p">The config the gateway generated</span></summary>
+<div class="io"><div><h3>Request</h3><pre>GET /api/v1/main/namespaces/cr_auto/files?path=%2Fconfig%2Fcr_auto.properties HTTP/1.1
+Host: localhost:8080
+Accept: application/octet-stream
+Authorization: Basic *** (masked)
+</pre></div><div><h3>Response</h3><pre>HTTP/1.1 200
+Content-Type: application/octet-stream
+
+# CR_AUTO project config, generated by the gateway when the project was created. Edit it in Kestra (Namespaces -&gt; Files).
+# The request store; its password comes from the Kestra secret CR_DB_PASSWORD, never from here.
+store.jdbc.url=jdbc:postgresql://postgres:5432/kestra
+store.jdbc.user=kestra
+store.project=CR_AUTO
+</pre></div></div></details><details class="hit"><summary>
+<span class="n">5</span><span class="t">17:18:46.137</span><span class="m m-GET">GET</span>
+<code class="u">/api/v1/main/namespaces/cr_auto/kv/SHARED_DATA_DIR</code><span class="s ok">200</span>
+<span class="d">33 ms · ↑ 0 B · ↓ 97 B</span>
+<span class="p">KV SHARED_DATA_DIR, set by the gateway</span></summary>
+<div class="io"><div><h3>Request</h3><pre>GET /api/v1/main/namespaces/cr_auto/kv/SHARED_DATA_DIR HTTP/1.1
 Host: localhost:8080
 Accept: application/json
-Content-Type: application/json
 Authorization: Basic *** (masked)
+</pre></div><div><h3>Response</h3><pre>HTTP/1.1 200
+Content-Type: application/json
+Content-Length: 97
 
 {
-  &quot;project&quot;: &quot;CR_AUTO&quot;,
-  &quot;name&quot;: &quot;FileCR sample built through the APIs&quot;,
-  &quot;namespace&quot;: &quot;cr_auto&quot;
-}</pre></div><div><h3>Response</h3><pre>HTTP/1.1 201
-Content-Type: application/json; charset=utf-8
-Content-Length: 75
-
-{
-  &quot;namespace&quot;: &quot;cr_auto&quot;,
-  &quot;state&quot;: &quot;DRAFT&quot;,
-  &quot;project&quot;: &quot;CR_AUTO&quot;,
-  &quot;version&quot;: 1
+  &quot;type&quot;: &quot;STRING&quot;,
+  &quot;value&quot;: &quot;/mnt/shared_data&quot;,
+  &quot;revision&quot;: 9,
+  &quot;updated&quot;: &quot;2026-10-29T11:48:46.008423Z&quot;
 }</pre></div></div></details><details class="hit"><summary>
-<span class="n">10</span><span class="t">16:30:27.989</span><span class="m m-POST">POST</span>
+<span class="n">6</span><span class="t">17:18:46.171</span><span class="m m-POST">POST</span>
 <code class="u">/cr/api/projects/CR_AUTO/components</code><span class="s ok">201</span>
-<span class="d">14 ms · ↑ 113 B · ↓ 67 B</span>
+<span class="d">57 ms · ↑ 113 B · ↓ 67 B</span>
 <span class="p">Declare the component</span></summary>
 <div class="io"><div><h3>Request</h3><pre>POST /cr/api/projects/CR_AUTO/components HTTP/1.1
 Host: localhost:8080
@@ -253,14 +196,14 @@ Content-Type: application/json; charset=utf-8
 Content-Length: 67
 
 {
-  &quot;name&quot;: &quot;filecr&quot;,
-  &quot;state&quot;: &quot;DRAFT&quot;,
   &quot;version&quot;: 1,
-  &quot;component_id&quot;: 16
+  &quot;state&quot;: &quot;DRAFT&quot;,
+  &quot;name&quot;: &quot;filecr&quot;,
+  &quot;component_id&quot;: 18
 }</pre></div></div></details><details class="hit"><summary>
-<span class="n">11</span><span class="t">16:30:28.035</span><span class="m m-PUT">PUT</span>
+<span class="n">7</span><span class="t">17:18:46.300</span><span class="m m-PUT">PUT</span>
 <code class="u">/cr/api/projects/CR_AUTO/components/filecr/versions/1/files?path=&amp;unzip=true</code><span class="s ok">200</span>
-<span class="d">1612 ms · ↑ 22.4 MB · ↓ 5.7 KB</span>
+<span class="d">5579 ms · ↑ 22.4 MB · ↓ 5.7 KB</span>
 <span class="p">Upload target.zip, unpacked (its top folder target/ is left out)</span></summary>
 <div class="io"><div><h3>Request</h3><pre>PUT /cr/api/projects/CR_AUTO/components/filecr/versions/1/files?path=&amp;unzip=true HTTP/1.1
 Host: localhost:8080
@@ -372,9 +315,9 @@ Content-Length: 5801
   ],
   &quot;dropped_folder&quot;: &quot;target&quot;
 }</pre></div></div></details><details class="hit"><summary>
-<span class="n">12</span><span class="t">16:30:29.647</span><span class="m m-GET">GET</span>
+<span class="n">8</span><span class="t">17:18:51.880</span><span class="m m-GET">GET</span>
 <code class="u">/cr/api/projects/CR_AUTO/components/filecr/versions/1</code><span class="s ok">200</span>
-<span class="d">87 ms · ↑ 0 B · ↓ 16.8 KB</span>
+<span class="d">174 ms · ↑ 0 B · ↓ 16.8 KB</span>
 <span class="p">The draft (its revision)</span></summary>
 <div class="io"><div><h3>Request</h3><pre>GET /cr/api/projects/CR_AUTO/components/filecr/versions/1 HTTP/1.1
 Host: localhost:8080
@@ -408,169 +351,129 @@ Content-Length: 17153
   &quot;dir&quot;: &quot;components/filecr/v1&quot;,
   &quot;files&quot;: [
     {
-      &quot;path&quot;: &quot;/components/filecr/v1/config/.mds.rc&quot;,
-      &quot;size&quot;: &quot;1517&quot;,
-      &quot;name&quot;: &quot;config/.mds.rc&quot;
+      &quot;path&quot;: &quot;/components/filecr/v1/templates/yaml/CFX_128_TGRP_CONFIGURATION_IN_CFX_validation-rules.yaml&quot;,
+      &quot;size&quot;: &quot;16304&quot;,
+      &quot;name&quot;: &quot;templates/yaml/CFX_128_TGRP_CONFIGURATION_IN_CFX_validation-rules.yaml&quot;
     },
     {
-      &quot;path&quot;: &quot;/components/filecr/v1/config/error_codes.txt&quot;,
-      &quot;size&quot;: &quot;2442&quot;,
-      &quot;name&quot;: &quot;config/error_codes.txt&quot;
+      &quot;path&quot;: &quot;/components/filecr/v1/templates/yaml/DPA_DLU_INSTALLATION_validation-rules.yaml&quot;,
+      &quot;size&quot;: &quot;5963&quot;,
+      &quot;name&quot;: &quot;templates/yaml/DPA_DLU_INSTALLATION_validation-rules.yaml&quot;
     },
     {
-      &quot;path&quot;: &quot;/components/filecr/v1/config/mds.rc&quot;,
-      &quot;size&quot;: &quot;1580&quot;,
-      &quot;name&quot;: &quot;config/mds.rc&quot;
+      &quot;path&quot;: &quot;/components/filecr/v1/templates/yaml/DSR_10005_SAPC_CCPC_PREFERENCE_CHANGE_IN_DSR_validation-rules.yaml&quot;,
+      &quot;size&quot;: &quot;7982&quot;,
+      &quot;name&quot;: &quot;templates/yaml/DSR_10005_SAPC_CCPC_PREFERENCE_CHANGE_IN_DSR_validation-rules.yaml&quot;
     },
     {
-      &quot;path&quot;: &quot;/components/filecr/v1/config/mds.rc.add&quot;,
-      &quot;size&quot;: &quot;535&quot;,
-      &quot;name&quot;: &quot;config/mds.rc.add&quot;
+      &quot;path&quot;: &quot;/components/filecr/v1/templates/yaml/DSR_10006_HOST_NAME_REALM_ROUTING_CREATION_MODIFICATION_DELETION_DSR_validation-rules.yaml&quot;,
+      &quot;size&quot;: &quot;34229&quot;,
+      &quot;name&quot;: &quot;templates/yaml/DSR_10006_HOST_NAME_REALM_ROUTING_CREATION_MODIFICATION_DELETION_DSR_validation-rules.yaml&quot;
     },
     {
-      &quot;path&quot;: &quot;/components/filecr/v1/config/phase_codes.txt&quot;,
-      &quot;size&quot;: &quot;5034&quot;,
-      &quot;name&quot;: &quot;config/phase_codes.txt&quot;
+      &quot;path&quot;: &quot;/components/filecr/v1/templates/yaml/DSR_10011_TEST_IMSI_ROUTING_CREATION_DELETION_IN_DSR_validation-rules.yaml&quot;,
+      &quot;size&quot;: &quot;46231&quot;,
+      &quot;name&quot;: &quot;templates/yaml/DSR_10011_TEST_IMSI_ROUTING_CREATION_DELETION_IN_DSR_validation-rules.yaml&quot;
     },
     {
-      &quot;path&quot;: &quot;/components/filecr/v1/config/supp_codes.txt&quot;,
-      &quot;size&quot;: &quot;19198&quot;,
-      &quot;name&quot;: &quot;config/supp_codes.txt&quot;
+      &quot;path&quot;: &quot;/components/filecr/v1/templates/yaml/EIR_1029_TAC_LOADING_EIR_validation-rules.yaml&quot;,
+      &quot;size&quot;: &quot;3655&quot;,
+      &quot;name&quot;: &quot;templates/yaml/EIR_1029_TAC_LOADING_EIR_validation-rules.yaml&quot;
     },
     {
-      &quot;path&quot;: &quot;/components/filecr/v1/docs/word/InstantLink_NEI_for_NOKIA_FILECR_ANY_V1_Functional_Description.docx&quot;,
-      &quot;size&quot;: &quot;217288&quot;,
-      &quot;name&quot;: &quot;docs/word/InstantLink_NEI_for_NOKIA_FILECR_ANY_V1_Functional_Description.docx&quot;
+      &quot;path&quot;: &quot;/components/filecr/v1/templates/yaml/MRF_24.7_ANNOUNCEMENT_LOADING_validation-rules.yaml&quot;,
+      &quot;size&quot;: &quot;4256&quot;,
+      &quot;name&quot;: &quot;templates/yaml/MRF_24.7_ANNOUNCEMENT_LOADING_validation-rules.yaml&quot;
     },
     {
-      &quot;path&quot;: &quot;/components/filecr/v1/docs/word/InstantLink_NEI_for_NOKIA_FILECR_ANY_V1_Installation_Guide.docx&quot;,
-      &quot;size&quot;: &quot;118539&quot;,
-      &quot;name&quot;: &quot;docs/word/InstantLink_NEI_for_NOKIA_FILECR_ANY_V1_Installation_Guide.docx&quot;
+      &quot;path&quot;: &quot;/components/filecr/v1/templates/yaml/MRF_ANNOUNCEMENT_LOADING_validation-rules.yaml&quot;,
+      &quot;size&quot;: &quot;5010&quot;,
+      &quot;name&quot;: &quot;templates/yaml/MRF_ANNOUNCEMENT_LOADING_validation-rules.yaml&quot;
     },
     {
-      &quot;path&quot;: &quot;/components/filecr/v1/docs/word/InstantLink_NEI_for_NOKIA_FILECR_ANY_V1_Release_Notes.docx&quot;,
-      &quot;size&quot;: &quot;98892&quot;,
-      &quot;name&quot;: &quot;docs/word/InstantLink_NEI_for_NOKIA_FILECR_ANY_V1_Release_Notes.docx&quot;
+      &quot;path&quot;: &quot;/components/filecr/v1/templates/yaml/PGW_RDS_1008_VOLTE_DEFAULT_ROAMING_validation-rules.yaml&quot;,
+      &quot;size&quot;: &quot;5706&quot;,
+      &quot;name&quot;: &quot;templates/yaml/PGW_RDS_1008_VOLTE_DEFAULT_ROAMING_validation-rules.yaml&quot;
     },
     {
-      &quot;path&quot;: &quot;/components/filecr/v1/docs/word/InstantLink_NEI_for_NOKIA_FILECR_ANY_V1_Test_Plan.docx&quot;,
-      &quot;size&quot;: &quot;104735&quot;,
-      &quot;name&quot;: &quot;docs/word/InstantLink_NEI_for_NOKIA_FILECR_ANY_V1_Test_Plan.docx&quot;
+      &quot;path&quot;: &quot;/components/filecr/v1/templates/yaml/PGW_RDS_1051_SUBSCRIBER_PROFILE_CONFIGURATION_validation-rules.yaml&quot;,
+      &quot;size&quot;: &quot;14208&quot;,
+      &quot;name&quot;: &quot;templates/yaml/PGW_RDS_1051_SUBSCRIBER_PROFILE_CONFIGURATION_validation-rules.yaml&quot;
     },
     {
-      &quot;path&quot;: &quot;/components/filecr/v1/docs/word/InstantLink_NEI_for_NOKIA_FILECR_ANY_V1_Test_Report.docx&quot;,
-      &quot;size&quot;: &quot;104946&quot;,
-      &quot;name&quot;: &quot;docs/word/InstantLink_NEI_for_NOKIA_FILECR_ANY_V1_Test_Report.docx&quot;
+      &quot;path&quot;: &quot;/components/filecr/v1/templates/yaml/PGW_RDS_1058_IFC_CAPABILITY_MODIFICATION_validation-rules.yaml&quot;,
+      &quot;size&quot;: &quot;4689&quot;,
+      &quot;name&quot;: &quot;templates/yaml/PGW_RDS_1058_IFC_CAPABILITY_MODIFICATION_validation-rules.yaml&quot;
     },
     {
-      &quot;path&quot;: &quot;/components/filecr/v1/lib/ciq-processor-1.0.3-cli.jar&quot;,
-      &quot;size&quot;: &quot;22376087&quot;,
-      &quot;name&quot;: &quot;lib/ciq-processor-1.0.3-cli.jar&quot;
+      &quot;path&quot;: &quot;/components/filecr/v1/templates/yaml/SBC_107_NEW_SUBNET_CREATION_IN_SBC_validation-rules.yaml&quot;,
+      &quot;size&quot;: &quot;8735&quot;,
+      &quot;name&quot;: &quot;templates/yaml/SBC_107_NEW_SUBNET_CREATION_IN_SBC_validation-rules.yaml&quot;
     },
     {
-      &quot;path&quot;: &quot;/components/filecr/v1/lib/cli-parser-1.0.0.jar&quot;,
-      &quot;size&quot;: &quot;19741&quot;,
-      &quot;name&quot;: &quot;lib/cli-parser-1.0.0.jar&quot;
+      &quot;path&quot;: &quot;/components/filecr/v1/templates/yaml/SBC_127_NEW_SUBNET_CREATION_MEDIA_SBC_validation-rules.yaml&quot;,
+      &quot;size&quot;: &quot;7320&quot;,
+      &quot;name&quot;: &quot;templates/yaml/SBC_127_NEW_SUBNET_CREATION_MEDIA_SBC_validation-rules.yaml&quot;
     },
     {
-      &quot;path&quot;: &quot;/components/filecr/v1/lib/execution-report-generator-1.0.2-cli.jar&quot;,
-      &quot;size&quot;: &quot;3023711&quot;,
-      &quot;name&quot;: &quot;lib/execution-report-generator-1.0.2-cli.jar&quot;
+      &quot;path&quot;: &quot;/components/filecr/v1/templates/yaml/SBC_146_SDP_PROFILE_MODIFICATION_&amp;_TG_MODIFICATION_IN_ISBC_validation-rules.yaml&quot;,
+      &quot;size&quot;: &quot;73841&quot;,
+      &quot;name&quot;: &quot;templates/yaml/SBC_146_SDP_PROFILE_MODIFICATION_&amp;_TG_MODIFICATION_IN_ISBC_validation-rules.yaml&quot;
     },
     {
-      &quot;path&quot;: &quot;/components/filecr/v1/lib/java_macroserver-JDK8.jar&quot;,
-      &quot;size&quot;: &quot;52436&quot;,
-      &quot;name&quot;: &quot;lib/java_macroserver-JDK8.jar&quot;
+      &quot;path&quot;: &quot;/components/filecr/v1/templates/yaml/SBC_147_IP_POI_CONFIG_ISBC_validation-rules.yaml&quot;,
+      &quot;size&quot;: &quot;184218&quot;,
+      &quot;name&quot;: &quot;templates/yaml/SBC_147_IP_POI_CONFIG_ISBC_validation-rules.yaml&quot;
     },
     {
-      &quot;path&quot;: &quot;/components/filecr/v1/lib/json-20210307.jar&quot;,
-      &quot;size&quot;: &quot;69710&quot;,
-      &quot;name&quot;: &quot;lib/json-20210307.jar&quot;
+      &quot;path&quot;: &quot;/components/filecr/v1/templates/yaml/SBC_147_IP_POI_CONFIG_ISBC_validation-rules_phase1.yaml&quot;,
+      &quot;size&quot;: &quot;156458&quot;,
+      &quot;name&quot;: &quot;templates/yaml/SBC_147_IP_POI_CONFIG_ISBC_validation-rules_phase1.yaml&quot;
     },
     {
-      &quot;path&quot;: &quot;/components/filecr/v1/macro_FILECR_ANY_V1.jar&quot;,
-      &quot;size&quot;: &quot;26907&quot;,
-      &quot;name&quot;: &quot;macro_FILECR_ANY_V1.jar&quot;
+      &quot;path&quot;: &quot;/components/filecr/v1/templates/yaml/SBC_156_ENUM_PROFILE_AND_TRUNKGROUP_CREATION_IN_PSBC_validation-rules.yaml&quot;,
+      &quot;size&quot;: &quot;75383&quot;,
+      &quot;name&quot;: &quot;templates/yaml/SBC_156_ENUM_PROFILE_AND_TRUNKGROUP_CREATION_IN_PSBC_validation-rules.yaml&quot;
     },
     {
-      &quot;path&quot;: &quot;/components/filecr/v1/script/common_functions.ksh&quot;,
-      &quot;size&quot;: &quot;1459&quot;,
-      &quot;name&quot;: &quot;script/common_functions.ksh&quot;
+      &quot;path&quot;: &quot;/components/filecr/v1/templates/yaml/SBC_19_FEPHFLOWPOLICY_AND_SG_PROFILE_PARAMETER_MODIFICATION_validation-rules.yaml&quot;,
+      &quot;size&quot;: &quot;178611&quot;,
+      &quot;name&quot;: &quot;templates/yaml/SBC_19_FEPHFLOWPOLICY_AND_SG_PROFILE_PARAMETER_MODIFICATION_validation-rules.yaml&quot;
     },
     {
-      &quot;path&quot;: &quot;/components/filecr/v1/script/drop_nemo.ksh&quot;,
-      &quot;size&quot;: &quot;5041&quot;,
-      &quot;name&quot;: &quot;script/drop_nemo.ksh&quot;
+      &quot;path&quot;: &quot;/components/filecr/v1/templates/yaml/SBC_2_ADDITION_DELETION_IN_EMERGENCY_URI_IN_ASBC_validation-rules.yaml&quot;,
+      &quot;size&quot;: &quot;7992&quot;,
+      &quot;name&quot;: &quot;templates/yaml/SBC_2_ADDITION_DELETION_IN_EMERGENCY_URI_IN_ASBC_validation-rules.yaml&quot;
     },
     {
-      &quot;path&quot;: &quot;/components/filecr/v1/script/il_nemo_functions.ksh&quot;,
-      &quot;size&quot;: &quot;21144&quot;,
-      &quot;name&quot;: &quot;script/il_nemo_functions.ksh&quot;
+      &quot;path&quot;: &quot;/components/filecr/v1/templates/yaml/SBC_33_LIC_LOADING_IN_SBC_validation-rules.yaml&quot;,
+      &quot;size&quot;: &quot;3690&quot;,
+      &quot;name&quot;: &quot;templates/yaml/SBC_33_LIC_LOADING_IN_SBC_validation-rules.yaml&quot;
     },
     {
-      &quot;path&quot;: &quot;/components/filecr/v1/script/nei_info.txt&quot;,
-      &quot;size&quot;: &quot;92&quot;,
-      &quot;name&quot;: &quot;script/nei_info.txt&quot;
+      &quot;path&quot;: &quot;/components/filecr/v1/templates/yaml/SBC_37_DRA_LINK_SHIFTING_GUI_validation-rules.yaml&quot;,
+      &quot;size&quot;: &quot;48678&quot;,
+      &quot;name&quot;: &quot;templates/yaml/SBC_37_DRA_LINK_SHIFTING_GUI_validation-rules.yaml&quot;
     },
     {
-      &quot;path&quot;: &quot;/components/filecr/v1/script/nemo_info.txt&quot;,
-      &quot;size&quot;: &quot;0&quot;,
-      &quot;name&quot;: &quot;script/nemo_info.txt&quot;
+      &quot;path&quot;: &quot;/components/filecr/v1/templates/yaml/SBC_5_ADDITION_DELETION_MODIFICATION_OF_SIP_FILTER_MM_IN_SBC_validation-rules.yaml&quot;,
+      &quot;size&quot;: &quot;37022&quot;,
+      &quot;name&quot;: &quot;templates/yaml/SBC_5_ADDITION_DELETION_MODIFICATION_OF_SIP_FILTER_MM_IN_SBC_validation-rules.yaml&quot;
     },
     {
-      &quot;path&quot;: &quot;/components/filecr/v1/script/nemo_parameters.properties&quot;,
-      &quot;size&quot;: &quot;8863&quot;,
-      &quot;name&quot;: &quot;script/nemo_parameters.properties&quot;
+      &quot;path&quot;: &quot;/components/filecr/v1/templates/yaml/SBC_96_FIXED_LINE_CONFIGURATION_IN_SBC_validation-rules.yaml&quot;,
+      &quot;size&quot;: &quot;146450&quot;,
+      &quot;name&quot;: &quot;templates/yaml/SBC_96_FIXED_LINE_CONFIGURATION_IN_SBC_validation-rules.yaml&quot;
     },
     {
-      &quot;path&quot;: &quot;/components/filecr/v1/script/nemo_setup.ksh&quot;,
-      &quot;size&quot;: &quot;21215&quot;,
-      &quot;name&quot;: &quot;script/nemo_setup.ksh&quot;
+      &quot;path&quot;: &quot;/components/filecr/v1/templates/yaml/SBC_FIXED_LINE_CONFIGURATION_validation-rules.yaml&quot;,
+      &quot;size&quot;: &quot;108888&quot;,
+      &quot;name&quot;: &quot;templates/yaml/SBC_FIXED_LINE_CONFIGURATION_validation-rules.yaml&quot;
     },
     {
-      &quot;path&quot;: &quot;/components/filecr/v1/script/nemo_setup.log&quot;,
-      &quot;size&quot;: &quot;0&quot;,
-      &quot;name&quot;: &quot;script/nemo_setup.log&quot;
-    },
-    {
-      &quot;path&quot;: &quot;/components/filecr/v1/script/oracle/drop_nemo.sql&quot;,
-      &quot;size&quot;: &quot;556&quot;,
-      &quot;name&quot;: &quot;script/oracle/drop_nemo.sql&quot;
-    },
-    {
-      &quot;path&quot;: &quot;/components/filecr/v1/script/postgres/drop_nemo.sql&quot;,
-      &quot;size&quot;: &quot;518&quot;,
-      &quot;name&quot;: &quot;script/postgres/drop_nemo.sql&quot;
-    },
-    {
-      &quot;path&quot;: &quot;/components/filecr/v1/templates/application.properties&quot;,
-      &quot;size&quot;: &quot;141&quot;,
-      &quot;name&quot;: &quot;templates/application.properties&quot;
-    },
-    {
-      &quot;path&quot;: &quot;/components/filecr/v1/templates/html/mop_execution_report_template.html&quot;,
-      &quot;size&quot;: &quot;31692&quot;,
-      &quot;name&quot;: &quot;templates/html/mop_execution_report_template.html&quot;
-    },
-    {
-      &quot;path&quot;: &quot;/components/filecr/v1/templates/html/mop_execution_single_node_report_template.html&quot;,
-      &quot;size&quot;: &quot;22038&quot;,
-      &quot;name&quot;: &quot;templates/html/mop_execution_single_node_report_template.html&quot;
-    },
-    {
-      &quot;path&quot;: &quot;/components/filecr/v1/templates/html/mop_execution_summary_report_template.html&quot;,
-      &quot;size&quot;: &quot;8925&quot;,
-      &quot;name&quot;: &quot;templates/html/mop_execution_summary_report_template.html&quot;
-    },
-    {
-      &quot;path&quot;: &quot;/components/filecr/v1/templates/html/validation-report-template-new.html&quot;,
-      &quot;size&quot;: &quot;10427&quot;,
-      &quot;name&quot;: &quot;templates/html/validation-report-template-new.html&quot;
-    },
-    {
-      &quot;path&quot;: &quot;/components/filecr/v1/templates/html/validation-report-template.html&quot;,
-      &quot;size&quot;: &quot;7368&quot;,
-      &quot;name&quot;: &quot;templates/html/validation-report-template.html&quot;
+      &quot;path&quot;: &quot;/components/filecr/v1/templates/yaml/WBX_SAS_5017_STATIC_ROUTE_ADDITION_DELETION_validation-rules.yaml&quot;,
+      &quot;size&quot;: &quot;5777&quot;,
+      &quot;name&quot;: &quot;templates/yaml/WBX_SAS_5017_STATIC_ROUTE_ADDITION_DELETION_validation-rules.yaml&quot;
     },
     {
       &quot;path&quot;: &quot;/components/filecr/v1/templates/jsonTemplate/CFX_128_TGRP_CONFIGURATION_IN_CFX_json-output.yaml&quot;,
@@ -693,154 +596,34 @@ Content-Length: 17153
       &quot;name&quot;: &quot;templates/jsonTemplate/WBX_SAS_5017_STATIC_ROUTE_ADDITION_DELETION_json-output.yaml&quot;
     },
     {
-      &quot;path&quot;: &quot;/components/filecr/v1/templates/yaml/WBX_SAS_5017_STATIC_ROUTE_ADDITION_DELETION_validation-rules.yaml&quot;,
-      &quot;size&quot;: &quot;5777&quot;,
-      &quot;name&quot;: &quot;templates/yaml/WBX_SAS_5017_STATIC_ROUTE_ADDITION_DELETION_validation-rules.yaml&quot;
+      &quot;path&quot;: &quot;/components/filecr/v1/templates/application.properties&quot;,
+      &quot;size&quot;: &quot;141&quot;,
+      &quot;name&quot;: &quot;templates/application.properties&quot;
     },
     {
-      &quot;path&quot;: &quot;/components/filecr/v1/templates/yaml/CFX_128_TGRP_CONFIGURATION_IN_CFX_validation-rules.yaml&quot;,
-      &quot;size&quot;: &quot;16304&quot;,
-      &quot;name&quot;: &quot;templates/yaml/CFX_128_TGRP_CONFIGURATION_IN_CFX_validation-rules.yaml&quot;
+      &quot;path&quot;: &quot;/components/filecr/v1/templates/html/mop_execution_report_template.html&quot;,
+      &quot;size&quot;: &quot;31692&quot;,
+      &quot;name&quot;: &quot;templates/html/mop_execution_report_template.html&quot;
     },
     {
-      &quot;path&quot;: &quot;/components/filecr/v1/templates/yaml/DPA_DLU_INSTALLATION_validation-rules.yaml&quot;,
-      &quot;size&quot;: &quot;5963&quot;,
-      &quot;name&quot;: &quot;templates/yaml/DPA_DLU_INSTALLATION_validation-rules.yaml&quot;
+      &quot;path&quot;: &quot;/components/filecr/v1/templates/html/mop_execution_single_node_report_template.html&quot;,
+      &quot;size&quot;: &quot;22038&quot;,
+      &quot;name&quot;: &quot;templates/html/mop_execution_single_node_report_template.html&quot;
     },
     {
-      &quot;path&quot;: &quot;/components/filecr/v1/templates/yaml/DSR_10005_SAPC_CCPC_PREFERENCE_CHANGE_IN_DSR_validation-rules.yaml&quot;,
-      &quot;size&quot;: &quot;7982&quot;,
-      &quot;name&quot;: &quot;templates/yaml/DSR_10005_SAPC_CCPC_PREFERENCE_CHANGE_IN_DSR_validation-rules.yaml&quot;
+      &quot;path&quot;: &quot;/components/filecr/v1/templates/html/mop_execution_summary_report_template.html&quot;,
+      &quot;size&quot;: &quot;8925&quot;,
+      &quot;name&quot;: &quot;templates/html/mop_execution_summary_report_template.html&quot;
     },
     {
-      &quot;path&quot;: &quot;/components/filecr/v1/templates/yaml/DSR_10006_HOST_NAME_REALM_ROUTING_CREATION_MODIFICATION_DELETION_DSR_validation-rules.yaml&quot;,
-      &quot;size&quot;: &quot;34229&quot;,
-      &quot;name&quot;: &quot;templates/yaml/DSR_10006_HOST_NAME_REALM_ROUTING_CREATION_MODIFICATION_DELETION_DSR_validation-rules.yaml&quot;
+      &quot;path&quot;: &quot;/components/filecr/v1/templates/html/validation-report-template-new.html&quot;,
+      &quot;size&quot;: &quot;10427&quot;,
+      &quot;name&quot;: &quot;templates/html/validation-report-template-new.html&quot;
     },
     {
-      &quot;path&quot;: &quot;/components/filecr/v1/templates/yaml/DSR_10011_TEST_IMSI_ROUTING_CREATION_DELETION_IN_DSR_validation-rules.yaml&quot;,
-      &quot;size&quot;: &quot;46231&quot;,
-      &quot;name&quot;: &quot;templates/yaml/DSR_10011_TEST_IMSI_ROUTING_CREATION_DELETION_IN_DSR_validation-rules.yaml&quot;
-    },
-    {
-      &quot;path&quot;: &quot;/components/filecr/v1/templates/yaml/EIR_1029_TAC_LOADING_EIR_validation-rules.yaml&quot;,
-      &quot;size&quot;: &quot;3655&quot;,
-      &quot;name&quot;: &quot;templates/yaml/EIR_1029_TAC_LOADING_EIR_validation-rules.yaml&quot;
-    },
-    {
-      &quot;path&quot;: &quot;/components/filecr/v1/templates/yaml/MRF_24.7_ANNOUNCEMENT_LOADING_validation-rules.yaml&quot;,
-      &quot;size&quot;: &quot;4256&quot;,
-      &quot;name&quot;: &quot;templates/yaml/MRF_24.7_ANNOUNCEMENT_LOADING_validation-rules.yaml&quot;
-    },
-    {
-      &quot;path&quot;: &quot;/components/filecr/v1/templates/yaml/MRF_ANNOUNCEMENT_LOADING_validation-rules.yaml&quot;,
-      &quot;size&quot;: &quot;5010&quot;,
-      &quot;name&quot;: &quot;templates/yaml/MRF_ANNOUNCEMENT_LOADING_validation-rules.yaml&quot;
-    },
-    {
-      &quot;path&quot;: &quot;/components/filecr/v1/templates/yaml/PGW_RDS_1008_VOLTE_DEFAULT_ROAMING_validation-rules.yaml&quot;,
-      &quot;size&quot;: &quot;5706&quot;,
-      &quot;name&quot;: &quot;templates/yaml/PGW_RDS_1008_VOLTE_DEFAULT_ROAMING_validation-rules.yaml&quot;
-    },
-    {
-      &quot;path&quot;: &quot;/components/filecr/v1/templates/yaml/PGW_RDS_1051_SUBSCRIBER_PROFILE_CONFIGURATION_validation-rules.yaml&quot;,
-      &quot;size&quot;: &quot;14208&quot;,
-      &quot;name&quot;: &quot;templates/yaml/PGW_RDS_1051_SUBSCRIBER_PROFILE_CONFIGURATION_validation-rules.yaml&quot;
-    },
-    {
-      &quot;path&quot;: &quot;/components/filecr/v1/templates/yaml/PGW_RDS_1058_IFC_CAPABILITY_MODIFICATION_validation-rules.yaml&quot;,
-      &quot;size&quot;: &quot;4689&quot;,
-      &quot;name&quot;: &quot;templates/yaml/PGW_RDS_1058_IFC_CAPABILITY_MODIFICATION_validation-rules.yaml&quot;
-    },
-    {
-      &quot;path&quot;: &quot;/components/filecr/v1/templates/yaml/SBC_107_NEW_SUBNET_CREATION_IN_SBC_validation-rules.yaml&quot;,
-      &quot;size&quot;: &quot;8735&quot;,
-      &quot;name&quot;: &quot;templates/yaml/SBC_107_NEW_SUBNET_CREATION_IN_SBC_validation-rules.yaml&quot;
-    },
-    {
-      &quot;path&quot;: &quot;/components/filecr/v1/templates/yaml/SBC_127_NEW_SUBNET_CREATION_MEDIA_SBC_validation-rules.yaml&quot;,
-      &quot;size&quot;: &quot;7320&quot;,
-      &quot;name&quot;: &quot;templates/yaml/SBC_127_NEW_SUBNET_CREATION_MEDIA_SBC_validation-rules.yaml&quot;
-    },
-    {
-      &quot;path&quot;: &quot;/components/filecr/v1/templates/yaml/SBC_146_SDP_PROFILE_MODIFICATION_&amp;_TG_MODIFICATION_IN_ISBC_validation-rules.yaml&quot;,
-      &quot;size&quot;: &quot;73841&quot;,
-      &quot;name&quot;: &quot;templates/yaml/SBC_146_SDP_PROFILE_MODIFICATION_&amp;_TG_MODIFICATION_IN_ISBC_validation-rules.yaml&quot;
-    },
-    {
-      &quot;path&quot;: &quot;/components/filecr/v1/templates/yaml/SBC_147_IP_POI_CONFIG_ISBC_validation-rules.yaml&quot;,
-      &quot;size&quot;: &quot;184218&quot;,
-      &quot;name&quot;: &quot;templates/yaml/SBC_147_IP_POI_CONFIG_ISBC_validation-rules.yaml&quot;
-    },
-    {
-      &quot;path&quot;: &quot;/components/filecr/v1/templates/yaml/SBC_147_IP_POI_CONFIG_ISBC_validation-rules_phase1.yaml&quot;,
-      &quot;size&quot;: &quot;156458&quot;,
-      &quot;name&quot;: &quot;templates/yaml/SBC_147_IP_POI_CONFIG_ISBC_validation-rules_phase1.yaml&quot;
-    },
-    {
-      &quot;path&quot;: &quot;/components/filecr/v1/templates/yaml/SBC_156_ENUM_PROFILE_AND_TRUNKGROUP_CREATION_IN_PSBC_validation-rules.yaml&quot;,
-      &quot;size&quot;: &quot;75383&quot;,
-      &quot;name&quot;: &quot;templates/yaml/SBC_156_ENUM_PROFILE_AND_TRUNKGROUP_CREATION_IN_PSBC_validation-rules.yaml&quot;
-    },
-    {
-      &quot;path&quot;: &quot;/components/filecr/v1/templates/yaml/SBC_19_FEPHFLOWPOLICY_AND_SG_PROFILE_PARAMETER_MODIFICATION_validation-rules.yaml&quot;,
-      &quot;size&quot;: &quot;178611&quot;,
-      &quot;name&quot;: &quot;templates/yaml/SBC_19_FEPHFLOWPOLICY_AND_SG_PROFILE_PARAMETER_MODIFICATION_validation-rules.yaml&quot;
-    },
-    {
-      &quot;path&quot;: &quot;/components/filecr/v1/templates/yaml/SBC_2_ADDITION_DELETION_IN_EMERGENCY_URI_IN_ASBC_validation-rules.yaml&quot;,
-      &quot;size&quot;: &quot;7992&quot;,
-      &quot;name&quot;: &quot;templates/yaml/SBC_2_ADDITION_DELETION_IN_EMERGENCY_URI_IN_ASBC_validation-rules.yaml&quot;
-    },
-    {
-      &quot;path&quot;: &quot;/components/filecr/v1/templates/yaml/SBC_33_LIC_LOADING_IN_SBC_validation-rules.yaml&quot;,
-      &quot;size&quot;: &quot;3690&quot;,
-      &quot;name&quot;: &quot;templates/yaml/SBC_33_LIC_LOADING_IN_SBC_validation-rules.yaml&quot;
-    },
-    {
-      &quot;path&quot;: &quot;/components/filecr/v1/templates/yaml/SBC_37_DRA_LINK_SHIFTING_GUI_validation-rules.yaml&quot;,
-      &quot;size&quot;: &quot;48678&quot;,
-      &quot;name&quot;: &quot;templates/yaml/SBC_37_DRA_LINK_SHIFTING_GUI_validation-rules.yaml&quot;
-    },
-    {
-      &quot;path&quot;: &quot;/components/filecr/v1/templates/yaml/SBC_5_ADDITION_DELETION_MODIFICATION_OF_SIP_FILTER_MM_IN_SBC_validation-rules.yaml&quot;,
-      &quot;size&quot;: &quot;37022&quot;,
-      &quot;name&quot;: &quot;templates/yaml/SBC_5_ADDITION_DELETION_MODIFICATION_OF_SIP_FILTER_MM_IN_SBC_validation-rules.yaml&quot;
-    },
-    {
-      &quot;path&quot;: &quot;/components/filecr/v1/templates/yaml/SBC_96_FIXED_LINE_CONFIGURATION_IN_SBC_validation-rules.yaml&quot;,
-      &quot;size&quot;: &quot;146450&quot;,
-      &quot;name&quot;: &quot;templates/yaml/SBC_96_FIXED_LINE_CONFIGURATION_IN_SBC_validation-rules.yaml&quot;
-    },
-    {
-      &quot;path&quot;: &quot;/components/filecr/v1/templates/yaml/SBC_FIXED_LINE_CONFIGURATION_validation-rules.yaml&quot;,
-      &quot;size&quot;: &quot;108888&quot;,
-      &quot;name&quot;: &quot;templates/yaml/SBC_FIXED_LINE_CONFIGURATION_validation-rules.yaml&quot;
-    },
-    {
-      &quot;path&quot;: &quot;/components/filecr/v1/bin/.packinglist&quot;,
-      &quot;size&quot;: &quot;2172&quot;,
-      &quot;name&quot;: &quot;bin/.packinglist&quot;
-    },
-    {
-      &quot;path&quot;: &quot;/components/filecr/v1/bin/configure&quot;,
-      &quot;size&quot;: &quot;399&quot;,
-      &quot;name&quot;: &quot;bin/configure&quot;
-    },
-    {
-      &quot;path&quot;: &quot;/components/filecr/v1/bin/java_filecr_any_v1.ksh&quot;,
-      &quot;size&quot;: &quot;858&quot;,
-      &quot;name&quot;: &quot;bin/java_filecr_any_v1.ksh&quot;
-    },
-    {
-      &quot;path&quot;: &quot;/components/filecr/v1/bin/validate&quot;,
-      &quot;size&quot;: &quot;10&quot;,
-      &quot;name&quot;: &quot;bin/validate&quot;
-    },
-    {
-      &quot;path&quot;: &quot;/components/filecr/v1/classes/macro_FILECR_ANY_V1.class&quot;,
-      &quot;size&quot;: &quot;12516&quot;,
-      &quot;name&quot;: &quot;classes/macro_FILECR_ANY_V1.class&quot;
+      &quot;path&quot;: &quot;/components/filecr/v1/templates/html/validation-report-template.html&quot;,
+      &quot;size&quot;: &quot;7368&quot;,
+      &quot;name&quot;: &quot;templates/html/validation-report-template.html&quot;
     },
     {
       &quot;path&quot;: &quot;/components/filecr/v1/classes/ilink/nei/filecr/any/CIQUtilities.class&quot;,
@@ -875,11 +658,170 @@ Content-Length: 17153
     {
       &quot;path&quot;: &quot;/components/filecr/v1/classes/ilink/nei/filecr/any/SimFileCrReportRunner.class&quot;,
       &quot;size&quot;: &quot;4947&quot;,
-      &quot;name&quot;: &quot;classes/ilink/nei/filecr/any/SimFileCrReportR
+      &quot;name&quot;: &quot;classes/ilink/nei/filecr/any/SimFileCrReportRunner.class&quot;
+    },
+    {
+      &quot;path&quot;: &quot;/components/filecr/v1/classes/ilink/nei/filecr/any/Utilities.class&quot;,
+      &quot;size&quot;: &quot;4461&quot;,
+      &quot;name&quot;: &quot;classes/ilink/nei/filecr/any/Utilities.class&quot;
+    },
+    {
+      &quot;path&quot;: &quot;/components/filecr/v1/classes/macro_FILECR_ANY_V1.class&quot;,
+      &quot;size&quot;: &quot;12516&quot;,
+      &quot;name&quot;: &quot;classes/macro_FILECR_ANY_V1.class&quot;
+    },
+    {
+      &quot;path&quot;: &quot;/components/filecr/v1/bin/.packinglist&quot;,
+      &quot;size&quot;: &quot;2172&quot;,
+      &quot;name&quot;: &quot;bin/.packinglist&quot;
+    },
+    {
+      &quot;path&quot;: &quot;/components/filecr/v1/bin/configure&quot;,
+      &quot;size&quot;: &quot;399&quot;,
+      &quot;name&quot;: &quot;bin/configure&quot;
+    },
+    {
+      &quot;path&quot;: &quot;/components/filecr/v1/bin/java_filecr_any_v1.ksh&quot;,
+      &quot;size&quot;: &quot;858&quot;,
+      &quot;name&quot;: &quot;bin/java_filecr_any_v1.ksh&quot;
+    },
+    {
+      &quot;path&quot;: &quot;/components/filecr/v1/bin/validate&quot;,
+      &quot;size&quot;: &quot;10&quot;,
+      &quot;name&quot;: &quot;bin/validate&quot;
+    },
+    {
+      &quot;path&quot;: &quot;/components/filecr/v1/config/.mds.rc&quot;,
+      &quot;size&quot;: &quot;1517&quot;,
+      &quot;name&quot;: &quot;config/.mds.rc&quot;
+    },
+    {
+      &quot;path&quot;: &quot;/components/filecr/v1/config/error_codes.txt&quot;,
+      &quot;size&quot;: &quot;2442&quot;,
+      &quot;name&quot;: &quot;config/error_codes.txt&quot;
+    },
+    {
+      &quot;path&quot;: &quot;/components/filecr/v1/config/mds.rc&quot;,
+      &quot;size&quot;: &quot;1580&quot;,
+      &quot;name&quot;: &quot;config/mds.rc&quot;
+    },
+    {
+      &quot;path&quot;: &quot;/components/filecr/v1/config/mds.rc.add&quot;,
+      &quot;size&quot;: &quot;535&quot;,
+      &quot;name&quot;: &quot;config/mds.rc.add&quot;
+    },
+    {
+      &quot;path&quot;: &quot;/components/filecr/v1/config/phase_codes.txt&quot;,
+      &quot;size&quot;: &quot;5034&quot;,
+      &quot;name&quot;: &quot;config/phase_codes.txt&quot;
+    },
+    {
+      &quot;path&quot;: &quot;/components/filecr/v1/config/supp_codes.txt&quot;,
+      &quot;size&quot;: &quot;19198&quot;,
+      &quot;name&quot;: &quot;config/supp_codes.txt&quot;
+    },
+    {
+      &quot;path&quot;: &quot;/components/filecr/v1/docs/word/InstantLink_NEI_for_NOKIA_FILECR_ANY_V1_Functional_Description.docx&quot;,
+      &quot;size&quot;: &quot;217288&quot;,
+      &quot;name&quot;: &quot;docs/word/InstantLink_NEI_for_NOKIA_FILECR_ANY_V1_Functional_Description.docx&quot;
+    },
+    {
+      &quot;path&quot;: &quot;/components/filecr/v1/docs/word/InstantLink_NEI_for_NOKIA_FILECR_ANY_V1_Installation_Guide.docx&quot;,
+      &quot;size&quot;: &quot;118539&quot;,
+      &quot;name&quot;: &quot;docs/word/InstantLink_NEI_for_NOKIA_FILECR_ANY_V1_Installation_Guide.docx&quot;
+    },
+    {
+      &quot;path&quot;: &quot;/components/filecr/v1/docs/word/InstantLink_NEI_for_NOKIA_FILECR_ANY_V1_Release_Notes.docx&quot;,
+      &quot;size&quot;: &quot;98892&quot;,
+      &quot;name&quot;: &quot;docs/word/InstantLink_NEI_for_NOKIA_FILECR_ANY_V1_Release_Notes.docx&quot;
+    },
+    {
+      &quot;path&quot;: &quot;/components/filecr/v1/docs/word/InstantLink_NEI_for_NOKIA_FILECR_ANY_V1_Test_Plan.docx&quot;,
+      &quot;size&quot;: &quot;104735&quot;,
+      &quot;name&quot;: &quot;docs/word/InstantLink_NEI_for_NOKIA_FILECR_ANY_V1_Test_Plan.docx&quot;
+    },
+    {
+      &quot;path&quot;: &quot;/components/filecr/v1/docs/word/InstantLink_NEI_for_NOKIA_FILECR_ANY_V1_Test_Report.docx&quot;,
+      &quot;size&quot;: &quot;104946&quot;,
+      &quot;name&quot;: &quot;docs/word/InstantLink_NEI_for_NOKIA_FILECR_ANY_V1_Test_Report.docx&quot;
+    },
+    {
+      &quot;path&quot;: &quot;/components/filecr/v1/lib/ciq-processor-1.0.3-cli.jar&quot;,
+      &quot;size&quot;: &quot;22376087&quot;,
+      &quot;name&quot;: &quot;lib/ciq-processor-1.0.3-cli.jar&quot;
+    },
+    {
+      &quot;path&quot;: &quot;/components/filecr/v1/lib/cli-parser-1.0.0.jar&quot;,
+      &quot;size&quot;: &quot;19741&quot;,
+      &quot;name&quot;: &quot;lib/cli-parser-1.0.0.jar&quot;
+    },
+    {
+      &quot;path&quot;: &quot;/components/filecr/v1/lib/execution-report-generator-1.0.2-cli.jar&quot;,
+      &quot;size&quot;: &quot;3023711&quot;,
+      &quot;name&quot;: &quot;lib/execution-report-generator-1.0.2-cli.jar&quot;
+    },
+    {
+      &quot;path&quot;: &quot;/components/filecr/v1/lib/java_macroserver-JDK8.jar&quot;,
+      &quot;size&quot;: &quot;52436&quot;,
+      &quot;name&quot;: &quot;lib/java_macroserver-JDK8.jar&quot;
+    },
+    {
+      &quot;path&quot;: &quot;/components/filecr/v1/lib/json-20210307.jar&quot;,
+      &quot;size&quot;: &quot;69710&quot;,
+      &quot;name&quot;: &quot;lib/json-20210307.jar&quot;
+    },
+    {
+      &quot;path&quot;: &quot;/components/filecr/v1/macro_FILECR_ANY_V1.jar&quot;,
+      &quot;size&quot;: &quot;26907&quot;,
+      &quot;name&quot;: &quot;macro_FILECR_ANY_V1.jar&quot;
+    },
+    {
+      &quot;path&quot;: &quot;/components/filecr/v1/script/oracle/drop_nemo.sql&quot;,
+      &quot;size&quot;: &quot;556&quot;,
+      &quot;name&quot;: &quot;script/oracle/drop_nemo.sql&quot;
+    },
+    {
+      &quot;path&quot;: &quot;/components/filecr/v1/script/common_functions.ksh&quot;,
+      &quot;size&quot;: &quot;1459&quot;,
+      &quot;name&quot;: &quot;script/common_functions.ksh&quot;
+    },
+    {
+      &quot;path&quot;: &quot;/components/filecr/v1/script/drop_nemo.ksh&quot;,
+      &quot;size&quot;: &quot;5041&quot;,
+      &quot;name&quot;: &quot;script/drop_nemo.ksh&quot;
+    },
+    {
+      &quot;path&quot;: &quot;/components/filecr/v1/script/il_nemo_functions.ksh&quot;,
+      &quot;size&quot;: &quot;21144&quot;,
+      &quot;name&quot;: &quot;script/il_nemo_functions.ksh&quot;
+    },
+    {
+      &quot;path&quot;: &quot;/components/filecr/v1/script/nei_info.txt&quot;,
+      &quot;size&quot;: &quot;92&quot;,
+      &quot;name&quot;: &quot;script/nei_info.txt&quot;
+    },
+    {
+      &quot;path&quot;: &quot;/components/filecr/v1/script/nemo_info.txt&quot;,
+      &quot;size&quot;: &quot;0&quot;,
+      &quot;name&quot;: &quot;script/nemo_info.txt&quot;
+    },
+    {
+      &quot;path&quot;: &quot;/components/filecr/v1/script/nemo_parameters.properties&quot;,
+      &quot;size&quot;: &quot;8863&quot;,
+      &quot;name&quot;: &quot;script/nemo_parameters.properties&quot;
+    },
+    {
+      &quot;path&quot;: &quot;/components/filecr/v1/script/nemo_setup.ksh&quot;,
+      &quot;size&quot;: &quot;21215&quot;,
+      &quot;name&quot;: &quot;script/nemo_setup.ksh&quot;
+    },
+    {
+      &quot;path&quot;: &quot;/components/filecr/v1/script/nemo_setup.log&quot;,
+      &quot;size&quot;:
 … (204 more characters)</pre></div></div></details><details class="hit"><summary>
-<span class="n">13</span><span class="t">16:30:29.735</span><span class="m m-PUT">PUT</span>
+<span class="n">9</span><span class="t">17:18:52.055</span><span class="m m-PUT">PUT</span>
 <code class="u">/cr/api/projects/CR_AUTO/components/filecr/versions/1</code><span class="s ok">200</span>
-<span class="d">23 ms · ↑ 2.1 KB · ↓ 30 B</span>
+<span class="d">109 ms · ↑ 2.1 KB · ↓ 30 B</span>
 <span class="p">Save the definition: NEI settings, GRC ({dir} = this version&#x27;s folder), the two actions</span></summary>
 <div class="io"><div><h3>Request</h3><pre>PUT /cr/api/projects/CR_AUTO/components/filecr/versions/1 HTTP/1.1
 Host: localhost:8080
@@ -1027,9 +969,9 @@ Content-Length: 30
   &quot;problems&quot;: [],
   &quot;saved&quot;: true
 }</pre></div></div></details><details class="hit"><summary>
-<span class="n">14</span><span class="t">16:30:29.759</span><span class="m m-POST">POST</span>
+<span class="n">10</span><span class="t">17:18:52.165</span><span class="m m-POST">POST</span>
 <code class="u">/cr/api/projects/CR_AUTO/components/filecr/versions/1/try</code><span class="s ok">200</span>
-<span class="d">1912 ms · ↑ 289 B · ↓ 12.5 KB</span>
+<span class="d">23886 ms · ↑ 289 B · ↓ 12.5 KB</span>
 <span class="p">Try it: GENERATE_CR_CIQ_TEMPLATE once</span></summary>
 <div class="io"><div><h3>Request</h3><pre>POST /cr/api/projects/CR_AUTO/components/filecr/versions/1/try HTTP/1.1
 Host: localhost:8080
@@ -1050,25 +992,25 @@ Authorization: Basic *** (masked)
   }
 }</pre></div><div><h3>Response</h3><pre>HTTP/1.1 200
 Content-Type: application/json; charset=utf-8
-Content-Length: 12806
+Content-Length: 12807
 
 {
-  &quot;execution_id&quot;: &quot;3Nn4OrCkbzyaWRRo6wvPzp&quot;,
+  &quot;execution_id&quot;: &quot;3p3lrt2CTtqpVvuLwHaSfH&quot;,
   &quot;state&quot;: &quot;SUCCESS&quot;,
   &quot;result&quot;: {
     &quot;component&quot;: &quot;NEI&quot;,
     &quot;status&quot;: &quot;0&quot;,
     &quot;statusText&quot;: &quot;SUCCESS&quot;,
     &quot;message&quot;: &quot;macro_FILECR_ANY_V1 task OK: SUCCESS&quot;,
-    &quot;startedAt&quot;: &quot;2026-10-29T11:00:30.210+0000&quot;,
-    &quot;durationMs&quot;: &quot;951&quot;,
+    &quot;startedAt&quot;: &quot;2026-10-29T11:49:10.949+0000&quot;,
+    &quot;durationMs&quot;: &quot;2750&quot;,
     &quot;request&quot;: {
       &quot;REQ_TYPE&quot;: &quot;1&quot;,
       &quot;NODE_TYPE&quot;: &quot;PGW_RDS&quot;,
       &quot;ACTIVITY_NAME&quot;: &quot;1051_SUBSCRIBER_PROFILE_CONFIGURATION&quot;,
       &quot;SUB_ACTIVITY_NAME&quot;: &quot;1051_SUBSCRIBER_PROFILE_CONFIGURATION&quot;,
       &quot;NODE_VERSION&quot;: &quot;ALL&quot;,
-      &quot;CIQ_FILE_LOCATION&quot;: &quot;/tmp/13AhiLj9HfK1371cHg7QzE/./try/&quot;,
+      &quot;CIQ_FILE_LOCATION&quot;: &quot;/tmp/6vUYjnoiieiw8BSUKAmI4t/./try/&quot;,
       &quot;REQ_ID&quot;: &quot;1&quot;,
       &quot;ne_type&quot;: &quot;FILECR&quot;,
       &quot;product_name&quot;: &quot;ANY&quot;,
@@ -1087,9 +1029,9 @@ Content-Length: 12806
   },
   &quot;log&quot;: &quot;&lt;84 lines of the component&#x27;s run log, left out of this API log&gt;&quot;
 }</pre></div></div></details><details class="hit"><summary>
-<span class="n">15</span><span class="t">16:30:31.671</span><span class="m m-POST">POST</span>
+<span class="n">11</span><span class="t">17:19:16.052</span><span class="m m-POST">POST</span>
 <code class="u">/cr/api/projects/CR_AUTO/components/filecr/versions/1/publish</code><span class="s ok">200</span>
-<span class="d">110 ms · ↑ 0 B · ↓ 88 B</span>
+<span class="d">550 ms · ↑ 0 B · ↓ 88 B</span>
 <span class="p">Publish v1</span></summary>
 <div class="io"><div><h3>Request</h3><pre>POST /cr/api/projects/CR_AUTO/components/filecr/versions/1/publish HTTP/1.1
 Host: localhost:8080
@@ -1102,9 +1044,9 @@ Content-Length: 88
 {
   &quot;message&quot;: &quot;Version 1 of filecr is published; pipelines published from now on use it.&quot;
 }</pre></div></div></details><details class="hit"><summary>
-<span class="n">16</span><span class="t">16:30:31.782</span><span class="m m-GET">GET</span>
+<span class="n">12</span><span class="t">17:19:16.603</span><span class="m m-GET">GET</span>
 <code class="u">/api/v1/main/namespaces/cr_auto/kv/COMPONENT_FILECR</code><span class="s ok">200</span>
-<span class="d">8 ms · ↑ 0 B · ↓ 101 B</span>
+<span class="d">38 ms · ↑ 0 B · ↓ 101 B</span>
 <span class="p">KV COMPONENT_FILECR, kept by the gateway: the published version&#x27;s folder</span></summary>
 <div class="io"><div><h3>Request</h3><pre>GET /api/v1/main/namespaces/cr_auto/kv/COMPONENT_FILECR HTTP/1.1
 Host: localhost:8080
@@ -1117,12 +1059,12 @@ Content-Length: 101
 {
   &quot;type&quot;: &quot;STRING&quot;,
   &quot;value&quot;: &quot;components/filecr/v1&quot;,
-  &quot;revision&quot;: 5,
-  &quot;updated&quot;: &quot;2026-10-29T11:00:31.776893Z&quot;
+  &quot;revision&quot;: 7,
+  &quot;updated&quot;: &quot;2026-10-29T11:49:16.566796Z&quot;
 }</pre></div></div></details><details class="hit"><summary>
-<span class="n">17</span><span class="t">16:30:31.791</span><span class="m m-GET">GET</span>
+<span class="n">13</span><span class="t">17:19:16.642</span><span class="m m-GET">GET</span>
 <code class="u">/api/v1/main/namespaces/cr_auto/files?path=%2Fcomponents%2Ffilecr%2Fv1%2Fcomponent.properties</code><span class="s ok">200</span>
-<span class="d">8 ms · ↑ 0 B · ↓ 1.1 KB</span>
+<span class="d">32 ms · ↑ 0 B · ↓ 1.1 KB</span>
 <span class="p">The component.properties the gateway generated</span></summary>
 <div class="io"><div><h3>Request</h3><pre>GET /api/v1/main/namespaces/cr_auto/files?path=%2Fcomponents%2Ffilecr%2Fv1%2Fcomponent.properties HTTP/1.1
 Host: localhost:8080
@@ -1132,7 +1074,7 @@ Authorization: Basic *** (masked)
 Content-Type: application/octet-stream
 
 #component filecr - written by the gateway from the Process designer; edit it there
-#Thu Oct 29 11:00:31 UTC 2026
+#Thu Oct 29 11:49:16 UTC 2026
 component.home=components/filecr/v1
 component.kind=WRAPPED
 component.name=filecr
@@ -1149,9 +1091,9 @@ nei.filecr.grc.properties_path=${WORKDIR}/components/filecr/v1/templates
 nei.filecr.grc.single_node_execution_summary_report_template_path=${WORKDIR}/components/filecr/v1/templates/html/mop_execution_single_node_report_template.html
 nei.filecr.grc.yaml_path=${WORKDIR}/components/filecr/v1/templates/yaml
 </pre></div></div></details><details class="hit"><summary>
-<span class="n">18</span><span class="t">16:30:31.800</span><span class="m m-POST">POST</span>
+<span class="n">14</span><span class="t">17:19:16.675</span><span class="m m-POST">POST</span>
 <code class="u">/api/v1/main/flows</code><span class="s ok">200</span>
-<span class="d">30 ms · ↑ 4.3 KB · ↓ 9.1 KB</span>
+<span class="d">321 ms · ↑ 4.3 KB · ↓ 9.1 KB</span>
 <span class="p">Create flow filecr_template</span></summary>
 <div class="io"><div><h3>Request</h3><pre>POST /api/v1/main/flows HTTP/1.1
 Host: localhost:8080
@@ -1284,12 +1226,12 @@ finally:
       - mkdir -p logs &amp;&amp; cp &quot;$ORDER_DIR&quot;/logs/* logs/ 2&gt;/dev/null || true
 </pre></div><div><h3>Response</h3><pre>HTTP/1.1 200
 Content-Type: application/json
-Content-Length: 9323
+Content-Length: 9324
 
 {
   &quot;id&quot;: &quot;filecr_template&quot;,
   &quot;namespace&quot;: &quot;cr_auto&quot;,
-  &quot;revision&quot;: 7,
+  &quot;revision&quot;: 11,
   &quot;description&quot;: &quot;New order with the blank CIQ template (FileCR component, action GENERATE_CR_CIQ_TEMPLATE). Written by build_cr_auto.py.&quot;,
   &quot;inputs&quot;: [
     {
@@ -1433,9 +1375,9 @@ Content-Length: 9323
     }
   ]
 }</pre></div></div></details><details class="hit"><summary>
-<span class="n">19</span><span class="t">16:30:31.831</span><span class="m m-POST">POST</span>
+<span class="n">15</span><span class="t">17:19:16.997</span><span class="m m-POST">POST</span>
 <code class="u">/api/v1/main/flows</code><span class="s ok">200</span>
-<span class="d">38 ms · ↑ 4.3 KB · ↓ 9.0 KB</span>
+<span class="d">240 ms · ↑ 4.3 KB · ↓ 9.0 KB</span>
 <span class="p">Create flow filecr_validation</span></summary>
 <div class="io"><div><h3>Request</h3><pre>POST /api/v1/main/flows HTTP/1.1
 Host: localhost:8080
@@ -1559,12 +1501,12 @@ finally:
       - mkdir -p logs &amp;&amp; cp &quot;$ORDER_DIR&quot;/logs/* logs/ 2&gt;/dev/null || true
 </pre></div><div><h3>Response</h3><pre>HTTP/1.1 200
 Content-Type: application/json
-Content-Length: 9200
+Content-Length: 9201
 
 {
   &quot;id&quot;: &quot;filecr_validation&quot;,
   &quot;namespace&quot;: &quot;cr_auto&quot;,
-  &quot;revision&quot;: 7,
+  &quot;revision&quot;: 11,
   &quot;description&quot;: &quot;Validates the filled CIQ of an order (FileCR component, action CR_CIQ_PROCESSOR). Written by build_cr_auto.py.&quot;,
   &quot;inputs&quot;: [
     {
@@ -1691,9 +1633,9 @@ Content-Length: 9200
     }
   ]
 }</pre></div></div></details><details class="hit"><summary>
-<span class="n">20</span><span class="t">16:30:31.870</span><span class="m m-GET">GET</span>
+<span class="n">16</span><span class="t">17:19:17.238</span><span class="m m-GET">GET</span>
 <code class="u">/cr/api/processes/CR_AUTO/versions/1</code><span class="s ok">200</span>
-<span class="d">23 ms · ↑ 0 B · ↓ 182 B</span>
+<span class="d">19 ms · ↑ 0 B · ↓ 182 B</span>
 <span class="p">The draft v1 (its revision)</span></summary>
 <div class="io"><div><h3>Request</h3><pre>GET /cr/api/processes/CR_AUTO/versions/1 HTTP/1.1
 Host: localhost:8080
@@ -1717,9 +1659,9 @@ Content-Length: 182
   ],
   &quot;compiled&quot;: {}
 }</pre></div></div></details><details class="hit"><summary>
-<span class="n">21</span><span class="t">16:30:31.893</span><span class="m m-PUT">PUT</span>
+<span class="n">17</span><span class="t">17:19:17.257</span><span class="m m-PUT">PUT</span>
 <code class="u">/cr/api/processes/CR_AUTO/versions/1</code><span class="s ok">200</span>
-<span class="d">28 ms · ↑ 1.1 KB · ↓ 30 B</span>
+<span class="d">31 ms · ↑ 1.1 KB · ↓ 30 B</span>
 <span class="p">Save the definition: two steps running the two flows</span></summary>
 <div class="io"><div><h3>Request</h3><pre>PUT /cr/api/processes/CR_AUTO/versions/1 HTTP/1.1
 Host: localhost:8080
@@ -1813,9 +1755,9 @@ Content-Length: 30
   &quot;problems&quot;: [],
   &quot;saved&quot;: true
 }</pre></div></div></details><details class="hit"><summary>
-<span class="n">22</span><span class="t">16:30:31.922</span><span class="m m-POST">POST</span>
+<span class="n">18</span><span class="t">17:19:17.289</span><span class="m m-POST">POST</span>
 <code class="u">/cr/api/processes/CR_AUTO/versions/1/publish</code><span class="s ok">200</span>
-<span class="d">99 ms · ↑ 0 B · ↓ 68 B</span>
+<span class="d">339 ms · ↑ 0 B · ↓ 91 B</span>
 <span class="p">Publish v1</span></summary>
 <div class="io"><div><h3>Request</h3><pre>POST /cr/api/processes/CR_AUTO/versions/1/publish HTTP/1.1
 Host: localhost:8080
@@ -1823,14 +1765,15 @@ Accept: application/json
 Authorization: Basic *** (masked)
 </pre></div><div><h3>Response</h3><pre>HTTP/1.1 200
 Content-Type: application/json; charset=utf-8
-Content-Length: 68
+Content-Length: 91
 
 {
+  &quot;platform_updated&quot;: [],
   &quot;message&quot;: &quot;Version 1 of CR_AUTO is published; new orders use it.&quot;
 }</pre></div></div></details><details class="hit"><summary>
-<span class="n">23</span><span class="t">16:30:32.022</span><span class="m m-GET">GET</span>
+<span class="n">19</span><span class="t">17:19:17.628</span><span class="m m-GET">GET</span>
 <code class="u">/cr/api/processes/CR_AUTO/start</code><span class="s ok">200</span>
-<span class="d">8 ms · ↑ 0 B · ↓ 639 B</span>
+<span class="d">23 ms · ↑ 0 B · ↓ 639 B</span>
 <span class="p">What a new order can start with</span></summary>
 <div class="io"><div><h3>Request</h3><pre>GET /cr/api/processes/CR_AUTO/start HTTP/1.1
 Host: localhost:8080
@@ -1878,15 +1821,15 @@ Content-Length: 639
       ]
     }
   ],
+  &quot;can_execute&quot;: true,
   &quot;process&quot;: {
-    &quot;project&quot;: &quot;CR_AUTO&quot;,
-    &quot;version&quot;: 1
-  },
-  &quot;can_execute&quot;: true
+    &quot;version&quot;: 1,
+    &quot;project&quot;: &quot;CR_AUTO&quot;
+  }
 }</pre></div></div></details><h2>Test run</h2><p class='lead'>The hits that ran one order through the configured process, to prove it works.</p><details class="hit"><summary>
-<span class="n">24</span><span class="t">16:30:32.030</span><span class="m m-POST">POST</span>
+<span class="n">20</span><span class="t">17:19:17.652</span><span class="m m-POST">POST</span>
 <code class="u">/cr/api/processes/CR_AUTO/start/new_order</code><span class="s ok">201</span>
-<span class="d">184 ms · ↑ 112 B · ↓ 114 B</span>
+<span class="d">271 ms · ↑ 112 B · ↓ 114 B</span>
 <span class="p">Start a new order: the blank CIQ template</span></summary>
 <div class="io"><div><h3>Request</h3><pre>POST /cr/api/processes/CR_AUTO/start/new_order HTTP/1.1
 Host: localhost:8080
@@ -1905,32 +1848,32 @@ Content-Type: application/json; charset=utf-8
 Content-Length: 114
 
 {
-  &quot;execution_id&quot;: &quot;7RMQmBt6LmcexcaEHY31LG&quot;,
+  &quot;execution_id&quot;: &quot;1KDwZd07GrlkfvKXR5ZJ3J&quot;,
   &quot;namespace&quot;: &quot;cr_auto&quot;,
   &quot;flow_id&quot;: &quot;filecr_template&quot;,
   &quot;step&quot;: &quot;new_order&quot;
 }</pre></div></div></details><details class="hit"><summary>
-<span class="n">25</span><span class="t">16:30:32.215</span><span class="m m-GET">GET</span>
-<code class="u">/api/v1/main/executions/7RMQmBt6LmcexcaEHY31LG</code><span class="s ok">200</span>
-<span class="d">37 ms · ↑ 0 B · ↓ 7.3 KB ×3 (until 16:30:38.285, last answer shown)</span>
+<span class="n">21</span><span class="t">17:19:17.923</span><span class="m m-GET">GET</span>
+<code class="u">/api/v1/main/executions/1KDwZd07GrlkfvKXR5ZJ3J</code><span class="s ok">200</span>
+<span class="d">20 ms · ↑ 0 B · ↓ 7.3 KB ×4 (until 17:19:27.030, last answer shown)</span>
 <span class="p">The template execution</span></summary>
-<div class="io"><div><h3>Request</h3><pre>GET /api/v1/main/executions/7RMQmBt6LmcexcaEHY31LG HTTP/1.1
+<div class="io"><div><h3>Request</h3><pre>GET /api/v1/main/executions/1KDwZd07GrlkfvKXR5ZJ3J HTTP/1.1
 Host: localhost:8080
 Accept: application/json
 Authorization: Basic *** (masked)
 </pre></div><div><h3>Response</h3><pre>HTTP/1.1 200
 Content-Type: application/json
-Content-Length: 7430
+Content-Length: 7438
 
 {
-  &quot;id&quot;: &quot;7RMQmBt6LmcexcaEHY31LG&quot;,
+  &quot;id&quot;: &quot;1KDwZd07GrlkfvKXR5ZJ3J&quot;,
   &quot;namespace&quot;: &quot;cr_auto&quot;,
   &quot;flowId&quot;: &quot;filecr_template&quot;,
   &quot;state&quot;: &quot;SUCCESS&quot;,
   &quot;labels&quot;: [
     {
       &quot;key&quot;: &quot;req_id&quot;,
-      &quot;value&quot;: &quot;120&quot;
+      &quot;value&quot;: &quot;122&quot;
     },
     {
       &quot;key&quot;: &quot;process&quot;,
@@ -1946,7 +1889,7 @@ Content-Length: 7430
     },
     {
       &quot;key&quot;: &quot;system.correlationId&quot;,
-      &quot;value&quot;: &quot;7RMQmBt6LmcexcaEHY31LG&quot;
+      &quot;value&quot;: &quot;1KDwZd07GrlkfvKXR5ZJ3J&quot;
     },
     {
       &quot;key&quot;: &quot;project&quot;,
@@ -1962,7 +1905,7 @@ Content-Length: 7430
     },
     {
       &quot;key&quot;: &quot;order_id&quot;,
-      &quot;value&quot;: &quot;120&quot;
+      &quot;value&quot;: &quot;122&quot;
     },
     {
       &quot;key&quot;: &quot;system.from&quot;,
@@ -2005,11 +1948,11 @@ Content-Length: 7430
   ],
   &quot;…&quot;: &quot;(the rest of the execution - inputs, outputs, task logs - left out of this log)&quot;
 }</pre></div></div></details><details class="hit"><summary>
-<span class="n">26</span><span class="t">16:30:38.309</span><span class="m m-GET">GET</span>
-<code class="u">/cr/api/orders/120/next</code><span class="s ok">200</span>
-<span class="d">47 ms · ↑ 0 B · ↓ 410 B</span>
+<span class="n">22</span><span class="t">17:19:27.378</span><span class="m m-GET">GET</span>
+<code class="u">/cr/api/orders/122/next</code><span class="s ok">200</span>
+<span class="d">849 ms · ↑ 0 B · ↓ 410 B</span>
 <span class="p">What the order offers next</span></summary>
-<div class="io"><div><h3>Request</h3><pre>GET /cr/api/orders/120/next HTTP/1.1
+<div class="io"><div><h3>Request</h3><pre>GET /cr/api/orders/122/next HTTP/1.1
 Host: localhost:8080
 Accept: application/json
 Authorization: Basic *** (masked)
@@ -2018,15 +1961,15 @@ Content-Type: application/json; charset=utf-8
 Content-Length: 410
 
 {
-  &quot;order_id&quot;: &quot;120&quot;,
+  &quot;order_id&quot;: &quot;122&quot;,
   &quot;child_id&quot;: null,
   &quot;continuable&quot;: true,
   &quot;reason&quot;: null,
   &quot;can_execute&quot;: true,
   &quot;process&quot;: {
     &quot;version&quot;: 1,
-    &quot;state&quot;: &quot;PUBLISHED&quot;,
-    &quot;project&quot;: &quot;CR_AUTO&quot;
+    &quot;project&quot;: &quot;CR_AUTO&quot;,
+    &quot;state&quot;: &quot;PUBLISHED&quot;
   },
   &quot;activity&quot;: null,
   &quot;auto_starts&quot;: [],
@@ -2048,11 +1991,11 @@ Content-Length: 410
   ],
   &quot;decisions&quot;: []
 }</pre></div></div></details><details class="hit"><summary>
-<span class="n">27</span><span class="t">16:30:38.359</span><span class="m m-POST">POST</span>
-<code class="u">/cr/api/orders/120/steps/validate</code><span class="s ok">201</span>
-<span class="d">196 ms · ↑ 11.3 KB · ↓ 114 B</span>
+<span class="n">23</span><span class="t">17:19:28.235</span><span class="m m-POST">POST</span>
+<code class="u">/cr/api/orders/122/steps/validate</code><span class="s ok">201</span>
+<span class="d">475 ms · ↑ 11.3 KB · ↓ 115 B</span>
 <span class="p">Validate a filled CIQ for the order</span></summary>
-<div class="io"><div><h3>Request</h3><pre>POST /cr/api/orders/120/steps/validate HTTP/1.1
+<div class="io"><div><h3>Request</h3><pre>POST /cr/api/orders/122/steps/validate HTTP/1.1
 Host: localhost:8080
 Accept: application/json
 Content-Type: application/json
@@ -2068,35 +2011,35 @@ Authorization: Basic *** (masked)
   }
 }</pre></div><div><h3>Response</h3><pre>HTTP/1.1 201
 Content-Type: application/json; charset=utf-8
-Content-Length: 114
+Content-Length: 115
 
 {
-  &quot;execution_id&quot;: &quot;Wo1fR91QPzten6WTohs7A&quot;,
+  &quot;execution_id&quot;: &quot;3zpWjJfUN4aUpmozO8TGY3&quot;,
   &quot;namespace&quot;: &quot;cr_auto&quot;,
   &quot;flow_id&quot;: &quot;filecr_validation&quot;,
   &quot;step&quot;: &quot;validate&quot;
 }</pre></div></div></details><details class="hit"><summary>
-<span class="n">28</span><span class="t">16:30:38.556</span><span class="m m-GET">GET</span>
-<code class="u">/api/v1/main/executions/Wo1fR91QPzten6WTohs7A</code><span class="s ok">200</span>
-<span class="d">31 ms · ↑ 0 B · ↓ 6.8 KB ×3 (until 16:30:44.605, last answer shown)</span>
+<span class="n">24</span><span class="t">17:19:28.711</span><span class="m m-GET">GET</span>
+<code class="u">/api/v1/main/executions/3zpWjJfUN4aUpmozO8TGY3</code><span class="s ok">200</span>
+<span class="d">46 ms · ↑ 0 B · ↓ 6.8 KB ×6 (until 17:19:44.210, last answer shown)</span>
 <span class="p">The validation execution</span></summary>
-<div class="io"><div><h3>Request</h3><pre>GET /api/v1/main/executions/Wo1fR91QPzten6WTohs7A HTTP/1.1
+<div class="io"><div><h3>Request</h3><pre>GET /api/v1/main/executions/3zpWjJfUN4aUpmozO8TGY3 HTTP/1.1
 Host: localhost:8080
 Accept: application/json
 Authorization: Basic *** (masked)
 </pre></div><div><h3>Response</h3><pre>HTTP/1.1 200
 Content-Type: application/json
-Content-Length: 6953
+Content-Length: 6959
 
 {
-  &quot;id&quot;: &quot;Wo1fR91QPzten6WTohs7A&quot;,
+  &quot;id&quot;: &quot;3zpWjJfUN4aUpmozO8TGY3&quot;,
   &quot;namespace&quot;: &quot;cr_auto&quot;,
   &quot;flowId&quot;: &quot;filecr_validation&quot;,
   &quot;state&quot;: &quot;SUCCESS&quot;,
   &quot;labels&quot;: [
     {
       &quot;key&quot;: &quot;req_id&quot;,
-      &quot;value&quot;: &quot;120&quot;
+      &quot;value&quot;: &quot;122&quot;
     },
     {
       &quot;key&quot;: &quot;process&quot;,
@@ -2112,7 +2055,7 @@ Content-Length: 6953
     },
     {
       &quot;key&quot;: &quot;system.correlationId&quot;,
-      &quot;value&quot;: &quot;Wo1fR91QPzten6WTohs7A&quot;
+      &quot;value&quot;: &quot;3zpWjJfUN4aUpmozO8TGY3&quot;
     },
     {
       &quot;key&quot;: &quot;project&quot;,
@@ -2128,7 +2071,7 @@ Content-Length: 6953
     },
     {
       &quot;key&quot;: &quot;order_id&quot;,
-      &quot;value&quot;: &quot;120&quot;
+      &quot;value&quot;: &quot;122&quot;
     },
     {
       &quot;key&quot;: &quot;system.from&quot;,
@@ -2167,11 +2110,11 @@ Content-Length: 6953
   ],
   &quot;…&quot;: &quot;(the rest of the execution - inputs, outputs, task logs - left out of this log)&quot;
 }</pre></div></div></details><details class="hit"><summary>
-<span class="n">29</span><span class="t">16:30:44.640</span><span class="m m-GET">GET</span>
-<code class="u">/cr/api/orders?id=120</code><span class="s ok">200</span>
-<span class="d">7 ms · ↑ 0 B · ↓ 350 B</span>
+<span class="n">25</span><span class="t">17:19:44.247</span><span class="m m-GET">GET</span>
+<code class="u">/cr/api/orders?id=122</code><span class="s ok">200</span>
+<span class="d">26 ms · ↑ 0 B · ↓ 350 B</span>
 <span class="p">The order afterwards</span></summary>
-<div class="io"><div><h3>Request</h3><pre>GET /cr/api/orders?id=120 HTTP/1.1
+<div class="io"><div><h3>Request</h3><pre>GET /cr/api/orders?id=122 HTTP/1.1
 Host: localhost:8080
 Accept: application/json
 Authorization: Basic *** (masked)
@@ -2182,7 +2125,7 @@ Content-Length: 350
 {
   &quot;orders&quot;: [
     {
-      &quot;req_id&quot;: 120,
+      &quot;req_id&quot;: 122,
       &quot;parent_req_id&quot;: null,
       &quot;kind&quot;: &quot;ORDER&quot;,
       &quot;cr_name&quot;: null,
@@ -2190,24 +2133,24 @@ Content-Length: 350
       &quot;node_type&quot;: &quot;PGW_RDS&quot;,
       &quot;activity&quot;: &quot;1051_SUBSCRIBER_PROFILE_CONFIGURATION&quot;,
       &quot;project&quot;: &quot;CR_AUTO&quot;,
-      &quot;execution_id&quot;: &quot;7RMQmBt6LmcexcaEHY31LG&quot;,
-      &quot;created_at&quot;: &quot;2026-10-29 11:00:32.978357+00&quot;,
-      &quot;updated_at&quot;: &quot;2026-10-29 11:00:41.652756+00&quot;,
+      &quot;execution_id&quot;: &quot;1KDwZd07GrlkfvKXR5ZJ3J&quot;,
+      &quot;created_at&quot;: &quot;2026-10-29 11:49:19.152276+00&quot;,
+      &quot;updated_at&quot;: &quot;2026-10-29 11:49:39.957908+00&quot;,
       &quot;waiting&quot;: false
     }
   ]
 }</pre></div></div></details><details class="hit"><summary>
-<span class="n">30</span><span class="t">16:30:44.647</span><span class="m m-GET">GET</span>
-<code class="u">/api/v1/main/namespaces/cr_auto/kv/ORDER_120</code><span class="s ok">200</span>
-<span class="d">21 ms · ↑ 0 B · ↓ 782 B</span>
-<span class="p">KV ORDER_120: what the forms and the Order tab read</span></summary>
-<div class="io"><div><h3>Request</h3><pre>GET /api/v1/main/namespaces/cr_auto/kv/ORDER_120 HTTP/1.1
+<span class="n">26</span><span class="t">17:19:44.274</span><span class="m m-GET">GET</span>
+<code class="u">/api/v1/main/namespaces/cr_auto/kv/ORDER_122</code><span class="s ok">200</span>
+<span class="d">57 ms · ↑ 0 B · ↓ 783 B</span>
+<span class="p">KV ORDER_122: what the forms and the Order tab read</span></summary>
+<div class="io"><div><h3>Request</h3><pre>GET /api/v1/main/namespaces/cr_auto/kv/ORDER_122 HTTP/1.1
 Host: localhost:8080
 Accept: application/json
 Authorization: Basic *** (masked)
 </pre></div><div><h3>Response</h3><pre>HTTP/1.1 200
 Content-Type: application/json
-Content-Length: 782
+Content-Length: 783
 
 {
   &quot;type&quot;: &quot;JSON&quot;,
@@ -2215,26 +2158,26 @@ Content-Length: 782
     &quot;stage&quot;: &quot;VALIDATED&quot;,
     &quot;steps&quot;: [
       {
-        &quot;at&quot;: &quot;2026-10-29 11:00 UTC&quot;,
+        &quot;at&quot;: &quot;2026-10-29 11:49 UTC&quot;,
         &quot;stage&quot;: &quot;GENERATE_TEMPLATE SUCCESS&quot;,
-        &quot;execution_id&quot;: &quot;7RMQmBt6LmcexcaEHY31LG&quot;
+        &quot;execution_id&quot;: &quot;1KDwZd07GrlkfvKXR5ZJ3J&quot;
       },
       {
-        &quot;at&quot;: &quot;2026-10-29 11:00 UTC&quot;,
+        &quot;at&quot;: &quot;2026-10-29 11:49 UTC&quot;,
         &quot;stage&quot;: &quot;CIQ_VALIDATION SUCCESS&quot;,
-        &quot;execution_id&quot;: &quot;Wo1fR91QPzten6WTohs7A&quot;
+        &quot;execution_id&quot;: &quot;3zpWjJfUN4aUpmozO8TGY3&quot;
       }
     ],
-    &quot;value&quot;: &quot;120&quot;,
+    &quot;value&quot;: &quot;122&quot;,
     &quot;cr_list&quot;: [
       &quot;CR1&quot;,
       &quot;CR2&quot;
     ],
     &quot;activity&quot;: &quot;1051_SUBSCRIBER_PROFILE_CONFIGURATION&quot;,
     &quot;children&quot;: {},
-    &quot;json_file&quot;: &quot;/mnt/shared_data/120/PGW_RDS_1051_SUBSCRIBER_PROFILE_CONFIGURATION.json&quot;,
+    &quot;json_file&quot;: &quot;/mnt/shared_data/122/PGW_RDS_1051_SUBSCRIBER_PROFILE_CONFIGURATION.json&quot;,
     &quot;node_type&quot;: &quot;PGW_RDS&quot;,
-    &quot;order_dir&quot;: &quot;/mnt/shared_data/120&quot;,
+    &quot;order_dir&quot;: &quot;/mnt/shared_data/122&quot;,
     &quot;cr_options&quot;: [
       {
         &quot;label&quot;: &quot;CR1&quot;,
@@ -2245,7 +2188,7 @@ Content-Length: 782
         &quot;value&quot;: &quot;CR2&quot;
       }
     ],
-    &quot;process_id&quot;: 12,
+    &quot;process_id&quot;: 15,
     &quot;node_version&quot;: &quot;ALL&quot;,
     &quot;child_options&quot;: [],
     &quot;children_by_id&quot;: {},
@@ -2254,5 +2197,5 @@ Content-Length: 782
     &quot;rollback_supported&quot;: false
   },
   &quot;revision&quot;: 2,
-  &quot;updated&quot;: &quot;2026-10-29T11:00:42.088180Z&quot;
+  &quot;updated&quot;: &quot;2026-10-29T11:49:43.649034Z&quot;
 }</pre></div></div></details></main></body></html>

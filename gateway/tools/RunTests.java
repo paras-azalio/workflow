@@ -13,7 +13,7 @@ import static org.junit.platform.launcher.core.LauncherDiscoveryRequestBuilder.r
 public final class RunTests {
 
     public static void main(String[] args) {
-        LauncherDiscoveryRequest req = request().selectors(selectPackage("com.nokia.workflow.gateway")).build();
+        LauncherDiscoveryRequest req = request().selectors(selectPackage("io.azalio.workflow.gateway")).build();
         Launcher launcher = LauncherFactory.create();
         SummaryGeneratingListener listener = new SummaryGeneratingListener();
         launcher.execute(req, listener);

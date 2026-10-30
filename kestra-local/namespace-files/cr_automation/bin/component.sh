@@ -36,14 +36,14 @@ if [ -n "${STORE_REQ_ID:-}" ]; then
 fi
 
 if [ "$kind" = WRAPPED ]; then
-  "${NEI_JAVA:-java}" -cp "wrappers/*${s}$home/*${s}$home/lib/*" com.nokia.workflow.wrapper.WrapperMain \
+  "${NEI_JAVA:-java}" -cp "wrappers/*${s}$home/*${s}$home/lib/*" io.azalio.workflow.wrapper.WrapperMain \
     --component NEI --config "$config" \
     --param "ne_type=$(prop component.ne_type)" --param "product_name=$(prop component.product)" \
     --param "product_version=$(prop component.version)" \
     --result "out/$name.result.json" --io-log "$ORDER_DIR/logs/$name.io.log" --mml-log "$ORDER_DIR/logs/$name.mml" \
     --emit kestra --exit-zero "$@"
 elif [ "$kind" = STANDALONE ]; then
-  "${NEI_JAVA:-java}" -cp "wrappers/*" com.nokia.workflow.wrapper.WrapperMain \
+  "${NEI_JAVA:-java}" -cp "wrappers/*" io.azalio.workflow.wrapper.WrapperMain \
     --component COMMAND --config "$config" --param "COMMAND=$(prop component.name)" \
     --result "out/$name.result.json" --io-log "$ORDER_DIR/logs/$name.io.log" \
     --emit kestra --exit-zero "$@"

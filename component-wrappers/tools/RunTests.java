@@ -21,7 +21,7 @@ public final class RunTests {
     public static void main(String[] args) {
         LauncherDiscoveryRequest req = args.length > 0
                 ? request().selectors(selectClass(args[0])).build()
-                : request().selectors(selectPackage("com.nokia.workflow.wrapper")).build();
+                : request().selectors(selectPackage("io.azalio.workflow.wrapper")).build();
         Launcher launcher = LauncherFactory.create();
         SummaryGeneratingListener listener = new SummaryGeneratingListener();
         launcher.execute(req, listener);

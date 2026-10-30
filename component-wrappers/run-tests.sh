@@ -40,12 +40,12 @@ BASE="target/tools${SEP}target/classes${SEP}target/test-classes${JUNIT}"
 FILECR="$(winpath "${FILECR_TARGET:-../../NOKIA_FILE_CR_V1/target}")"
 CLICR="$(winpath "${CLICR_TARGET:-../../JAVA_NOKIA_CLICR_AUTOMATION/target}")"
 
-NOKIA_ROOT=$(winpath "$(cd ../.. && pwd)")
+NEI_ROOT=$(winpath "$(cd ../.. && pwd)")
 mkdir -p target/tools
 javac -d target/tools -cp "$BASE" tools/RunTests.java
 
 echo "== all tests (FileCR NEI on the classpath)"
-java -Dnokia.root="$NOKIA_ROOT" -cp "${BASE}${SEP}${FILECR}/macro_FILECR_ANY_V1.jar${SEP}${FILECR}/lib/*" RunTests
+java -Dnei.root="$NEI_ROOT" -cp "${BASE}${SEP}${FILECR}/macro_FILECR_ANY_V1.jar${SEP}${FILECR}/lib/*" RunTests
 echo "== ClicrNeiIT (CLICR NEI on the classpath)"
-java -Dnokia.root="$NOKIA_ROOT" -cp "${BASE}${SEP}${CLICR}/macro_CLICR_ANY_V1.jar${SEP}${CLICR}/lib/*" RunTests \
-  com.nokia.workflow.wrapper.nei.ClicrNeiIT
+java -Dnei.root="$NEI_ROOT" -cp "${BASE}${SEP}${CLICR}/macro_CLICR_ANY_V1.jar${SEP}${CLICR}/lib/*" RunTests \
+  io.azalio.workflow.wrapper.nei.ClicrNeiIT

@@ -25,7 +25,7 @@ What this gives:
 ### 2.1 Call
 
 ```
-java -cp "component-wrappers.jar:lib/*" com.nokia.workflow.wrapper.WrapperMain \
+java -cp "component-wrappers.jar:lib/*" io.azalio.workflow.wrapper.WrapperMain \
      --component <NAME>                         # e.g. CIQ_PROCESSOR (case-insensitive)
      [--request request.json|request.properties]  # request parameters, flat KEY=VALUE
      [--param KEY=VALUE ...]                    # overrides / additions to the request
@@ -78,9 +78,9 @@ java ... WrapperMain --list                     # wrappers on the classpath
 
 ## 3. Adding a wrapper
 
-1. Implement `com.nokia.workflow.wrapper.ComponentWrapper`: `name()`, `description()`, `execute(request, context)`.
+1. Implement `io.azalio.workflow.wrapper.ComponentWrapper`: `name()`, `description()`, `execute(request, context)`.
 2. Return `WrapperResult.success / warning / failed(message)` with `.put(key, value)` for results and `.addLog(lines)`.
-3. List the class in `META-INF/services/com.nokia.workflow.wrapper.ComponentWrapper` of its jar.
+3. List the class in `META-INF/services/io.azalio.workflow.wrapper.ComponentWrapper` of its jar.
 4. Put the jar (and the component's own jar) on the classpath. Nothing else changes: not the core, not the engine, not other workflows.
 
 Rules for wrappers:
@@ -152,7 +152,7 @@ With only `-DRCFILE` and a call sequence of `init` → `login` → `create`, bot
 
 **Call:**
 ```
-java -cp "component-wrappers.jar:<nei>/macro_<NE>_ANY_V1.jar:<nei>/lib/*" com.nokia.workflow.wrapper.WrapperMain      --component NEI --config project.properties      --param ne_type=FILECR --param REQ_TYPE=1 --param ACTION=CR_CIQ_PROCESSOR --param ...      [--result r.json] [--emit kestra] [--exit-zero] [--io-log logs/<task>.io.log] [--mml-log logs/<task>.mml]
+java -cp "component-wrappers.jar:<nei>/macro_<NE>_ANY_V1.jar:<nei>/lib/*" io.azalio.workflow.wrapper.WrapperMain      --component NEI --config project.properties      --param ne_type=FILECR --param REQ_TYPE=1 --param ACTION=CR_CIQ_PROCESSOR --param ...      [--result r.json] [--emit kestra] [--exit-zero] [--io-log logs/<task>.io.log] [--mml-log logs/<task>.mml]
 ```
 
 **Request:** the NEI task arglist exactly as InstantLink sends it:
@@ -201,7 +201,7 @@ Behaviour of the NEI jars found on the way:
 
 ## 8. The request store (2026-10-27)
 
-`com.nokia.workflow.wrapper.store.RequestStore` (same module, Java 8, JDBC driver on the classpath at run time) keeps
+`io.azalio.workflow.wrapper.store.RequestStore` (same module, Java 8, JDBC driver on the classpath at run time) keeps
 every order / child order (`request`) and every NEI step with its IO (`request_step`, request and results as JSONB) in
 the schema `cr_automation` of a PostgreSQL database. Commands: `new-request` (request id: the wanted order number, or
 one more than the highest in use - table and order folders - under a table lock; creates the order folder),

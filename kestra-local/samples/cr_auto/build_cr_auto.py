@@ -7,9 +7,9 @@ it and writes every API call - method, URL, what was sent, what came back - into
   python build_cr_auto.py --remove           removes CR_AUTO again (Kestra flows, files, KV through the API; the
                                              project's rows in the store with SQL - the gateway only soft-deletes)
 
-Nothing is copied from cr_automation's namespace: the project config is written here from scratch, the FileCR NEI is
-the build zip NOKIA_FILE_CR_V1/target.zip uploaded as a component, the two step flows are written here. The platform
-files (bin/store.sh, bin/component.sh, the wrapper jar, the JDBC driver) are uploaded from this repository.
+Nothing is copied by hand: creating the project makes the gateway provision its namespace (platform files, a generated
+config, KV SHARED_DATA_DIR); the FileCR NEI is the build zip NOKIA_FILE_CR_V1/target.zip uploaded as a component; the two
+step flows are written here.
 Credentials come from kestra-local/.env and never reach the report (no Authorization header, secret-like keys masked).
 """
 import argparse
@@ -30,20 +30,11 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 LOCAL = HERE.parents[1]                       # kestra-local
 REPO = LOCAL.parent
-PLATFORM = LOCAL / "namespace-files" / "cr_automation"
 FILECR_ZIP = REPO.parent / "NOKIA_FILE_CR_V1" / "target.zip"
 SAMPLE_CIQ = REPO / "samples" / "ciq" / "PGW_RDS_1051_CIQ_two_crs_pass.xlsx"
 G = "http://localhost:8080"
 PROJECT, NS, COMPONENT = "CR_AUTO", "cr_auto", "filecr"
 SECRET_KEY = re.compile(r"pass|secret|token|pwd", re.I)
-
-CONFIG = """# CR_AUTO project config - written from scratch by build_cr_auto.py, uploaded as config/cr_auto.properties.
-# The request store (orders, steps, IO). Its password is not here: STORE_JDBC_PASSWORD comes from the Kestra secret CR_DB_PASSWORD.
-store.jdbc.url=jdbc:postgresql://postgres:5432/kestra
-store.jdbc.user=kestra
-store.project=CR_AUTO
-# The FileCR NEI's GRC and status codes are the component's own (Components tab, component filecr).
-"""
 
 TEMPLATES = "{dir}/templates"
 COMPONENT_SPEC = {
@@ -435,15 +426,14 @@ def build(api):
     if any(p["project"] == PROJECT for p in existing["processes"]):
         raise SystemExit(f"STOP: {PROJECT} exists already - remove it first.")
 
-    for rel in ["bin/store.sh", "bin/component.sh", "wrappers/component-wrappers-0.1.0.jar", "lib/postgresql-42.7.4.jar"]:
-        api.upload_file(f"Platform file {rel} (from this repository)", NS, "/" + rel, (PLATFORM / rel).read_bytes())
-    api.upload_file("The project config, written from scratch", NS, f"/config/{NS}.properties", CONFIG.encode())
-    api.call("KV SHARED_DATA_DIR: where orders keep their folders", "PUT", f"/api/v1/main/namespaces/{NS}/kv/SHARED_DATA_DIR",
-             json.dumps("/mnt/shared_data"), "text/plain")
-    api.call("What the namespace now holds", "GET", f"/api/v1/main/namespaces/{NS}/files/directory?path=%2F")
-
-    api.call("Create the project: an empty draft v1", "POST", "/cr/api/processes",
-             {"project": PROJECT, "name": "FileCR sample built through the APIs", "namespace": NS})
+    created = api.call("Create the project: an empty draft v1; the gateway provisions its namespace", "POST", "/cr/api/processes",
+                       {"project": PROJECT, "name": "FileCR sample built through the APIs", "namespace": NS})
+    if not created.get("provisioned"):
+        raise SystemExit("STOP: the gateway provisioned nothing for the new project")
+    api.call("What the namespace now holds (all from the gateway)", "GET", f"/api/v1/main/namespaces/{NS}/files/directory?path=%2F")
+    api.call("The config the gateway generated", "GET", f"/api/v1/main/namespaces/{NS}/files?path=%2Fconfig%2F{NS}.properties",
+             accept="application/octet-stream")
+    api.call("KV SHARED_DATA_DIR, set by the gateway", "GET", f"/api/v1/main/namespaces/{NS}/kv/SHARED_DATA_DIR")
 
     api.call("Declare the component", "POST", c, {"name": COMPONENT, "kind": "WRAPPED", "description": COMPONENT_SPEC["description"]})
     zip_bytes = FILECR_ZIP.read_bytes()
@@ -566,7 +556,7 @@ pre {{ background:var(--code); padding:10px; border-radius:6px; overflow:auto; m
 </style></head><body><main>
 <h1>CR_AUTO – API hit log</h1>
 <p class="lead">{len(api.hits)} HTTP hits to {G} from {first} to {last} ({datetime.now():%Y-%m-%d}), in order. Gateway API: /cr/api/…; Kestra API: /api/v1/main/….
-Click a hit for its request (line, headers, payload) and response (status, headers, body). Authorization is masked; repository jars and scripts are shown by size and hash; the config file and flows in full.</p>
+Click a hit for its request (line, headers, payload) and response (status, headers, body). Authorization is masked; files are shown by size and hash, the config and flows in full.</p>
 {body}</main></body></html>""", encoding="utf-8")
 
 

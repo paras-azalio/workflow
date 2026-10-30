@@ -153,12 +153,7 @@ docker compose up -d --build                       # UI: http://localhost:8080
 
 ## More projects
 
-**Add a project** (e.g. CR_AUTOMATIONS in namespace cr_automations):
-1. `kestra-local/flows/cr_automations/` = a copy of `flows/cr_automation/`; in each of its 7 files set the first line to `namespace: cr_automations` (the flows refer to their own namespace as `{{ flow.namespace }}` everywhere else).
-2. `kestra-local/namespace-files/cr_automations/` = a copy of `namespace-files/cr_automation/` (or `./assemble-namespace-files.sh cr_automations` after copying its `bin/` and `config/`); in its one `config/*.properties` set `store.project=CR_AUTOMATIONS` (the scripts use whichever single `.properties` file is in `config/`).
-3. `./deploy.sh cr_automations` (files, flows, KV `SHARED_DATA_DIR`; refuses flows that name another namespace).
-4. Process designer → **New project**: id `CR_AUTOMATIONS`, namespace `cr_automations`, start from a copy of CR_AUTOMATION (or empty) → edit the draft → Publish (checks the flows exist in that namespace and deploys its pipelines there).
-5. Activities tab, project CR_AUTOMATIONS: declare its activities and levels (they are per project).
+**Add a project:** Process designer → **New project** (id, namespace). The gateway prepares the namespace itself - the platform files (`bin/`, `wrappers/`, `lib/`), `config/<namespace>.properties` naming the project, KV `SHARED_DATA_DIR` - and every Publish keeps the platform files up to date. Then: Components tab (jars / scripts), the step flows (Kestra → Flows; see `samples/cr_auto/`), the steps on the Processes tab → Publish, activities if needed. (A project kept in Git can still be deployed the old way: `flows/<ns>`, `namespace-files/<ns>`, `./deploy.sh <ns>`.)
 New orders of that namespace's flows are pinned to that project; its Orders, Order tab, automatic starts and stops work like CR_AUTOMATION's.
 
 ## Components (jars and scripts from the UI)
@@ -171,4 +166,4 @@ Process designer → **Components** → pick the project → **New component** (
 
 Use it in a process: Processes → a step's pipeline → a NEI box → Component = the registered component, Action = one of its actions (its other parameters are offered). Save / Publish checks the action and the required parameters; the process version runs the component version published last when it was published.
 
-Sample: `python samples/cr_auto/build_cr_auto.py` builds the FileCR-only project CR_AUTO (namespace cr_auto) through the APIs alone - config written from scratch, FileCR from `NOKIA_FILE_CR_V1/target.zip`, two flows, a process, one order - and writes every call with what it sent and got back to `../analysis/cr_auto_api_calls.html`. `--remove` takes it away again.
+Sample: `python samples/cr_auto/build_cr_auto.py` builds the FileCR-only project CR_AUTO (namespace cr_auto) through the APIs alone - namespace provisioned by the gateway, FileCR from `NOKIA_FILE_CR_V1/target.zip`, two flows, a process, one order - and writes every call with what it sent and got back to `../analysis/cr_auto_api_calls.html`. `--remove` takes it away again.

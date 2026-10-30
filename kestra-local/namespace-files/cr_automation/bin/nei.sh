@@ -38,7 +38,7 @@ if [ -n "${STORE_REQ_ID:-}" ]; then
     || { echo "The activity configuration of step $STORE_STEP could not be applied (see above)." >&2; exit 1; }
   set -- "$@" --override "out/$name.activity.properties"
 fi
-"${NEI_JAVA:-java}" -cp "wrappers/*${s}nei/$ne/*${s}nei/$ne/lib/*" com.nokia.workflow.wrapper.WrapperMain \
+"${NEI_JAVA:-java}" -cp "wrappers/*${s}nei/$ne/*${s}nei/$ne/lib/*" io.azalio.workflow.wrapper.WrapperMain \
   --component NEI \
   --config "${WRAPPER_CONFIG:-$(ls config/*.properties 2>/dev/null | head -1)}" \
   --param "ne_type=$NE_TYPE" \

@@ -10,6 +10,9 @@ RUN javac -d classes -cp "libs/*" $(find src -name '*.java') && jar cf libs/gate
 FROM eclipse-temurin:21-jdk
 RUN useradd --system --uid 10001 gateway
 COPY --from=build /b/libs/ /app/
+COPY kestra-local/namespace-files/cr_automation/bin/ /app/platform/bin/
+COPY component-wrappers/target/component-wrappers-0.1.0.jar /app/platform/wrappers/
+COPY kestra-local/namespace-files/cr_automation/lib/postgresql-42.7.4.jar /app/platform/lib/
 USER gateway
 EXPOSE 8080
-ENTRYPOINT ["java", "-cp", "/app/*", "com.nokia.workflow.gateway.GatewayMain"]
+ENTRYPOINT ["java", "-cp", "/app/*", "io.azalio.workflow.gateway.GatewayMain"]

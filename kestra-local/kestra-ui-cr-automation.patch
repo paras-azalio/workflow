@@ -1891,10 +1891,10 @@ index 0000000..fad5af0
 +</style>
 diff --git a/ui/src/components/crdesigner/ProcessDesigner.vue b/ui/src/components/crdesigner/ProcessDesigner.vue
 new file mode 100644
-index 0000000..4c0a022
+index 0000000..91c5e49
 --- /dev/null
 +++ b/ui/src/components/crdesigner/ProcessDesigner.vue
-@@ -0,0 +1,548 @@
+@@ -0,0 +1,550 @@
 +<template>
 +    <div class="designer">
 +        <div class="designer-top">
@@ -2242,10 +2242,12 @@ index 0000000..4c0a022
 +    async function createProject() {
 +        if (!newProject.value.project || !newProject.value.namespace) return
 +        try {
-+            const made = await gateway<{project: string}>("/cr/api/processes", {method: "POST", json: newProject.value})
++            const namespace = newProject.value.namespace
++            const made = await gateway<{project: string, provisioned?: string[]}>("/cr/api/processes", {method: "POST", json: newProject.value})
 +            closeCreate()
 +            projectList.value = (await projects()).list
 +            await selectProject(made.project)
++            message.value = t("cr_designer.project_provisioned", {namespace, done: (made.provisioned ?? []).join(", ") || "-"})
 +        } catch (e: any) {
 +            createError.value = e?.message ?? String(e)
 +        }
@@ -5253,10 +5255,10 @@ index e243b34..de41337 100644
      {name: "kv/list", path: "/:tenant?/kv", component: () => import("../components/kv/KVs.vue")},
  
 diff --git a/ui/src/translations/en.json b/ui/src/translations/en.json
-index f4a164d..cb5b0b7 100644
+index f4a164d..1caadfb 100644
 --- a/ui/src/translations/en.json
 +++ b/ui/src/translations/en.json
-@@ -199,6 +199,362 @@
+@@ -199,6 +199,363 @@
      "details": "Details",
      "overview": "Overview",
      "gantt": "Gantt",
@@ -5414,7 +5416,8 @@ index f4a164d..cb5b0b7 100644
 +      "project_from": "Start from",
 +      "project_empty": "an empty process",
 +      "project_copy": "a copy of {project}'s process",
-+      "new_project_hint": "The process starts as a draft. Its flows and files live in that namespace: copy kestra-local/flows/<ns> and namespace-files/<ns> from an existing project, set 'namespace:' in the flows and store.project in its config file, then ./deploy.sh <namespace>. Activities are declared per project.",
++      "new_project_hint": "The process starts as a draft. The gateway prepares the namespace: the platform files (bin/, wrappers/, lib/), a config file naming the project and the order folder (KV SHARED_DATA_DIR); publishing keeps the platform files up to date. Then add components, the step flows and the steps. Activities are declared per project.",
++      "project_provisioned": "Namespace {namespace} prepared: {done}.",
 +      "flow_tab": "Flow",
 +      "flow_main": "Main flow",
 +      "flow_main_hint": "What happens to an order, start to end - generated from the process. Click a box to edit it; double-click a box marked \"open\" to see inside.",

@@ -12,7 +12,7 @@
       No compile-time dependencies at all: the NEI wrapper reaches the NEI and java_macroserver classes by
       reflection, so the NEI jars and their lib/ are supplied only at runtime and are upgraded on their own.
     -->
-    <groupId>com.nokia.workflow</groupId>
+    <groupId>io.azalio.workflow</groupId>
     <artifactId>component-wrappers</artifactId>
     <version>0.1.0</version>
     <packaging>jar</packaging>
@@ -56,7 +56,7 @@
                 <configuration>
                     <!-- the NEI integration test needs the FileCR jar on the test classpath and the 1051 rules; it skips itself when absent -->
                     <systemPropertyVariables>
-                        <nokia.root>${project.basedir}/../..</nokia.root>
+                        <nei.root>${project.basedir}/../..</nei.root>
                     </systemPropertyVariables>
                 </configuration>
             </plugin>
@@ -67,7 +67,7 @@
                 <configuration>
                     <archive>
                         <manifest>
-                            <mainClass>com.nokia.workflow.wrapper.WrapperMain</mainClass>
+                            <mainClass>io.azalio.workflow.wrapper.WrapperMain</mainClass>
                         </manifest>
                     </archive>
                 </configuration>

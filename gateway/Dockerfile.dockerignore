@@ -3,3 +3,4 @@
 !gateway/src/main/resources
 !component-wrappers/target/component-wrappers-0.1.0.jar
 !kestra-local/namespace-files/cr_automation/lib/postgresql-42.7.4.jar
+!kestra-local/namespace-files/cr_automation/bin
